@@ -1,0 +1,8 @@
+{
+  "name": "Al_Faravi OS",
+  "short_name": "FaraviOS",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#0f172a"
+}
