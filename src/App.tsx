@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, Link, useLocation, Navigate } from 'react-router-dom';
 import { supabase } from './lib/supabase';
-import { Home, Shield, Wallet, BookOpen, Users, LogOut, Clock, Calendar, Sparkles } from 'lucide-react';
+import { Home, Shield, Wallet, BookOpen, Users, LogOut, Clock, Calendar, Sparkles, Target } from 'lucide-react';
 
 // Import Features
 import AuthPage from './features/auth/AuthPage';
@@ -9,6 +9,10 @@ import TaskManager from './features/dashboard/TaskManager';
 import VaultManager from './features/vault/VaultManager';
 import FinanceManager from './features/finance/FinanceManager';
 import LmsManager from './features/lms/LmsManager';
+import LmsWorkspace from './features/lms/LmsWorkspace';
+import BcsManager from './features/bcs/BcsManager';
+import BcsWorkspace from './features/bcs/BcsWorkspace';
+import FamilyManager from './features/family/FamilyManager'; // নতুন ইম্পোর্ট করা হয়েছে
 
 // Placeholder for upcoming modules
 const PlaceholderPage = ({ title }: { title: string }) => (
@@ -67,18 +71,25 @@ const ModernDashboard = () => {
 const FloatingDock = () => {
   const location = useLocation();
   
+  // Hide dock if we are inside the LMS or BCS Workspace (to maximize screen space)
+  if (location.pathname.includes('/lms/course/') || location.pathname.includes('/bcs/subject/')) return null;
+  
   const navItems = [
     { path: '/', icon: <Home size={24} />, label: 'Home' },
     { path: '/vault', icon: <Shield size={24} />, label: 'Vault' },
     { path: '/finance', icon: <Wallet size={24} />, label: 'Finance' },
     { path: '/lms', icon: <BookOpen size={24} />, label: 'LMS' },
+    { path: '/bcs', icon: <Target size={24} />, label: 'BCS Prep' },
     { path: '/family', icon: <Users size={24} />, label: 'Family' },
   ];
 
   return (
     <div className="fixed bottom-6 left-1/2 -translate-x-1/2 bg-white/80 backdrop-blur-xl border border-[#E2E8F0] p-2 rounded-2xl shadow-2xl flex items-center gap-2 z-50">
       {navItems.map((item) => {
-        const isActive = location.pathname === item.path;
+        // Updated active state logic to accommodate both LMS and BCS nested routes
+        const isActive = location.pathname === item.path || 
+                        (item.path === '/lms' && location.pathname.startsWith('/lms')) ||
+                        (item.path === '/bcs' && location.pathname.startsWith('/bcs'));
         return (
           <Link
             key={item.path}
@@ -90,8 +101,6 @@ const FloatingDock = () => {
             }`}
           >
             {item.icon}
-            
-            {/* Tooltip */}
             <span className="absolute -top-10 left-1/2 -translate-x-1/2 bg-[#020F33] text-white text-xs font-bold px-2 py-1 rounded-md opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap">
               {item.label}
             </span>
@@ -136,9 +145,15 @@ export default function App() {
           <Route path="/vault" element={<VaultManager />} />
           <Route path="/finance" element={<FinanceManager />} />
           <Route path="/lms" element={<LmsManager />} />
-          <Route path="/family" element={<PlaceholderPage title="Family Log (Coming Soon)" />} />
+          <Route path="/lms/course/:courseId" element={<LmsWorkspace />} />
           
-          {/* Catch-all route */}
+          {/* BCS Routes */}
+          <Route path="/bcs" element={<BcsManager />} />
+          <Route path="/bcs/subject/:subjectId" element={<BcsWorkspace />} /> 
+          
+          {/* Family Route Updated */}
+          <Route path="/family" element={<FamilyManager />} />
+          
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
         
