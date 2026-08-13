@@ -14,6 +14,7 @@ import BcsManager from './features/bcs/BcsManager';
 import BcsWorkspace from './features/bcs/BcsWorkspace';
 import FamilyManager from './features/family/FamilyManager';
 import GithubHub from './features/github/GithubHub';
+import Settings from './features/dashboard/Settings';
 
 // নতুন যোগ করা ফিচারসমূহ
 import SnippetVault from './features/developer/SnippetVault';
@@ -34,10 +35,8 @@ const PlaceholderPage = ({ title }: { title: string }) => (
 const FloatingDock = () => {
   const location = useLocation();
   
-  // Hide dock if we are inside the LMS or BCS Workspace (to maximize screen space)
   if (location.pathname.includes('/lms/course/') || location.pathname.includes('/bcs/subject/')) return null;
   
-  // আপনার দেওয়া নতুন সিরিয়াল অনুযায়ী ট্যাবসমূহ
   const navItems = [
     { path: '/', icon: <Home size={24} />, label: 'Home' },
     { path: '/lms', icon: <BookOpen size={24} />, label: 'LMS' },
@@ -50,7 +49,6 @@ const FloatingDock = () => {
   return (
     <div className="fixed bottom-6 left-1/2 -translate-x-1/2 bg-white/80 backdrop-blur-xl border border-[#E2E8F0] p-2 rounded-2xl shadow-2xl flex items-center gap-2 z-50">
       {navItems.map((item) => {
-        // Updated active state logic to accommodate both LMS and BCS nested routes
         const isActive = location.pathname === item.path || 
                         (item.path === '/lms' && location.pathname.startsWith('/lms')) ||
                         (item.path === '/bcs' && location.pathname.startsWith('/bcs'));
@@ -79,15 +77,36 @@ const FloatingDock = () => {
 export default function App() {
   const [session, setSession] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  
+  // 💡 2FA Security State
+  const [mfaNeeded, setMfaNeeded] = useState(false);
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
+    // 💡 ফাংশন: সেশন এবং 2FA (AAL Level) চেক করা
+    const checkAuth = async (currentSession: any) => {
+      if (currentSession) {
+        const { data: aalData } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
+        // যদি currentLevel aal1 (শুধু পাসওয়ার্ড) হয়, কিন্তু ইউজারের aal2 (2FA) অ্যাক্টিভ থাকে, তবে আটকে দাও!
+        if (aalData?.currentLevel === 'aal1' && aalData?.nextLevel === 'aal2') {
+          setMfaNeeded(true);
+        } else {
+          setMfaNeeded(false);
+        }
+      } else {
+        setMfaNeeded(false);
+      }
+      setSession(currentSession);
       setLoading(false);
+    };
+
+    // ১. শুরুতে লোড হওয়ার সময় চেক করবে
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      checkAuth(session);
     });
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setSession(session);
+    // ২. লগইন বা লগআউট ইভেন্ট হলে চেক করবে
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, newSession) => {
+      checkAuth(newSession);
     });
 
     return () => subscription.unsubscribe();
@@ -97,7 +116,8 @@ export default function App() {
     return <div className="min-h-screen bg-[#F8FAFC] flex items-center justify-center font-bold text-[#02C2D5]">Loading Al_Faravi OS...</div>;
   }
 
-  if (!session) {
+  // 🛡️ THE ULTIMATE LOCK: যদি সেশন না থাকে, অথবা সেশন আছে কিন্তু 2FA কোড দেয়নি -> AuthPage-এ আটকে রাখো!
+  if (!session || mfaNeeded) {
     return <AuthPage />;
   }
 
@@ -127,6 +147,9 @@ export default function App() {
           {/* Developer Tools Routes */}
           <Route path="/snippets" element={<SnippetVault />} />
           <Route path="/jobs" element={<JobTracker />} />
+          
+          {/* Settings Route */}
+          <Route path="/settings" element={<Settings />} />
           
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
