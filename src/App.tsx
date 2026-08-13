@@ -1,18 +1,26 @@
 import { useState, useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, Link, useLocation, Navigate } from 'react-router-dom';
 import { supabase } from './lib/supabase';
-import { Home, Shield, Wallet, BookOpen, Users, LogOut, Clock, Calendar, Sparkles, Target } from 'lucide-react';
+import { Home, Shield, Wallet, BookOpen, Users, Target } from 'lucide-react';
 
 // Import Features
 import AuthPage from './features/auth/AuthPage';
-import TaskManager from './features/dashboard/TaskManager';
+import ModernDashboard from './features/dashboard/ModernDashboard';
 import VaultManager from './features/vault/VaultManager';
 import FinanceManager from './features/finance/FinanceManager';
 import LmsManager from './features/lms/LmsManager';
 import LmsWorkspace from './features/lms/LmsWorkspace';
 import BcsManager from './features/bcs/BcsManager';
 import BcsWorkspace from './features/bcs/BcsWorkspace';
-import FamilyManager from './features/family/FamilyManager'; // নতুন ইম্পোর্ট করা হয়েছে
+import FamilyManager from './features/family/FamilyManager';
+import GithubHub from './features/github/GithubHub';
+
+// নতুন যোগ করা ফিচারসমূহ
+import SnippetVault from './features/developer/SnippetVault';
+import JobTracker from './features/developer/JobTracker';
+
+// গ্লোবাল সার্চ কম্পোনেন্ট (Cmd+K)
+import CommandPalette from './components/CommandPalette';
 
 // Placeholder for upcoming modules
 const PlaceholderPage = ({ title }: { title: string }) => (
@@ -22,51 +30,6 @@ const PlaceholderPage = ({ title }: { title: string }) => (
   </div>
 );
 
-// Modern Dashboard Component
-const ModernDashboard = () => {
-  return (
-    <div className="p-6 md:p-12 max-w-6xl mx-auto mb-28 text-[#020F33]">
-      <div className="flex justify-between items-end mb-10">
-        <div>
-          <h1 className="text-4xl font-extrabold tracking-tight flex items-center gap-3 text-[#020F33]">
-            Al_Faravi OS <Sparkles className="text-[#A3D803] w-7 h-7 fill-[#A3D803]" />
-          </h1>
-          <p className="text-[#475569] mt-2 font-medium">Ready to focus on your goals today?</p>
-        </div>
-        
-        <button 
-          onClick={() => supabase.auth.signOut()} 
-          className="flex items-center gap-2 bg-white hover:bg-rose-50 text-rose-600 border border-[#E2E8F0] px-4 py-2.5 rounded-xl transition-colors font-medium text-sm shadow-sm"
-        >
-          <LogOut size={16} /> Sign Out
-        </button>
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6 auto-rows-[200px]">
-        {/* Primary Navy Widget */}
-        <div className="md:col-span-2 row-span-1 bg-[#020F33] rounded-3xl p-6 text-white shadow-lg flex flex-col justify-between relative overflow-hidden">
-          <div className="absolute top-0 right-0 p-4 opacity-10"><Clock size={100} /></div>
-          <div>
-            <p className="text-[#02C2D5] font-semibold tracking-wide uppercase text-xs">System Active</p>
-            <h2 className="text-3xl font-bold mt-1 text-white">
-              {new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}
-            </h2>
-          </div>
-          <p className="text-slate-300 text-sm font-medium flex items-center gap-2">
-            <Calendar size={16} className="text-[#A3D803]" /> 
-            {new Date().toLocaleDateString('en-GB', { weekday: 'long' })} - Personal Brand Ecosystem
-          </p>
-        </div>
-
-        {/* TaskManager Widget */}
-        <div className="md:col-span-2 row-span-2">
-          <TaskManager />
-        </div>
-      </div>
-    </div>
-  );
-};
-
 // Floating Dock Navigation
 const FloatingDock = () => {
   const location = useLocation();
@@ -74,12 +37,13 @@ const FloatingDock = () => {
   // Hide dock if we are inside the LMS or BCS Workspace (to maximize screen space)
   if (location.pathname.includes('/lms/course/') || location.pathname.includes('/bcs/subject/')) return null;
   
+  // আপনার দেওয়া নতুন সিরিয়াল অনুযায়ী ট্যাবসমূহ
   const navItems = [
     { path: '/', icon: <Home size={24} />, label: 'Home' },
-    { path: '/vault', icon: <Shield size={24} />, label: 'Vault' },
-    { path: '/finance', icon: <Wallet size={24} />, label: 'Finance' },
     { path: '/lms', icon: <BookOpen size={24} />, label: 'LMS' },
     { path: '/bcs', icon: <Target size={24} />, label: 'BCS Prep' },
+    { path: '/vault', icon: <Shield size={24} />, label: 'Vault' },
+    { path: '/finance', icon: <Wallet size={24} />, label: 'Finance' },
     { path: '/family', icon: <Users size={24} />, label: 'Family' },
   ];
 
@@ -139,6 +103,9 @@ export default function App() {
 
   return (
     <Router>
+      {/* গ্লোবাল সার্চ কম্পোনেন্ট (Cmd+K) */}
+      <CommandPalette />
+      
       <div className="min-h-screen bg-[#F8FAFC] font-sans selection:bg-[#02C2D5] selection:text-[#020F33]">
         <Routes>
           <Route path="/" element={<ModernDashboard />} />
@@ -151,8 +118,15 @@ export default function App() {
           <Route path="/bcs" element={<BcsManager />} />
           <Route path="/bcs/subject/:subjectId" element={<BcsWorkspace />} /> 
           
-          {/* Family Route Updated */}
+          {/* Family Route */}
           <Route path="/family" element={<FamilyManager />} />
+
+          {/* GitHub Route */}
+          <Route path="/github" element={<GithubHub />} />
+          
+          {/* Developer Tools Routes */}
+          <Route path="/snippets" element={<SnippetVault />} />
+          <Route path="/jobs" element={<JobTracker />} />
           
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>

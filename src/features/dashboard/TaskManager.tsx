@@ -16,7 +16,6 @@ interface Task {
   linked_sub_item_title?: string | null;
 }
 
-// === Bangladeshi Timezone Helper Functions ===
 const getBstDate = (offsetDays = 0) => {
   const d = new Date();
   d.setDate(d.getDate() + offsetDays);
@@ -26,6 +25,7 @@ const getBstDate = (offsetDays = 0) => {
 };
 
 const formatBstDisplayDate = (dateStr: string) => {
+  if (!dateStr) return '';
   const today = getBstDate(0);
   const tomorrow = getBstDate(1);
   const yesterday = getBstDate(-1);
@@ -37,19 +37,22 @@ const formatBstDisplayDate = (dateStr: string) => {
   return new Date(dateStr).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
 };
 
-// === Smart Countdown Logic ===
+// === Bullet-proof Countdown Logic ===
 const getTimeRemaining = (targetDate: string, deadlineTime: string | null) => {
+  if (!targetDate) return null;
+  
   const now = new Date();
+  let target: Date;
   
-  // Set target date to Dhaka timezone midnight by default
-  const target = new Date(`${targetDate}T00:00:00+06:00`); 
+  // Safely parse date across all browsers
+  const [year, month, day] = targetDate.split('-').map(Number);
   
-  // If specific time is given, override the midnight
   if (deadlineTime) {
-    target.setHours(parseInt(deadlineTime.split(':')[0]), parseInt(deadlineTime.split(':')[1]), 0);
+    const [hours, mins] = deadlineTime.split(':').map(Number);
+    target = new Date(year, month - 1, day, hours, mins, 0);
   } else {
-    // If no time is given, assume deadline is end of that day (23:59:59)
-    target.setHours(23, 59, 59);
+    // If no time is specified, default to 11:59 PM of that day
+    target = new Date(year, month - 1, day, 23, 59, 59);
   }
 
   const diffMs = target.getTime() - now.getTime();
@@ -86,13 +89,10 @@ export default function TaskManager() {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(true);
   
-  // Options States
   const [bcsSubjects, setBcsSubjects] = useState<any[]>([]);
   const [lmsCourses, setLmsCourses] = useState<any[]>([]);
   const [subItems, setSubItems] = useState<any[]>([]); 
-  const [loadingSubItems, setLoadingSubItems] = useState(false);
   
-  // Form States
   const [newTaskTitle, setNewTaskTitle] = useState('');
   const [priority, setPriority] = useState<'High' | 'Medium' | 'Low'>('Medium');
   const [linkedModule, setLinkedModule] = useState('Custom');
@@ -101,15 +101,14 @@ export default function TaskManager() {
   const [linkedSubItemId, setLinkedSubItemId] = useState('');
   const [linkedSubItemTitle, setLinkedSubItemTitle] = useState('');
   
-  // New Time & Date States
   const [targetDate, setTargetDate] = useState(getBstDate(0));
   const [deadlineTime, setDeadlineTime] = useState('');
   const [isAdding, setIsAdding] = useState(false);
   
   const [viewMode, setViewMode] = useState<'active' | 'history'>('active');
-  const [currentTime, setCurrentTime] = useState(Date.now()); // For live countdown ticking
+  const [, setCurrentTime] = useState(Date.now()); // Tick for countdown updates
 
-  // Tick every 1 minute to update countdowns
+  // Live timer update
   useEffect(() => {
     const timer = setInterval(() => setCurrentTime(Date.now()), 60000);
     return () => clearInterval(timer);
@@ -125,7 +124,6 @@ export default function TaskManager() {
       if (!linkedItemId) {
         setSubItems([]); setLinkedSubItemId(''); setLinkedSubItemTitle(''); return;
       }
-      setLoadingSubItems(true);
       try {
         if (linkedModule === 'BCS') {
           const { data } = await supabase.from('bcs_chapters').select('id, title').eq('subject_id', linkedItemId).order('created_at');
@@ -134,7 +132,7 @@ export default function TaskManager() {
           const { data } = await supabase.from('lms_modules').select('id, title').eq('course_id', linkedItemId).order('created_at');
           setSubItems(data || []);
         }
-      } catch (error) { console.error(error); } finally { setLoadingSubItems(false); }
+      } catch (error) { console.error(error); }
     };
     fetchSubItems();
   }, [linkedItemId, linkedModule]);
@@ -145,7 +143,8 @@ export default function TaskManager() {
         supabase.from('bcs_subjects').select('id, title').order('title'),
         supabase.from('lms_courses').select('id, title').order('title')
       ]);
-      setBcsSubjects(bcsRes.data || []); setLmsCourses(lmsRes.data || []);
+      setBcsSubjects(bcsRes.data || []); 
+      setLmsCourses(lmsRes.data || []);
     } catch (error) { console.error(error); }
   };
 
@@ -153,7 +152,6 @@ export default function TaskManager() {
     setLoading(true);
     try {
       const { data: { user } } = await supabase.auth.getUser();
-      
       let query = supabase.from('tasks').select('*')
         .eq('user_id', user?.id)
         .order('target_date', { ascending: true }) 
@@ -171,7 +169,6 @@ export default function TaskManager() {
     } catch (error) { console.error(error); } finally { setLoading(false); }
   };
 
-  // Updated handleAddTask function
   const handleAddTask = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newTaskTitle.trim()) return;
@@ -183,7 +180,6 @@ export default function TaskManager() {
     try {
       const { data: { user } } = await supabase.auth.getUser();
       
-      // FIX: Ensure empty strings become actual nulls for PostgreSQL UUID columns
       const finalLinkedItemId = (linkedModule === 'Custom' || !linkedItemId) ? null : linkedItemId;
       const finalLinkedSubItemId = (linkedModule === 'Custom' || !linkedSubItemId) ? null : linkedSubItemId;
 
@@ -209,14 +205,7 @@ export default function TaskManager() {
       setNewTaskTitle(''); 
       setTargetDate(getBstDate(0)); 
       setDeadlineTime('');
-      // Keep selected subject for multi-task entry, reset sub-item fields
-      setLinkedSubItemId(''); 
-      setLinkedSubItemTitle('');
-    } catch (error) { 
-      console.error(error); 
-    } finally { 
-      setIsAdding(false); 
-    }
+    } catch (error) { console.error(error); } finally { setIsAdding(false); }
   };
 
   const toggleTask = async (id: string, currentStatus: boolean) => {
@@ -249,8 +238,8 @@ export default function TaskManager() {
   };
 
   return (
-    <div className="bg-white border border-[#E2E8F0] rounded-3xl p-6 shadow-sm flex flex-col h-full">
-      <div className="flex justify-between items-center mb-6">
+    <div className="bg-white border border-[#E2E8F0] rounded-3xl p-6 shadow-sm flex flex-col h-full overflow-hidden">
+      <div className="flex justify-between items-center mb-6 shrink-0">
         <h3 className="text-xl font-bold text-[#020F33] flex items-center gap-2">
           <ListTodo className="text-[#02C2D5]" size={22} /> Action Plan
         </h3>
@@ -261,7 +250,7 @@ export default function TaskManager() {
       </div>
 
       {viewMode === 'active' && (
-        <form onSubmit={handleAddTask} className="flex flex-col gap-3 mb-6 bg-[#F8FAFC] p-4 rounded-2xl border border-[#E2E8F0]">
+        <form onSubmit={handleAddTask} className="flex flex-col gap-3 mb-6 bg-[#F8FAFC] p-4 rounded-2xl border border-[#E2E8F0] shrink-0">
           <div className="flex flex-col md:flex-row gap-2">
             <input 
               type="text" required value={newTaskTitle} onChange={(e) => setNewTaskTitle(e.target.value)} 
@@ -284,7 +273,7 @@ export default function TaskManager() {
           </div>
 
           {(linkedModule === 'BCS' || linkedModule === 'LMS') && (
-            <div className="flex gap-2">
+            <div className="flex flex-col md:flex-row gap-2">
               <select 
                 value={linkedItemId} 
                 onChange={(e) => {
@@ -314,39 +303,34 @@ export default function TaskManager() {
             </div>
           )}
 
-          <div className="flex flex-wrap gap-2 items-center">
-            <div className="flex-1 flex gap-2">
-              <input 
-                type="date" 
-                value={targetDate} 
-                onChange={(e) => setTargetDate(e.target.value)} 
-                min={getBstDate(0)}
-                className="w-full bg-white border border-[#E2E8F0] rounded-xl px-3 py-2.5 text-xs font-bold text-[#475569] outline-none focus:ring-2 focus:ring-[#02C2D5]" 
-                title="Target Date / Deadline" 
-              />
-              <input 
-                type="time" 
-                value={deadlineTime} 
-                onChange={(e) => setDeadlineTime(e.target.value)} 
-                className="w-full bg-white border border-[#E2E8F0] rounded-xl px-3 py-2.5 text-xs font-bold text-[#475569] outline-none focus:ring-2 focus:ring-[#02C2D5]" 
-                title="Specific Time (Optional)" 
-              />
-            </div>
-            
-            <div className="flex-1 flex gap-2">
-              <select value={priority} onChange={(e: any) => setPriority(e.target.value)} className="w-full bg-white border border-[#E2E8F0] rounded-xl px-3 py-2.5 text-xs font-bold text-[#475569] outline-none">
-                <option value="High">High Priority</option><option value="Medium">Medium Priority</option><option value="Low">Low Priority</option>
-              </select>
-              <button type="submit" disabled={isAdding} className="bg-[#020F33] text-white hover:bg-[#02C2D5] hover:text-[#020F33] rounded-xl px-6 py-2.5 font-bold flex items-center justify-center transition-colors shadow-md w-full md:w-auto shrink-0">
-                {isAdding ? <Loader2 size={16} className="animate-spin" /> : <><Plus size={16} /> Add Task</>}
-              </button>
-            </div>
+          <div className="flex flex-wrap md:flex-nowrap gap-2 items-center">
+            <input 
+              type="date" 
+              value={targetDate} 
+              onChange={(e) => setTargetDate(e.target.value)} 
+              min={getBstDate(0)}
+              className="w-full md:flex-1 bg-white border border-[#E2E8F0] rounded-xl px-3 py-2.5 text-xs font-bold text-[#475569] outline-none focus:ring-2 focus:ring-[#02C2D5]" 
+              title="Target Date / Deadline" 
+            />
+            <input 
+              type="time" 
+              value={deadlineTime} 
+              onChange={(e) => setDeadlineTime(e.target.value)} 
+              className="w-full md:flex-1 bg-white border border-[#E2E8F0] rounded-xl px-3 py-2.5 text-xs font-bold text-[#475569] outline-none focus:ring-2 focus:ring-[#02C2D5]" 
+              title="Specific Time (Optional)" 
+            />
+            <select value={priority} onChange={(e: any) => setPriority(e.target.value)} className="w-full md:flex-1 bg-white border border-[#E2E8F0] rounded-xl px-3 py-2.5 text-xs font-bold text-[#475569] outline-none">
+              <option value="High">High Priority</option><option value="Medium">Medium Priority</option><option value="Low">Low Priority</option>
+            </select>
+            <button type="submit" disabled={isAdding} className="w-full md:w-auto bg-[#020F33] text-white hover:bg-[#02C2D5] hover:text-[#020F33] rounded-xl px-6 py-2.5 font-bold flex items-center justify-center transition-colors shadow-md shrink-0">
+              {isAdding ? <Loader2 size={16} className="animate-spin" /> : <><Plus size={16} /> Add</>}
+            </button>
           </div>
         </form>
       )}
 
       {/* Tasks List */}
-      <div className="flex-1 overflow-y-auto space-y-3 pr-1 min-h-[200px]">
+      <div className="flex-1 overflow-y-auto space-y-3 pr-1 pb-4">
         {loading ? (
           <div className="flex justify-center p-8"><Loader2 className="animate-spin text-[#02C2D5]" size={24} /></div>
         ) : tasks.length === 0 ? (
@@ -359,24 +343,23 @@ export default function TaskManager() {
           tasks.map(task => {
             const todayBst = getBstDate(0);
             const isOverdue = task.target_date < todayBst && !task.is_completed;
-            
-            // Calculate dynamic remaining time if active
             const remaining = !task.is_completed ? getTimeRemaining(task.target_date, task.deadline_time) : null;
 
             return (
-              <div key={task.id} className={`flex items-start gap-3 p-3.5 rounded-2xl border transition-all group ${task.is_completed ? 'bg-slate-50 border-slate-100 opacity-75' : isOverdue ? 'bg-rose-50/30 border-rose-100' : 'bg-white border-[#E2E8F0] hover:border-[#02C2D5]'}`}>
+              <div key={task.id} className={`flex items-start gap-3 p-3.5 rounded-2xl border transition-all group overflow-hidden ${task.is_completed ? 'bg-slate-50 border-slate-100 opacity-75' : isOverdue ? 'bg-rose-50/30 border-rose-100' : 'bg-white border-[#E2E8F0] hover:border-[#02C2D5]'}`}>
                 <button onClick={() => toggleTask(task.id, task.is_completed)} className={`shrink-0 mt-0.5 transition-colors ${task.is_completed ? 'text-[#A3D803]' : isOverdue ? 'text-rose-400' : 'text-[#CBD5E1] hover:text-[#02C2D5]'}`}>
                   {task.is_completed ? <CheckCircle2 size={20} /> : <Circle size={20} />}
                 </button>
                 
                 <div className="flex-1 min-w-0">
-                  <span className={`text-sm font-bold block ${task.is_completed ? 'line-through text-slate-400' : 'text-[#020F33]'}`}>{task.title}</span>
+                  {/* Title Fix: break-words and whitespace-normal allows long text to wrap instead of breaking out */}
+                  <span className={`text-sm font-bold block break-words whitespace-normal ${task.is_completed ? 'line-through text-slate-400' : 'text-[#020F33]'}`}>{task.title}</span>
                   
                   <div className="flex items-center gap-2 mt-2 flex-wrap">
                     <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded border ${getModuleColor(task.linked_module)}`}>{task.linked_module}</span>
                     <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded border ${getPriorityColor(task.priority)}`}>{task.priority}</span>
                     
-                    {/* Live Countdown Badge (Only for Active Tasks) */}
+                    {/* Live Countdown Badge */}
                     {remaining && (
                       <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded border flex items-center gap-1 ${remaining.color}`}>
                         <Timer size={10}/> {remaining.text}
@@ -404,7 +387,7 @@ export default function TaskManager() {
                     )}
                   </div>
                 </div>
-                <button onClick={() => deleteTask(task.id)} className="text-[#CBD5E1] hover:text-rose-500 opacity-0 group-hover:opacity-100 transition-opacity p-1.5"><Trash2 size={16} /></button>
+                <button onClick={() => deleteTask(task.id)} className="text-[#CBD5E1] hover:text-rose-500 opacity-0 group-hover:opacity-100 transition-opacity p-1.5 shrink-0"><Trash2 size={16} /></button>
               </div>
             );
           })
