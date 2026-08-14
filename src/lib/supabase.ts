@@ -39,3 +39,20 @@ export const workspaceSupabase = createClient(workspaceUrl, workspaceAnonKey, {
     storageKey: 'workspace-auth-token', 
   }
 })
+
+// ==========================================
+// 3. WORKSPACE ADMIN CLIENT (শুধুমাত্র Workspace Manager-এ ব্যবহারের জন্য)
+// ==========================================
+const workspaceServiceKey = import.meta.env.VITE_WORKSPACE_SERVICE_KEY;
+
+// যদি সার্ভিস কি না থাকে তবে এরর থ্রো করবে (অপশনাল, তবে ডিবাগিংয়ের জন্য ভালো)
+if (!workspaceServiceKey) {
+  console.warn('Missing VITE_WORKSPACE_SERVICE_KEY in .env file. Workspace Admin features may not work.');
+}
+
+export const workspaceAdmin = createClient(workspaceUrl, workspaceServiceKey || '', {
+  auth: {
+    autoRefreshToken: false,
+    persistSession: false // এটি আমাদের লগইন সেশনকে ওভাররাইট করবে না
+  }
+});
