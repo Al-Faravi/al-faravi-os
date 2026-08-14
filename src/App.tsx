@@ -1,9 +1,9 @@
 import { useState, useEffect } from 'react';
-import { BrowserRouter as Router, Routes, Route, Link, useLocation, Navigate } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Link, useLocation, Navigate, Outlet } from 'react-router-dom';
 import { supabase } from './lib/supabase';
 import { Home, Shield, Wallet, BookOpen, Users, Target } from 'lucide-react';
 
-// Import Features
+// Import Features (Main OS)
 import AuthPage from './features/auth/AuthPage';
 import ModernDashboard from './features/dashboard/ModernDashboard';
 import VaultManager from './features/vault/VaultManager';
@@ -16,9 +16,14 @@ import FamilyManager from './features/family/FamilyManager';
 import GithubHub from './features/github/GithubHub';
 import Settings from './features/dashboard/Settings';
 
-// নতুন যোগ করা ফিচারসমূহ
+// Developer Tools
 import SnippetVault from './features/developer/SnippetVault';
 import JobTracker from './features/developer/JobTracker';
+
+// Workspace (Guest House) Features
+import WorkspaceLogin from './features/workspace/WorkspaceLogin';
+import WorkspaceDashboard from './features/workspace/WorkspaceDashboard';
+import WorkspaceManager from './features/workspace/WorkspaceManager'; // আপনার কন্ট্রোল প্যানেল
 
 // গ্লোবাল সার্চ কম্পোনেন্ট (Cmd+K)
 import CommandPalette from './components/CommandPalette';
@@ -35,6 +40,7 @@ const PlaceholderPage = ({ title }: { title: string }) => (
 const FloatingDock = () => {
   const location = useLocation();
   
+  // LMS/BCS ওয়ার্কস্পেস বা নির্দিষ্ট কিছু পেজে ডক হাইড করতে চাইলে
   if (location.pathname.includes('/lms/course/') || location.pathname.includes('/bcs/subject/')) return null;
   
   const navItems = [
@@ -73,20 +79,18 @@ const FloatingDock = () => {
   );
 };
 
-// Main App Component
-export default function App() {
+// =======================================================
+// 🛡️ MAIN AL_FARAVI OS PROTECTED LAYOUT
+// =======================================================
+const ProtectedOSLayout = () => {
   const [session, setSession] = useState<any>(null);
   const [loading, setLoading] = useState(true);
-  
-  // 💡 2FA Security State
   const [mfaNeeded, setMfaNeeded] = useState(false);
 
   useEffect(() => {
-    // 💡 ফাংশন: সেশন এবং 2FA (AAL Level) চেক করা
     const checkAuth = async (currentSession: any) => {
       if (currentSession) {
         const { data: aalData } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
-        // যদি currentLevel aal1 (শুধু পাসওয়ার্ড) হয়, কিন্তু ইউজারের aal2 (2FA) অ্যাক্টিভ থাকে, তবে আটকে দাও!
         if (aalData?.currentLevel === 'aal1' && aalData?.nextLevel === 'aal2') {
           setMfaNeeded(true);
         } else {
@@ -99,12 +103,10 @@ export default function App() {
       setLoading(false);
     };
 
-    // ১. শুরুতে লোড হওয়ার সময় চেক করবে
     supabase.auth.getSession().then(({ data: { session } }) => {
       checkAuth(session);
     });
 
-    // ২. লগইন বা লগআউট ইভেন্ট হলে চেক করবে
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, newSession) => {
       checkAuth(newSession);
     });
@@ -116,20 +118,47 @@ export default function App() {
     return <div className="min-h-screen bg-[#F8FAFC] flex items-center justify-center font-bold text-[#02C2D5]">Loading Al_Faravi OS...</div>;
   }
 
-  // 🛡️ THE ULTIMATE LOCK: যদি সেশন না থাকে, অথবা সেশন আছে কিন্তু 2FA কোড দেয়নি -> AuthPage-এ আটকে রাখো!
+  // 🛡️ THE ULTIMATE LOCK: মেইন সিস্টেমে ঢোকার আগে চেক
   if (!session || mfaNeeded) {
     return <AuthPage />;
   }
 
   return (
-    <Router>
-      {/* গ্লোবাল সার্চ কম্পোনেন্ট (Cmd+K) */}
+    <div className="min-h-screen bg-[#F8FAFC] font-sans selection:bg-[#02C2D5] selection:text-[#020F33]">
       <CommandPalette />
-      
-      <div className="min-h-screen bg-[#F8FAFC] font-sans selection:bg-[#02C2D5] selection:text-[#020F33]">
-        <Routes>
+      <Outlet /> 
+      <FloatingDock />
+    </div>
+  );
+};
+
+// =======================================================
+// 🌐 MAIN APP COMPONENT & ROUTING
+// =======================================================
+export default function App() {
+  return (
+    <Router>
+      <Routes>
+        
+        {/* ========================================== */}
+        {/* DOOR 2: GUEST WORKSPACE (সম্পূর্ণ আলাদা জগত) */}
+        {/* এরা ProtectedOSLayout-এর বাইরে, তাই ডক বা আপনার লগইন পেজ দেখবে না */}
+        {/* ========================================== */}
+        <Route path="/workspace/login" element={<WorkspaceLogin />} />
+        <Route path="/workspace/dashboard" element={<WorkspaceDashboard />} />
+
+        {/* ========================================== */}
+        {/* DOOR 1: MAIN AL_FARAVI OS (আপনার জগত) */}
+        {/* ProtectedOSLayout এর মাধ্যমে সিকিউর করা */}
+        {/* ========================================== */}
+        <Route element={<ProtectedOSLayout />}>
           <Route path="/" element={<ModernDashboard />} />
+          
+          {/* Admin / Manager Routes */}
           <Route path="/vault" element={<VaultManager />} />
+          <Route path="/workspace-manager" element={<WorkspaceManager />} />
+          
+          {/* Main Modules */}
           <Route path="/finance" element={<FinanceManager />} />
           <Route path="/lms" element={<LmsManager />} />
           <Route path="/lms/course/:courseId" element={<LmsWorkspace />} />
@@ -151,11 +180,11 @@ export default function App() {
           {/* Settings Route */}
           <Route path="/settings" element={<Settings />} />
           
+          {/* 404 Catch-all */}
           <Route path="*" element={<Navigate to="/" replace />} />
-        </Routes>
-        
-        <FloatingDock />
-      </div>
+        </Route>
+
+      </Routes>
     </Router>
   );
 }
