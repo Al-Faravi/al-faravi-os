@@ -260,11 +260,17 @@ export default function ModernDashboard() {
                   { name: 'Dev Hub', to: '/github', icon: <GitBranch size={24} className="text-slate-900" />, hover: 'hover:border-slate-900 hover:bg-slate-100' },
                   { name: 'Snippets', to: '/snippets', icon: <Code2 size={24} className="text-indigo-600" />, hover: 'hover:border-indigo-400 hover:bg-indigo-50' },
                   { name: 'Job Tracker', to: '/jobs', icon: <Briefcase size={24} className="text-emerald-600" />, hover: 'hover:border-emerald-400 hover:bg-emerald-50' },
-                  // নতুন যুক্ত করা হলো (Workspace / Guest House)
-                  { name: 'Control Room', to: '/workspace-manager', icon: <Network size={24} className="text-blue-500" />, hover: 'hover:border-blue-400 hover:bg-blue-50' },
+                  // Control Room (Workspace Manager)-এ target: '_blank' যুক্ত করা হলো
+                  { name: 'Control Room', to: '/workspace-manager', icon: <Network size={24} className="text-blue-500" />, hover: 'hover:border-blue-400 hover:bg-blue-50', target: '_blank' },
                   { name: 'Guest Portal', to: '/workspace/login', icon: <Users size={24} className="text-rose-500" />, hover: 'hover:border-rose-400 hover:bg-rose-50' }
-                ].map((app, i) => (
-                  <Link key={i} to={app.to} className={`p-3 md:p-4 rounded-2xl bg-[#F8FAFC] border border-[#E2E8F0] transition-all duration-300 flex flex-col items-center justify-center gap-2 group ${app.hover}`}>
+                ].map((app: any, i) => (
+                  <Link 
+                    key={i} 
+                    to={app.to} 
+                    target={app.target || '_self'} 
+                    rel={app.target === '_blank' ? "noopener noreferrer" : undefined}
+                    className={`p-3 md:p-4 rounded-2xl bg-[#F8FAFC] border border-[#E2E8F0] transition-all duration-300 flex flex-col items-center justify-center gap-2 group ${app.hover}`}
+                  >
                     <div className="group-hover:scale-110 group-hover:-translate-y-1 transition-transform duration-300">{app.icon}</div>
                     <span className="text-[10px] md:text-xs font-bold text-[#020F33] text-center">{app.name}</span>
                   </Link>

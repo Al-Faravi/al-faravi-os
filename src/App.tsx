@@ -24,6 +24,7 @@ import JobTracker from './features/developer/JobTracker';
 import WorkspaceLogin from './features/workspace/WorkspaceLogin';
 import WorkspaceDashboard from './features/workspace/WorkspaceDashboard';
 import WorkspaceManager from './features/workspace/WorkspaceManager'; // আপনার কন্ট্রোল প্যানেল
+import GroupDetails from './features/workspace/GroupDetails'; // নতুন পেজ যুক্ত করা হয়েছে
 
 // গ্লোবাল সার্চ কম্পোনেন্ট (Cmd+K)
 import CommandPalette from './components/CommandPalette';
@@ -40,7 +41,7 @@ const PlaceholderPage = ({ title }: { title: string }) => (
 const FloatingDock = () => {
   const location = useLocation();
   
-  // LMS/BCS ওয়ার্কস্পেস বা নির্দিষ্ট কিছু পেজে ডক হাইড করতে চাইলে
+  // LMS/BCS ওয়ার্কস্পেস বা নির্দিষ্ট কিছু পেজে ডক হাইড করতে চাইলে
   if (location.pathname.includes('/lms/course/') || location.pathname.includes('/bcs/subject/')) return null;
   
   const navItems = [
@@ -157,6 +158,7 @@ export default function App() {
           {/* Admin / Manager Routes */}
           <Route path="/vault" element={<VaultManager />} />
           <Route path="/workspace-manager" element={<WorkspaceManager />} />
+          <Route path="/workspace-manager/group/:groupId" element={<GroupDetails />} /> {/* নতুন রাউট */}
           
           {/* Main Modules */}
           <Route path="/finance" element={<FinanceManager />} />
