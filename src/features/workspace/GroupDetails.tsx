@@ -5,7 +5,7 @@ import { supabase, workspaceAdmin } from '../../lib/supabase';
 import { 
   ArrowLeft, Send, Link as LinkIcon, Download, 
   Users, MessageCircle, RefreshCw, FileText, BookOpen, Plus, 
-  X, Paperclip, Mic, FolderOpen 
+  X, Paperclip, Mic, Square, FolderOpen 
 } from 'lucide-react';
 
 interface ChatMessage {
@@ -24,16 +24,14 @@ export default function GroupDetails() {
   const { groupId } = useParams();
   const navigate = useNavigate();
   
-  const [adminId, setAdminId] = useState<string>('admin-faravi-007'); // Default Admin ID
+  const [adminId, setAdminId] = useState<string>('admin-faravi-007'); 
   const [group, setGroup] = useState<any>(null);
   const [memberCount, setMemberCount] = useState(0);
   const [contents, setContents] = useState<any[]>([]);
   
-  // Data from Main OS
   const [lmsCourses, setLmsCourses] = useState<any[]>([]);
   const [bcsSubjects, setBcsSubjects] = useState<any[]>([]);
   
-  // Selections & Invite
   const [selectedLms, setSelectedLms] = useState('');
   const [selectedBcs, setSelectedBcs] = useState('');
   const [inviteEmail, setInviteEmail] = useState('');
@@ -56,24 +54,20 @@ export default function GroupDetails() {
   useEffect(() => {
     fetchGroupDetails();
     fetchMainOsData();
-    // Get Admin User ID from Main OS
     supabase.auth.getUser().then(({ data }) => {
       if (data?.user) setAdminId(data.user.id);
     });
   }, [groupId]);
 
-  // Auto Scroll Chat
   useEffect(() => {
     if (isChatOpen) {
       chatBottomRef.current?.scrollIntoView({ behavior: 'smooth' });
     }
   }, [chatMessages, isChatOpen]);
 
-  // --- Realtime Chat Listener ---
   useEffect(() => {
     if (groupId && isChatOpen) {
       fetchChatMessages();
-
       const chatSubscription = workspaceAdmin
         .channel(`admin_chat_${groupId}`)
         .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'group_chats', filter: `group_id=eq.${groupId}` }, 
@@ -81,15 +75,12 @@ export default function GroupDetails() {
             const newMsg = payload.new as ChatMessage;
             setChatMessages((prev) => {
               const exists = prev.some((msg) => msg.id === newMsg.id || (msg.isOptimistic && msg.content === newMsg.content));
-              if (exists) {
-                return prev.map((msg) => msg.isOptimistic && msg.content === newMsg.content ? newMsg : msg);
-              }
+              if (exists) return prev.map((msg) => msg.isOptimistic && msg.content === newMsg.content ? newMsg : msg);
               return [...prev, newMsg];
             });
           }
         )
         .subscribe();
-
       return () => { workspaceAdmin.removeChannel(chatSubscription); };
     }
   }, [groupId, isChatOpen]);
@@ -97,10 +88,8 @@ export default function GroupDetails() {
   const fetchGroupDetails = async () => {
     const { data: gData } = await workspaceAdmin.from('study_groups').select('*').eq('id', groupId).single();
     if (gData) setGroup(gData);
-
     const { data: mData } = await workspaceAdmin.from('group_members').select('id').eq('group_id', groupId);
     if (mData) setMemberCount(mData.length);
-
     fetchGroupContents();
   };
 
@@ -112,7 +101,6 @@ export default function GroupDetails() {
   const fetchMainOsData = async () => {
     const { data: lms } = await supabase.from('lms_courses').select('id, title');
     if (lms) setLmsCourses(lms);
-
     const { data: bcs } = await supabase.from('bcs_subjects').select('id, title');
     if (bcs) setBcsSubjects(bcs);
   };
@@ -124,8 +112,7 @@ export default function GroupDetails() {
     setChatLoading(false);
   };
 
-  // --- Handle Main OS Imports ---
-  const handleImportLms = async () => { /* Logic hidden for brevity, unchanged */
+  const handleImportLms = async () => { 
     if (!selectedLms) return;
     setLoading(true);
     try {
@@ -141,7 +128,7 @@ export default function GroupDetails() {
     setLoading(false);
   };
 
-  const handleImportBcs = async () => { /* Unchanged */
+  const handleImportBcs = async () => { 
     if (!selectedBcs) return;
     setLoading(true);
     try {
@@ -157,7 +144,7 @@ export default function GroupDetails() {
     setLoading(false);
   };
 
-  const handleSyncContent = async (item: any) => { /* Unchanged */
+  const handleSyncContent = async (item: any) => { 
     setSyncingId(item.id);
     try {
       let updatedData = {};
@@ -181,7 +168,7 @@ export default function GroupDetails() {
     setSyncingId(null);
   };
 
-  const handleGenerateInvite = async (e: React.FormEvent) => { /* Unchanged */
+  const handleGenerateInvite = async (e: React.FormEvent) => { 
     e.preventDefault();
     if (!inviteEmail || !invitePassword) return;
     setLoading(true);
@@ -234,37 +221,37 @@ export default function GroupDetails() {
     e.target.value = '';
   };
 
-  const startRecording = async () => {
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const recorder = new MediaRecorder(stream);
-      const audioChunks: Blob[] = [];
+  const toggleRecording = async () => {
+    if (isRecording) {
+      if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+        mediaRecorder.stop();
+        setIsRecording(false);
+      }
+    } else {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        const recorder = new MediaRecorder(stream);
+        const audioChunks: Blob[] = [];
 
-      recorder.ondataavailable = (event) => { if (event.data.size > 0) audioChunks.push(event.data); };
-      recorder.onstop = async () => {
-        stream.getTracks().forEach((track) => track.stop());
-        if (audioChunks.length === 0 || !groupId) return;
+        recorder.ondataavailable = (event) => { if (event.data.size > 0) audioChunks.push(event.data); };
+        recorder.onstop = async () => {
+          stream.getTracks().forEach((track) => track.stop());
+          if (audioChunks.length === 0 || !groupId) return;
 
-        const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
-        const fileName = `admin-${Date.now()}.webm`;
-        const { error: uploadError } = await workspaceAdmin.storage.from('chat-files').upload(fileName, audioBlob);
-        if (uploadError) return;
+          const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+          const fileName = `admin-${Date.now()}.webm`;
+          const { error: uploadError } = await workspaceAdmin.storage.from('chat-files').upload(fileName, audioBlob);
+          if (uploadError) return;
 
-        const { data } = workspaceAdmin.storage.from('chat-files').getPublicUrl(fileName);
-        await workspaceAdmin.from('group_chats').insert([{
-          group_id: groupId, user_id: adminId, sender_name: 'Faravi (Admin)', content: 'Voice Message', message_type: 'audio', file_url: data.publicUrl,
-        }]);
-      };
-      recorder.start();
-      setMediaRecorder(recorder);
-      setIsRecording(true);
-    } catch (err) { alert('Microphone access denied or not available.'); }
-  };
-
-  const stopRecording = () => {
-    if (mediaRecorder && mediaRecorder.state !== 'inactive') {
-      mediaRecorder.stop();
-      setIsRecording(false);
+          const { data } = workspaceAdmin.storage.from('chat-files').getPublicUrl(fileName);
+          await workspaceAdmin.from('group_chats').insert([{
+            group_id: groupId, user_id: adminId, sender_name: 'Faravi (Admin)', content: 'Voice Message', message_type: 'audio', file_url: data.publicUrl,
+          }]);
+        };
+        recorder.start();
+        setMediaRecorder(recorder);
+        setIsRecording(true);
+      } catch (err) { alert('Microphone access denied or not available.'); }
     }
   };
 
@@ -295,7 +282,6 @@ export default function GroupDetails() {
       </div>
 
       <div className="max-w-6xl mx-auto p-6 mt-4 space-y-6">
-        
         {/* Top Grids: Import & Invite */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           <div className="bg-[#18191A] p-6 rounded-3xl border border-[#292B2E] shadow-sm flex flex-col justify-between">
@@ -380,7 +366,6 @@ export default function GroupDetails() {
             )}
           </div>
         </div>
-
       </div>
 
       {/* --- ADMIN FLOATING CHAT SYSTEM --- */}
@@ -420,7 +405,11 @@ export default function GroupDetails() {
                         isMe ? 'bg-[#FF9D2E] text-[#0D0E0F] rounded-tr-sm font-bold' : 'bg-[#1D1E20] border border-[#292B2E] text-[#F5F5F5] rounded-tl-sm'
                       }`}>
                         {msg.message_type === 'text' && <p>{msg.content}</p>}
-                        {msg.message_type === 'image' && <img src={msg.file_url} alt="Shared" className="rounded-xl max-h-48 object-cover" />}
+                        {msg.message_type === 'image' && (
+                          <a href={msg.file_url} target="_blank" rel="noreferrer" className="block cursor-pointer hover:opacity-90 transition-opacity">
+                            <img src={msg.file_url} alt="Shared" className="rounded-xl max-h-48 object-cover border border-black/10" />
+                          </a>
+                        )}
                         {msg.message_type === 'file' && <a href={msg.file_url} target="_blank" rel="noreferrer" className="flex items-center gap-2 underline underline-offset-2 break-all"><FileText size={16} className="shrink-0" /> {msg.content}</a>}
                         {msg.message_type === 'audio' && <audio controls src={msg.file_url} className="w-48 h-8 rounded-full" />}
                       </div>
@@ -431,32 +420,44 @@ export default function GroupDetails() {
               <div ref={chatBottomRef} />
             </div>
 
-            <form onSubmit={handleSendMessage} className="p-3 bg-[#18191A] border-t border-[#292B2E] flex items-center gap-2">
-              <label className="p-2 text-[#707277] hover:text-[#FF9D2E] cursor-pointer transition-colors">
-                <Paperclip size={20} />
-                <input type="file" onChange={handleFileUpload} className="hidden" />
-              </label>
+            {/* UPDATED ADMIN CHAT INPUT */}
+            <form onSubmit={handleSendMessage} className="p-3 bg-[#18191A] border-t border-[#292B2E] flex items-center gap-2 relative overflow-hidden">
               
-              <input 
-                type="text" 
-                value={newMessage}
-                onChange={(e) => setNewMessage(e.target.value)}
-                placeholder={isRecording ? 'Recording audio...' : 'Message as Admin...'} 
-                disabled={isRecording}
-                className="flex-1 bg-[#1D1E20] border border-transparent focus:border-[#FF9D2E]/50 rounded-full px-4 py-2 text-sm text-white outline-none transition-all disabled:opacity-50" 
-              />
+              {!isRecording && (
+                <label className="p-2 text-[#707277] hover:text-[#FF9D2E] cursor-pointer transition-colors shrink-0">
+                  <Paperclip size={20} />
+                  <input type="file" onChange={handleFileUpload} className="hidden" />
+                </label>
+              )}
+
+              {isRecording ? (
+                <div className="flex-1 flex items-center gap-2 px-4 py-2 text-red-500 font-bold bg-red-500/10 rounded-full border border-red-500/20">
+                  <span className="w-2.5 h-2.5 rounded-full bg-red-500 animate-ping"></span> Recording Live Audio...
+                </div>
+              ) : (
+                <input 
+                  type="text" 
+                  value={newMessage}
+                  onChange={(e) => setNewMessage(e.target.value)}
+                  placeholder="Message as Admin..." 
+                  disabled={isRecording}
+                  className="flex-1 bg-[#1D1E20] border border-transparent focus:border-[#FF9D2E]/50 rounded-full px-4 py-2 text-sm text-white outline-none transition-all disabled:opacity-50 min-w-0" 
+                />
+              )}
               
               <button 
                 type="button" 
-                onMouseDown={startRecording} onMouseUp={stopRecording} onTouchStart={startRecording} onTouchEnd={stopRecording}
-                className={`p-2 transition-colors ${isRecording ? 'text-red-500 animate-pulse' : 'text-[#707277] hover:text-[#FF9D2E]'}`}
+                onClick={toggleRecording}
+                className={`p-2.5 rounded-full transition-all shrink-0 ${isRecording ? 'bg-red-500 text-white hover:bg-red-600 shadow-md animate-pulse' : 'bg-[#1D1E20] text-[#707277] hover:text-[#FF9D2E]'}`}
               >
-                <Mic size={20}/>
+                {isRecording ? <Square size={16} fill="currentColor" /> : <Mic size={18} />}
               </button>
               
-              <button type="submit" disabled={!newMessage.trim() || isRecording} className="p-2.5 bg-[#FF9D2E] text-[#0D0E0F] rounded-full hover:bg-[#FFAA3D] disabled:opacity-50 transition-colors">
-                <Send size={16}/>
-              </button>
+              {!isRecording && (
+                <button type="submit" disabled={!newMessage.trim()} className="p-2.5 bg-[#FF9D2E] text-[#0D0E0F] rounded-full hover:bg-[#FFAA3D] disabled:opacity-50 transition-colors shrink-0">
+                  <Send size={16}/>
+                </button>
+              )}
             </form>
           </div>
         )}
