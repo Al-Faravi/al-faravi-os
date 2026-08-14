@@ -191,9 +191,10 @@ export default function WorkspaceDashboard() {
     if (!error) { handleBack(); fetchGroupContents(selectedGroup.id); }
   };
 
+  // জায়গা ২: আপডেটেড openContent ফাংশন
   const openContent = (item: any) => {
     setSelectedContent(item);
-    if (item.content_type === 'shared_note') {
+    if (item.content_type === 'shared_note' || item.content_type === 'personal_note') {
       setNoteTitle(item.title);
       setNoteContent(item.content_data?.text || '');
       setIsEditing(false);
@@ -311,9 +312,9 @@ export default function WorkspaceDashboard() {
   const currentDate = new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
   const totalCourses = allContents.filter(c => c.content_type.includes('course') || c.content_type.includes('subject')).length;
   
-  // Filter Courses and Notes for the currently opened group
-  const groupCourses = groupContents.filter(c => c.content_type !== 'shared_note');
-  const groupNotes = groupContents.filter(c => c.content_type === 'shared_note');
+  // জায়গা ১: আপডেটেড Filter Courses and Notes
+  const groupCourses = groupContents.filter(c => c.content_type === 'lms_course' || c.content_type === 'bcs_subject');
+  const groupNotes = groupContents.filter(c => c.content_type === 'shared_note' || c.content_type === 'personal_note');
 
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-[#0D0E0F] text-slate-900 dark:text-[#F5F5F5] font-sans pb-24 transition-colors duration-300 selection:bg-[#FF9D2E]/30 relative">
@@ -521,8 +522,8 @@ export default function WorkspaceDashboard() {
           </div>
         )}
 
-        {/* View / Edit Note Full Screen Mode */}
-        {selectedContent?.content_type === 'shared_note' && (
+        {/* জায়গা ৩: View / Edit Note Full Screen Mode */}
+        {(selectedContent?.content_type === 'shared_note' || selectedContent?.content_type === 'personal_note') && (
           <div className="animate-slide-in-right bg-white dark:bg-[#18191A] rounded-3xl p-6 md:p-10 shadow-lg border border-slate-200 dark:border-[#292B2E] min-h-[60vh] transition-colors">
             {!isEditing ? (
               <div className="space-y-6">

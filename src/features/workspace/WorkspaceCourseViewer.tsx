@@ -64,8 +64,13 @@ export default function WorkspaceCourseViewer({ courseData, onBack }: { courseDa
     if (!customName || !activeContent) return;
 
     const { data: { user } } = await workspaceSupabase.auth.getUser();
+    const nickname = localStorage.getItem(`nickname_${user?.id}`) || 'Member'; // Get Nickname
+    
     const { data } = await workspaceSupabase.from('shared_contents').insert([{
-      group_id: courseData.group_id, title: customName, content_type: 'personal_note', content_data: { text: '', contentId: activeContent.id, userId: user?.id }
+      group_id: courseData.group_id, 
+      title: customName, 
+      content_type: 'personal_note', 
+      content_data: { text: '', contentId: activeContent.id, userId: user?.id, authorName: nickname }
     }]).select().single();
 
     if (data) { setNotes([...notes, data]); setActiveNoteId(data.id); }
@@ -76,9 +81,13 @@ export default function WorkspaceCourseViewer({ courseData, onBack }: { courseDa
     setIsSavingNote(true);
     try {
       const { data: { user } } = await workspaceSupabase.auth.getUser();
+      const nickname = localStorage.getItem(`nickname_${user?.id}`) || 'Member'; // Get Nickname
+      
       await workspaceSupabase.from('shared_contents').update({ 
-        title: noteTitle, content_data: { text: noteContent, contentId: activeContent?.id, userId: user?.id } 
+        title: noteTitle, 
+        content_data: { text: noteContent, contentId: activeContent?.id, userId: user?.id, authorName: nickname } 
       }).eq('id', activeNoteId);
+      
       setNotes(notes.map(n => n.id === activeNoteId ? { ...n, title: noteTitle, content_data: { ...n.content_data, text: noteContent } } : n));
     } catch (error) { alert("Error saving note"); } 
     finally { setIsSavingNote(false); }

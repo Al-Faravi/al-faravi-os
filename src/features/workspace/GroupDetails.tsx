@@ -116,8 +116,9 @@ export default function GroupDetails() {
     } catch (err) {} setLoading(false);
   };
 
-  const groupCourses = contents.filter(c => c.content_type !== 'shared_note');
-  const groupNotes = contents.filter(c => c.content_type === 'shared_note');
+  // আপডেটেড ফিল্টার কোড
+  const groupCourses = contents.filter(c => c.content_type === 'lms_course' || c.content_type === 'bcs_subject');
+  const groupNotes = contents.filter(c => c.content_type === 'shared_note' || c.content_type === 'personal_note');
 
   if (!group) return <div className="min-h-screen bg-[#0D0E0F] flex items-center justify-center"><div className="w-10 h-10 border-4 border-[#FF9D2E] border-t-transparent rounded-full animate-spin"></div></div>;
 
