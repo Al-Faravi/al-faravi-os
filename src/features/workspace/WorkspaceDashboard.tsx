@@ -2,7 +2,10 @@
 import React, { useState, useEffect } from 'react';
 import { workspaceSupabase } from '../../lib/supabase';
 import { useNavigate } from 'react-router-dom';
-import { ChevronLeft, Folder, FileText, Edit3, LogOut, User, BookOpen, ChevronRight, PlayCircle, Trash2, Video, FileBadge } from 'lucide-react';
+import { ChevronLeft, Folder, FileText, Edit3, LogOut, User, BookOpen, ChevronRight, Trash2 } from 'lucide-react';
+
+// নতুন তৈরি করা LMS Viewer-টি ইমপোর্ট করা হলো
+import WorkspaceCourseViewer from './WorkspaceCourseViewer';
 
 export default function WorkspaceDashboard() {
   const navigate = useNavigate();
@@ -17,10 +20,7 @@ export default function WorkspaceDashboard() {
   const [showNoteForm, setShowNoteForm] = useState(false);
   const [selectedContent, setSelectedContent] = useState<any>(null); 
   
-  // LMS/Course Player State
-  const [activeLesson, setActiveLesson] = useState<any>(null);
-
-  // CRUD States
+  // Note CRUD States
   const [noteTitle, setNoteTitle] = useState('');
   const [noteContent, setNoteContent] = useState('');
   const [isEditing, setIsEditing] = useState(false);
@@ -58,14 +58,13 @@ export default function WorkspaceDashboard() {
     if (selectedContent) {
       setSelectedContent(null);
       setIsEditing(false);
-      setActiveLesson(null);
     } else {
       setSelectedGroup(null);
       setContents([]);
     }
   };
 
-  // --- CRUD Operations ---
+  // --- CRUD Operations for Group Notes ---
   const handleAddNote = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!noteTitle || !noteContent || !selectedGroup) return;
@@ -90,34 +89,20 @@ export default function WorkspaceDashboard() {
     }
   };
 
-const handleDeleteNote = async (id: string) => {
+  const handleDeleteNote = async (id: string) => {
     if (!window.confirm("Are you sure you want to delete this note?")) return;
-    
-    // 🛠️ ফিক্স: আগে delete(), তারপর eq()
-    const { error } = await workspaceSupabase
-      .from('shared_contents')
-      .delete()
-      .eq('id', id);
-      
+    const { error } = await workspaceSupabase.from('shared_contents').delete().eq('id', id);
     if (!error) {
       handleBack(); 
       fetchContents(selectedGroup.id);
-    } else {
-      alert("Error deleting: " + error.message);
     }
   };
 
-  // --- Viewer Opener ---
   const openContent = (item: any) => {
     setSelectedContent(item);
     if (item.content_type === 'shared_note') {
       setNoteTitle(item.title);
       setNoteContent(item.content_data.text || '');
-    } else if (item.content_type === 'lms_course') {
-      // কোর্সের প্রথম মডিউলের প্রথম লেসনটি অটোমেটিক প্লেয়ারে সেট করা হচ্ছে
-      const firstModule = item.content_data?.modules?.[0];
-      const firstLesson = firstModule?.lessons?.[0] || item.content_data?.lessons?.[0];
-      if(firstLesson) setActiveLesson(firstLesson);
     }
   };
 
@@ -126,13 +111,18 @@ const handleDeleteNote = async (id: string) => {
     navigate('/workspace/login');
   };
 
-  // Helper to extract YouTube ID
-  const getYouTubeId = (url: string) => {
-    if(!url) return null;
-    const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|&v=)([^#&?]*).*/;
-    const match = url.match(regExp);
-    return (match && match[2].length === 11) ? match[2] : null;
-  };
+  // যদি কোনো কোর্স ওপেন থাকে, তবে হুবহু অরিজিনাল LMS-এর মতো ফুলস্ক্রিন ভিউয়ার রেন্ডার হবে
+  if (selectedContent && selectedContent.content_type === 'lms_course') {
+    return (
+      <WorkspaceCourseViewer 
+        courseData={selectedContent} 
+        onBack={() => {
+          setSelectedContent(null);
+          setIsEditing(false);
+        }} 
+      />
+    );
+  }
 
   if (loading) return (
     <div className="min-h-screen bg-[#F2F2F7] flex flex-col items-center justify-center">
@@ -237,72 +227,11 @@ const handleDeleteNote = async (id: string) => {
               </div>
             )}
 
-            {/* View 3: CRUD & Course Viewer */}
-            {selectedContent && (
+            {/* View 3: Shared Note Viewer (Read/Edit) */}
+            {selectedContent && selectedContent.content_type === 'shared_note' && (
               <div className="animate-slide-in-right bg-white rounded-3xl p-4 md:p-6 shadow-sm border border-slate-200 min-h-[70vh]">
                 
-                {/* === REAL LMS COURSE VIEWER === */}
-                {selectedContent.content_type === 'lms_course' && (
-                  <div className="space-y-6">
-                    {/* Video Player Area */}
-                    <div className="aspect-video bg-black rounded-2xl overflow-hidden relative shadow-lg">
-                      {activeLesson?.video_url ? (
-                        <iframe 
-                          src={`https://www.youtube.com/embed/${getYouTubeId(activeLesson.video_url)}`} 
-                          className="w-full h-full" 
-                          allowFullScreen 
-                        />
-                      ) : (
-                        <div className="flex flex-col items-center justify-center h-full text-slate-400 gap-3">
-                          <PlayCircle className="w-12 h-12 opacity-50" />
-                          <p>Select a video lesson to play</p>
-                        </div>
-                      )}
-                    </div>
-                    
-                    {/* Course Title & Active Lesson Info */}
-                    <div>
-                      <h2 className="text-2xl font-extrabold text-slate-900">{selectedContent.title}</h2>
-                      {activeLesson && <p className="text-[#007AFF] font-medium mt-1 flex items-center gap-2"><Video className="w-4 h-4"/> Now Playing: {activeLesson.title}</p>}
-                    </div>
-
-                    <div className="w-full h-[1px] bg-slate-100"></div>
-
-                    {/* Modules and Lessons List (Smart Parsing) */}
-                    <div className="space-y-4">
-                      <h3 className="font-bold text-lg text-slate-800">Course Content</h3>
-                      
-                      {/* যদি কোর্সে মডিউল থাকে */}
-                      {selectedContent.content_data?.modules ? (
-                        selectedContent.content_data.modules.map((module: any, mIdx: number) => (
-                          <div key={mIdx} className="bg-[#F2F2F7] rounded-2xl overflow-hidden border border-slate-200">
-                            <div className="p-4 bg-slate-100 border-b border-slate-200 flex items-center gap-3">
-                              <FileBadge className="w-5 h-5 text-emerald-600" />
-                              <h4 className="font-bold text-slate-800">{module.title || `Module ${mIdx + 1}`}</h4>
-                            </div>
-                            <div className="divide-y divide-slate-200">
-                              {module.lessons?.map((lesson: any, lIdx: number) => (
-                                <button 
-                                  key={lIdx} 
-                                  onClick={() => setActiveLesson(lesson)}
-                                  className={`w-full flex items-center gap-3 p-4 text-left transition-colors ${activeLesson?.id === lesson.id || activeLesson?.title === lesson.title ? 'bg-blue-50 text-[#007AFF]' : 'hover:bg-slate-50 text-slate-700'}`}
-                                >
-                                  <PlayCircle className={`w-5 h-5 ${activeLesson?.title === lesson.title ? 'text-[#007AFF]' : 'text-slate-400'}`} />
-                                  <span className="font-medium">{lesson.title}</span>
-                                </button>
-                              ))}
-                            </div>
-                          </div>
-                        ))
-                      ) : (
-                        <p className="text-slate-500 text-sm">No structured modules found for this course.</p>
-                      )}
-                    </div>
-                  </div>
-                )}
-
-                {/* === SHARED NOTE VIEWER (Read/Edit) === */}
-                {selectedContent.content_type === 'shared_note' && !isEditing && (
+                {!isEditing && (
                   <div className="space-y-6">
                     <div>
                       <h2 className="text-2xl font-extrabold text-slate-900">{selectedContent.title}</h2>
@@ -320,7 +249,7 @@ const handleDeleteNote = async (id: string) => {
                   </div>
                 )}
 
-                {selectedContent.content_type === 'shared_note' && isEditing && (
+                {isEditing && (
                   <div className="space-y-4 animate-fade-in">
                     <input type="text" value={noteTitle} onChange={(e) => setNoteTitle(e.target.value)} className="w-full bg-[#F2F2F7] rounded-xl p-4 font-bold text-lg outline-none" />
                     <textarea value={noteContent} onChange={(e) => setNoteContent(e.target.value)} className="w-full bg-[#F2F2F7] rounded-xl p-4 h-64 resize-none outline-none text-lg" />
