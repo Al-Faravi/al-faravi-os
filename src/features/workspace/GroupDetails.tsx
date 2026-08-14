@@ -4,7 +4,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { supabase, workspaceAdmin } from '../../lib/supabase';
 import { 
   ArrowLeft, Send, Link as LinkIcon, Download, 
-  Users, MessageCircle, RefreshCw, FileText, BookOpen, Plus 
+  Users, MessageCircle, RefreshCw, FileText, BookOpen, Plus, FolderOpen 
 } from 'lucide-react';
 
 export default function GroupDetails() {
