@@ -2,10 +2,11 @@
 import React, { useState, useEffect } from 'react';
 import { workspaceSupabase } from '../../lib/supabase';
 import { useNavigate } from 'react-router-dom';
-import { ChevronLeft, Folder, FileText, Edit3, LogOut, User, BookOpen, ChevronRight, Trash2 } from 'lucide-react';
+import { ChevronLeft, Folder, FileText, Edit3, LogOut, User, BookOpen, ChevronRight, Trash2, Target } from 'lucide-react';
 
-// নতুন তৈরি করা LMS Viewer-টি ইমপোর্ট করা হলো
+// ভিউয়ার ইমপোর্ট করা হলো
 import WorkspaceCourseViewer from './WorkspaceCourseViewer';
+import WorkspaceBcsViewer from './WorkspaceBcsViewer'; // নতুন BCS Viewer ইমপোর্ট করা হলো
 
 export default function WorkspaceDashboard() {
   const navigate = useNavigate();
@@ -111,17 +112,30 @@ export default function WorkspaceDashboard() {
     navigate('/workspace/login');
   };
 
-  // যদি কোনো কোর্স ওপেন থাকে, তবে হুবহু অরিজিনাল LMS-এর মতো ফুলস্ক্রিন ভিউয়ার রেন্ডার হবে
-  if (selectedContent && selectedContent.content_type === 'lms_course') {
-    return (
-      <WorkspaceCourseViewer 
-        courseData={selectedContent} 
-        onBack={() => {
-          setSelectedContent(null);
-          setIsEditing(false);
-        }} 
-      />
-    );
+  // --- ভিউয়ার রেন্ডারিং লজিক আপডেট ---
+  if (selectedContent) {
+    if (selectedContent.content_type === 'lms_course') {
+      return (
+        <WorkspaceCourseViewer 
+          courseData={selectedContent} 
+          onBack={() => {
+            setSelectedContent(null);
+            setIsEditing(false);
+          }} 
+        />
+      );
+    }
+    if (selectedContent.content_type === 'bcs_subject') {
+      return (
+        <WorkspaceBcsViewer 
+          subjectData={selectedContent} 
+          onBack={() => {
+            setSelectedContent(null);
+            setIsEditing(false);
+          }} 
+        />
+      );
+    }
   }
 
   if (loading) return (
@@ -213,11 +227,15 @@ export default function WorkspaceDashboard() {
                   {contents.map(item => (
                     <div key={item.id} onClick={() => openContent(item)} className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm hover:shadow-md active:scale-95 cursor-pointer">
                       <div className="flex items-start justify-between mb-3">
-                        <div className={`p-2.5 rounded-xl ${item.content_type === 'lms_course' ? 'bg-emerald-100 text-emerald-600' : 'bg-blue-100 text-[#007AFF]'}`}>
-                          <FileText className="w-5 h-5" />
+                        <div className={`p-2.5 rounded-xl ${
+                          item.content_type === 'lms_course' ? 'bg-emerald-100 text-emerald-600' : 
+                          item.content_type === 'bcs_subject' ? 'bg-[#02C2D5]/10 text-[#02C2D5]' : 
+                          'bg-blue-100 text-[#007AFF]'
+                        }`}>
+                          {item.content_type === 'bcs_subject' ? <Target className="w-5 h-5" /> : <FileText className="w-5 h-5" />}
                         </div>
                         <span className="text-xs font-bold text-slate-400 bg-slate-50 px-2 py-1 rounded-md border border-slate-100">
-                          {item.content_type === 'lms_course' ? 'Course' : 'Note'}
+                          {item.content_type === 'lms_course' ? 'Course' : item.content_type === 'bcs_subject' ? 'BCS Subject' : 'Note'}
                         </span>
                       </div>
                       <h3 className="font-bold text-lg text-slate-800 line-clamp-2">{item.title}</h3>
