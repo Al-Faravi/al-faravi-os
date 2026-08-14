@@ -1,5 +1,5 @@
 // src/features/workspace/WorkspaceDashboard.tsx
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { workspaceSupabase } from '../../lib/supabase';
 import { useNavigate } from 'react-router-dom';
 import { 
@@ -37,31 +37,67 @@ export default function WorkspaceDashboard() {
 
   // Floating Chat State
   const [isChatOpen, setIsChatOpen] = useState(false);
+  const [messages, setMessages] = useState<any[]>([]);
+  const [newMessage, setNewMessage] = useState('');
+  const [isSending, setIsSending] = useState(false);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
 
+  // ১. পেজ লোড হলে লোকাল স্টোরেজ থেকে থিম পড়বে এবং ডাটা ফেচ করবে
   useEffect(() => {
     checkAuthAndFetchData();
-    initTheme();
-  }, []);
-
-  const initTheme = () => {
     const savedTheme = localStorage.getItem('workspace_theme') || 'dark';
     setTheme(savedTheme as 'dark' | 'light');
-    if (savedTheme === 'dark') {
-      document.documentElement.classList.add('dark');
+  }, []);
+
+  // ২. যখনই theme চেঞ্জ হবে, তখনই এটি HTML ট্যাগে রিয়েল-টাইম ক্লাস বসাবে
+  useEffect(() => {
+    const root = document.documentElement;
+    if (theme === 'dark') {
+      root.classList.add('dark');
+      root.classList.remove('light');
+      document.body.style.backgroundColor = '#0D0E0F'; 
     } else {
-      document.documentElement.classList.remove('dark');
+      root.classList.add('light');
+      root.classList.remove('dark');
+      document.body.style.backgroundColor = '#f8fafc'; 
     }
-  };
+  }, [theme]);
+
+  // ৩. Real-time Subscription (selectedGroup ও isChatOpen চেঞ্জ হলে)
+  useEffect(() => {
+    if (selectedGroup && isChatOpen) {
+      fetchMessages();
+      
+      // Real-time listener setup for new messages
+      const subscription = workspaceSupabase
+        .channel(`group_chat_${selectedGroup.id}`)
+        .on('postgres_changes', { 
+          event: 'INSERT', 
+          schema: 'public', 
+          table: 'group_chats',
+          filter: `group_id=eq.${selectedGroup.id}`
+        }, (payload) => {
+          setMessages((prev) => [...prev, payload.new]);
+        })
+        .subscribe();
+
+      return () => {
+        workspaceSupabase.removeChannel(subscription);
+      };
+    }
+  }, [selectedGroup, isChatOpen]);
+
+  // ৪. Auto Scroll (যখনই নতুন মেসেজ আসবে)
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages]);
 
   const toggleTheme = () => {
-    const newTheme = theme === 'dark' ? 'light' : 'dark';
-    setTheme(newTheme);
-    localStorage.setItem('workspace_theme', newTheme);
-    if (newTheme === 'dark') {
-      document.documentElement.classList.add('dark');
-    } else {
-      document.documentElement.classList.remove('dark');
-    }
+    setTheme((prev) => {
+      const newTheme = prev === 'dark' ? 'light' : 'dark';
+      localStorage.setItem('workspace_theme', newTheme);
+      return newTheme;
+    });
   };
 
   const checkAuthAndFetchData = async () => {
@@ -84,6 +120,38 @@ export default function WorkspaceDashboard() {
   const fetchGroupContents = async (groupId: string) => {
     const { data } = await workspaceSupabase.from('shared_contents').select('*').eq('group_id', groupId).order('created_at', { ascending: false });
     if (data) setGroupContents(data);
+  };
+
+  const fetchMessages = async () => {
+    const { data } = await workspaceSupabase
+      .from('group_chats')
+      .select('*')
+      .eq('group_id', selectedGroup.id)
+      .order('created_at', { ascending: true });
+    if (data) setMessages(data);
+  };
+
+  const handleSendMessage = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (!newMessage.trim() || !selectedGroup) return;
+
+    setIsSending(true);
+    const { data: { user } } = await workspaceSupabase.auth.getUser();
+
+    const { error } = await workspaceSupabase.from('group_chats').insert([{
+      group_id: selectedGroup.id,
+      user_id: user?.id,
+      sender_name: profileName,
+      content: newMessage,
+      message_type: 'text'
+    }]);
+
+    if (!error) {
+      setNewMessage('');
+    } else {
+      console.error("Chat send error:", error);
+    }
+    setIsSending(false);
   };
 
   const handleGroupClick = (group: any) => {
@@ -389,6 +457,8 @@ export default function WorkspaceDashboard() {
         <div className="fixed bottom-20 md:bottom-8 right-4 md:right-8 z-[999] flex flex-col items-end">
           {isChatOpen && (
             <div className="w-[90vw] md:w-[380px] h-[500px] max-h-[80vh] bg-white dark:bg-[#141516] border border-slate-200 dark:border-[#292B2E] shadow-2xl rounded-3xl mb-4 flex flex-col overflow-hidden animate-fade-in origin-bottom-right transition-colors">
+              
+              {/* Header */}
               <div className="bg-slate-50 dark:bg-[#18191A] p-4 border-b border-slate-200 dark:border-[#292B2E] flex justify-between items-center transition-colors">
                 <div>
                   <h3 className="font-bold flex items-center gap-2 text-slate-900 dark:text-white">
@@ -401,28 +471,56 @@ export default function WorkspaceDashboard() {
                 </button>
               </div>
 
-              <div className="flex-1 p-4 overflow-y-auto bg-slate-100 dark:bg-[#0D0E0F] transition-colors">
-                <div className="text-center text-[10px] font-bold text-slate-400 dark:text-[#707277] mb-6 uppercase tracking-widest">Today</div>
-                <div className="flex flex-col items-start mb-4">
-                  <span className="text-[10px] text-slate-500 dark:text-[#A3A5A8] ml-1 mb-1 font-bold">System Admin</span>
-                  <div className="bg-white dark:bg-[#1D1E20] border border-slate-200 dark:border-[#292B2E] text-slate-800 dark:text-[#F5F5F5] px-4 py-2.5 rounded-2xl rounded-tl-sm text-sm shadow-sm max-w-[85%] leading-relaxed transition-colors">
-                    Welcome to the chat room! Database integration is coming in the next step.
+              {/* --- REAL CHAT MESSAGES BODY --- */}
+              <div className="flex-1 p-4 overflow-y-auto bg-slate-100 dark:bg-[#0D0E0F] transition-colors flex flex-col gap-4">
+                {messages.length === 0 && (
+                  <div className="text-center text-xs text-slate-400 dark:text-[#707277] mt-10">
+                    No messages yet. Say hello to the group! 👋
                   </div>
-                </div>
-                <div className="flex flex-col items-end mb-4">
-                  <span className="text-[10px] text-slate-500 dark:text-[#A3A5A8] mr-1 mb-1 font-bold">You</span>
-                  <div className="bg-[#FF9D2E] text-slate-900 font-medium px-4 py-2.5 rounded-2xl rounded-tr-sm text-sm shadow-sm max-w-[85%] leading-relaxed">
-                    This floating chat looks incredible! 🔥
-                  </div>
-                </div>
+                )}
+
+                {messages.map((msg, idx) => {
+                  const isMe = msg.user_id === session?.user?.id; // Check if the message is mine
+                  
+                  // Format time (e.g., 8:24 PM)
+                  const timeString = new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+                  return (
+                    <div key={msg.id || idx} className={`flex flex-col ${isMe ? 'items-end' : 'items-start'} w-full`}>
+                      <span className={`text-[10px] text-slate-500 dark:text-[#A3A5A8] mb-1 font-bold ${isMe ? 'mr-1' : 'ml-1'}`}>
+                        {isMe ? 'You' : msg.sender_name || 'Member'} • {timeString}
+                      </span>
+                      <div 
+                        className={`px-4 py-2.5 rounded-2xl text-sm shadow-sm max-w-[85%] leading-relaxed ${
+                          isMe 
+                          ? 'bg-[#FF9D2E] text-slate-900 font-medium rounded-tr-sm' 
+                          : 'bg-white dark:bg-[#1D1E20] border border-slate-200 dark:border-[#292B2E] text-slate-800 dark:text-[#F5F5F5] rounded-tl-sm transition-colors'
+                        }`}
+                      >
+                        {msg.content}
+                      </div>
+                    </div>
+                  );
+                })}
+                {/* Invisible div to auto-scroll to bottom */}
+                <div ref={messagesEndRef} />
               </div>
 
-              <div className="p-3 bg-white dark:bg-[#18191A] border-t border-slate-200 dark:border-[#292B2E] flex items-center gap-2 transition-colors">
-                <button className="p-2 text-slate-400 hover:text-[#FF9D2E] transition-colors"><Paperclip size={20}/></button>
-                <input type="text" placeholder="Type a message..." className="flex-1 bg-slate-100 dark:bg-[#1D1E20] border border-transparent focus:border-[#FF9D2E]/50 rounded-full px-4 py-2 text-sm text-slate-900 dark:text-white outline-none transition-all" />
-                <button className="p-2 text-slate-400 hover:text-[#FF9D2E] transition-colors"><Mic size={20}/></button>
-                <button className="p-2.5 bg-[#FF9D2E] text-slate-900 rounded-full hover:bg-[#FFAA3D] transition-colors"><Send size={16}/></button>
-              </div>
+              {/* --- CHAT INPUT --- */}
+              <form onSubmit={handleSendMessage} className="p-3 bg-white dark:bg-[#18191A] border-t border-slate-200 dark:border-[#292B2E] flex items-center gap-2 transition-colors">
+                <button type="button" className="p-2 text-slate-400 hover:text-[#FF9D2E] transition-colors"><Paperclip size={20}/></button>
+                <input 
+                  type="text" 
+                  value={newMessage}
+                  onChange={(e) => setNewMessage(e.target.value)}
+                  placeholder="Type a message..." 
+                  className="flex-1 bg-slate-100 dark:bg-[#1D1E20] border border-transparent focus:border-[#FF9D2E]/50 rounded-full px-4 py-2 text-sm text-slate-900 dark:text-white outline-none transition-all" 
+                  disabled={isSending}
+                />
+                <button type="submit" disabled={!newMessage.trim() || isSending} className="p-2.5 bg-[#FF9D2E] text-slate-900 rounded-full hover:bg-[#FFAA3D] disabled:opacity-50 transition-colors">
+                  <Send size={16}/>
+                </button>
+              </form>
             </div>
           )}
 
