@@ -7,7 +7,7 @@ import {
   Briefcase, FolderLock, TrendingUp, 
   Clock, Flame, Quote, Sparkles, PlayCircle, 
   Bookmark, CheckCircle2, PauseCircle, LogOut,
-  GitBranch, Code2, Network, Users // নতুন আইকন যুক্ত করা হয়েছে
+  GitBranch, Code2, Users 
 } from 'lucide-react';
 
 // === Dynamic Motivational Quotes ===
@@ -251,7 +251,9 @@ export default function ModernDashboard() {
               <h3 className="text-lg font-bold text-[#020F33] mb-5 flex items-center gap-2">
                 <TrendingUp className="text-[#02C2D5]" size={20} /> Quick Apps
               </h3>
-              <div className="grid grid-cols-3 sm:grid-cols-3 lg:grid-cols-3 gap-3">
+              
+              {/* Standard Apps Grid */}
+              <div className="grid grid-cols-3 sm:grid-cols-3 lg:grid-cols-3 gap-3 mb-4">
                 {[
                   { name: 'BCS Prep', to: '/bcs', icon: <BookOpen size={24} className="text-[#02C2D5]" />, hover: 'hover:border-[#02C2D5] hover:bg-[#02C2D5]/5' },
                   { name: 'LMS Skill', to: '/lms', icon: <Briefcase size={24} className="text-purple-600" />, hover: 'hover:border-purple-400 hover:bg-purple-50' },
@@ -259,16 +261,11 @@ export default function ModernDashboard() {
                   { name: 'Vault', to: '/vault', icon: <FolderLock size={24} className="text-slate-600" />, hover: 'hover:border-slate-400 hover:bg-slate-50' },
                   { name: 'Dev Hub', to: '/github', icon: <GitBranch size={24} className="text-slate-900" />, hover: 'hover:border-slate-900 hover:bg-slate-100' },
                   { name: 'Snippets', to: '/snippets', icon: <Code2 size={24} className="text-indigo-600" />, hover: 'hover:border-indigo-400 hover:bg-indigo-50' },
-                  { name: 'Job Tracker', to: '/jobs', icon: <Briefcase size={24} className="text-emerald-600" />, hover: 'hover:border-emerald-400 hover:bg-emerald-50' },
-                  // Control Room (Workspace Manager)-এ target: '_blank' যুক্ত করা হলো
-                  { name: 'Control Room', to: '/workspace-manager', icon: <Network size={24} className="text-blue-500" />, hover: 'hover:border-blue-400 hover:bg-blue-50', target: '_blank' },
-                  { name: 'Guest Portal', to: '/workspace/login', icon: <Users size={24} className="text-rose-500" />, hover: 'hover:border-rose-400 hover:bg-rose-50' }
+                  { name: 'Job Tracker', to: '/jobs', icon: <Briefcase size={24} className="text-emerald-600" />, hover: 'hover:border-emerald-400 hover:bg-emerald-50' }
                 ].map((app: any, i) => (
                   <Link 
                     key={i} 
                     to={app.to} 
-                    target={app.target || '_self'} 
-                    rel={app.target === '_blank' ? "noopener noreferrer" : undefined}
                     className={`p-3 md:p-4 rounded-2xl bg-[#F8FAFC] border border-[#E2E8F0] transition-all duration-300 flex flex-col items-center justify-center gap-2 group ${app.hover}`}
                   >
                     <div className="group-hover:scale-110 group-hover:-translate-y-1 transition-transform duration-300">{app.icon}</div>
@@ -276,6 +273,18 @@ export default function ModernDashboard() {
                   </Link>
                 ))}
               </div>
+
+              {/* Single Premium Study Groups / Workspace Button */}
+              <button 
+                onClick={() => window.open('/workspace-manager', '_blank')}
+                className="w-full flex flex-col items-center justify-center p-5 bg-gradient-to-br from-gray-800 to-gray-900 border border-gray-700 rounded-2xl hover:border-blue-500 transition-all group shadow-md"
+              >
+                <div className="w-12 h-12 bg-blue-500/10 rounded-xl flex items-center justify-center mb-3 group-hover:scale-110 transition-transform">
+                  <Users className="w-6 h-6 text-blue-500" />
+                </div>
+                <span className="text-white font-bold text-base">Study Groups</span>
+                <span className="text-xs text-gray-400 mt-0.5">Manage & Collaborate</span>
+              </button>
             </div>
 
             {/* Dynamic Motivation Widget */}
