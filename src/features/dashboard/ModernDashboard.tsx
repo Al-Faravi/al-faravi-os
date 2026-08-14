@@ -7,7 +7,7 @@ import {
   Briefcase, FolderLock, TrendingUp, 
   Clock, Flame, Quote, Sparkles, PlayCircle, 
   Bookmark, CheckCircle2, PauseCircle, LogOut,
-  GitBranch, Code2 // Code2 যুক্ত করা হয়েছে
+  GitBranch, Code2, Network, Users // নতুন আইকন যুক্ত করা হয়েছে
 } from 'lucide-react';
 
 // === Dynamic Motivational Quotes ===
@@ -251,16 +251,18 @@ export default function ModernDashboard() {
               <h3 className="text-lg font-bold text-[#020F33] mb-5 flex items-center gap-2">
                 <TrendingUp className="text-[#02C2D5]" size={20} /> Quick Apps
               </h3>
-              <div className="grid grid-cols-3 sm:grid-cols-5 lg:grid-cols-3 gap-3">
+              <div className="grid grid-cols-3 sm:grid-cols-3 lg:grid-cols-3 gap-3">
                 {[
                   { name: 'BCS Prep', to: '/bcs', icon: <BookOpen size={24} className="text-[#02C2D5]" />, hover: 'hover:border-[#02C2D5] hover:bg-[#02C2D5]/5' },
                   { name: 'LMS Skill', to: '/lms', icon: <Briefcase size={24} className="text-purple-600" />, hover: 'hover:border-purple-400 hover:bg-purple-50' },
                   { name: 'Finance', to: '/finance', icon: <TrendingUp size={24} className="text-emerald-500" />, hover: 'hover:border-emerald-400 hover:bg-emerald-50' },
                   { name: 'Vault', to: '/vault', icon: <FolderLock size={24} className="text-slate-600" />, hover: 'hover:border-slate-400 hover:bg-slate-50' },
                   { name: 'Dev Hub', to: '/github', icon: <GitBranch size={24} className="text-slate-900" />, hover: 'hover:border-slate-900 hover:bg-slate-100' },
-                  // নতুন যুক্ত করা হলো
                   { name: 'Snippets', to: '/snippets', icon: <Code2 size={24} className="text-indigo-600" />, hover: 'hover:border-indigo-400 hover:bg-indigo-50' },
-                  { name: 'Job Tracker', to: '/jobs', icon: <Briefcase size={24} className="text-emerald-600" />, hover: 'hover:border-emerald-400 hover:bg-emerald-50' }
+                  { name: 'Job Tracker', to: '/jobs', icon: <Briefcase size={24} className="text-emerald-600" />, hover: 'hover:border-emerald-400 hover:bg-emerald-50' },
+                  // নতুন যুক্ত করা হলো (Workspace / Guest House)
+                  { name: 'Control Room', to: '/workspace-manager', icon: <Network size={24} className="text-blue-500" />, hover: 'hover:border-blue-400 hover:bg-blue-50' },
+                  { name: 'Guest Portal', to: '/workspace/login', icon: <Users size={24} className="text-rose-500" />, hover: 'hover:border-rose-400 hover:bg-rose-50' }
                 ].map((app, i) => (
                   <Link key={i} to={app.to} className={`p-3 md:p-4 rounded-2xl bg-[#F8FAFC] border border-[#E2E8F0] transition-all duration-300 flex flex-col items-center justify-center gap-2 group ${app.hover}`}>
                     <div className="group-hover:scale-110 group-hover:-translate-y-1 transition-transform duration-300">{app.icon}</div>
