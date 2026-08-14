@@ -4,7 +4,7 @@ import { workspaceSupabase } from '../../lib/supabase';
 import { 
   ArrowLeft, Columns, MonitorPlay, FileText, 
   PlayCircle, CheckCircle2, Save, Loader2, Target, 
-  Layout, Menu, Circle, CheckCircle, Plus, X 
+  Layout, Menu, Circle, CheckCircle, Plus, X, Video, File
 } from 'lucide-react';
 
 interface Content {
@@ -38,14 +38,22 @@ export default function WorkspaceCourseViewer({
   const [showMobileSidebar, setShowMobileSidebar] = useState(false);
   const [activeContent, setActiveContent] = useState<Content | null>(null);
   
-  // Note States (Guest only edits their own notes)
+  // Multiple Notes States
+  const [notes, setNotes] = useState<any[]>([]);
+  const [activeNoteId, setActiveNoteId] = useState<string | null>(null);
   const [noteContent, setNoteContent] = useState('');
   const [isSavingNote, setIsSavingNote] = useState(false);
-  const [noteId, setNoteId] = useState<string | null>(null);
+
+  // Add Resource States
+  const [isAddResourceOpen, setIsAddResourceOpen] = useState(false);
+  const [targetModuleIndex, setTargetModuleIndex] = useState<number | null>(null);
+  const [newResTitle, setNewResTitle] = useState('');
+  const [newResType, setNewResType] = useState('youtube');
+  const [newResUrl, setNewResUrl] = useState('');
+  const [isAddingResource, setIsAddingResource] = useState(false);
 
   useEffect(() => {
     if (courseData) {
-      // Parse modules from the JSON data pushed from Main OS
       if (courseData.content_data && courseData.content_data.modules) {
         setModules(courseData.content_data.modules);
         if (courseData.content_data.modules[0]?.contents?.[0]) {
@@ -56,18 +64,27 @@ export default function WorkspaceCourseViewer({
     }
   }, [courseData]);
 
-  // Fetch Guest's personal note for this specific content
+  // Fetch all personal notes for active content
   useEffect(() => {
     if (activeContent) {
-      fetchPersonalNote(activeContent.id);
+      fetchPersonalNotes(activeContent.id);
     }
   }, [activeContent]);
 
-  const fetchPersonalNote = async (contentId: string) => {
+  // Update text area when active note changes
+  useEffect(() => {
+    if (activeNoteId && notes.length > 0) {
+      const active = notes.find(n => n.id === activeNoteId);
+      setNoteContent(active?.content_data?.text || '');
+    } else {
+      setNoteContent('');
+    }
+  }, [activeNoteId, notes]);
+
+  const fetchPersonalNotes = async (contentId: string) => {
     const { data: { user } } = await workspaceSupabase.auth.getUser();
     if (!user) return;
     
-    // We use shared_contents to store personal notes by adding user_id in the JSON
     const { data } = await workspaceSupabase
       .from('shared_contents')
       .select('*')
@@ -75,40 +92,94 @@ export default function WorkspaceCourseViewer({
       .eq('group_id', courseData.group_id)
       .filter('content_data->>contentId', 'eq', contentId)
       .filter('content_data->>userId', 'eq', user.id)
-      .single();
+      .order('created_at', { ascending: true });
+
+    if (data && data.length > 0) {
+      setNotes(data);
+      if (!activeNoteId || !data.find(n => n.id === activeNoteId)) {
+        setActiveNoteId(data[0].id);
+      }
+    } else {
+      setNotes([]);
+      setActiveNoteId(null);
+    }
+  };
+
+  const handleCreateNewNote = async () => {
+    if (!activeContent) return;
+    const { data: { user } } = await workspaceSupabase.auth.getUser();
+    const newTitle = `Note ${notes.length + 1}`;
+    
+    const { data, error } = await workspaceSupabase.from('shared_contents').insert([{
+      group_id: courseData.group_id,
+      title: newTitle,
+      content_type: 'personal_note',
+      content_data: { text: '', contentId: activeContent.id, userId: user?.id }
+    }]).select().single();
 
     if (data) {
-      setNoteId(data.id);
-      setNoteContent(data.content_data.text || '');
-    } else {
-      setNoteId(null);
-      setNoteContent('');
+      setNotes([...notes, data]);
+      setActiveNoteId(data.id);
     }
   };
 
   const handleSaveNote = async () => {
-    if (!activeContent) return;
+    if (!activeNoteId) return;
     setIsSavingNote(true);
-    const { data: { user } } = await workspaceSupabase.auth.getUser();
     
     try {
-      if (noteId) {
-        // Update existing note
-        await workspaceSupabase.from('shared_contents')
-          .update({ content_data: { text: noteContent, contentId: activeContent.id, userId: user?.id } })
-          .eq('id', noteId);
-      } else {
-        // Insert new note
-        const { data, error } = await workspaceSupabase.from('shared_contents').insert([{
-          group_id: courseData.group_id,
-          title: `Note for: ${activeContent.title}`,
-          content_type: 'personal_note',
-          content_data: { text: noteContent, contentId: activeContent.id, userId: user?.id }
-        }]).select().single();
-        if (data) setNoteId(data.id);
-      }
-    } catch (error: any) { alert("Error saving note"); }
-    finally { setIsSavingNote(false); }
+      const { data: { user } } = await workspaceSupabase.auth.getUser();
+      await workspaceSupabase.from('shared_contents')
+        .update({ content_data: { text: noteContent, contentId: activeContent?.id, userId: user?.id } })
+        .eq('id', activeNoteId);
+        
+      // Update local state
+      setNotes(notes.map(n => n.id === activeNoteId ? { ...n, content_data: { ...n.content_data, text: noteContent } } : n));
+    } catch (error: any) { 
+      alert("Error saving note"); 
+    } finally { 
+      setIsSavingNote(false); 
+    }
+  };
+
+  // --- Add Resource to Module Logic ---
+  const handleAddResource = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (targetModuleIndex === null || !newResTitle || !newResUrl) return;
+    setIsAddingResource(true);
+
+    const newContent: Content = {
+      id: `res-${Date.now()}`,
+      module_id: modules[targetModuleIndex].id,
+      title: newResTitle,
+      content_type: newResType,
+      file_path_or_url: newResUrl,
+      is_completed: false
+    };
+
+    const updatedModules = [...modules];
+    if (!updatedModules[targetModuleIndex].contents) updatedModules[targetModuleIndex].contents = [];
+    updatedModules[targetModuleIndex].contents.push(newContent);
+
+    try {
+      const updatedCourseData = { ...courseData.content_data, modules: updatedModules };
+      
+      // Update main row in Supabase
+      const { error } = await workspaceSupabase.from('shared_contents')
+        .update({ content_data: updatedCourseData })
+        .eq('id', courseData.id);
+
+      if (error) throw error;
+      
+      setModules(updatedModules);
+      setIsAddResourceOpen(false);
+      setNewResTitle('');
+      setNewResUrl('');
+    } catch (err) {
+      alert("Error adding resource. You might not have permission to update this course.");
+    } finally {
+      setIsAddingResource(false);
+    }
   };
 
   // Toggle Completion (Stored locally for Guest session)
@@ -124,7 +195,7 @@ export default function WorkspaceCourseViewer({
     // Calculate Progress
     let total = 0; let completed = 0;
     newModules.forEach(mod => {
-      mod.contents.forEach(c => { total++; if (c.is_completed) completed++; });
+      mod.contents?.forEach(c => { total++; if (c.is_completed) completed++; });
     });
     const pct = total === 0 ? 0 : Math.round((completed / total) * 100);
     setCourse((prev: any) => ({ ...prev, progress_pct: pct }));
@@ -152,8 +223,16 @@ export default function WorkspaceCourseViewer({
         ) : (
           modules.map((mod, mIdx) => (
             <div key={mod.id || mIdx} className="mb-5">
-              <div className="flex justify-between items-center mb-2 px-2 border-b border-[#E2E8F0] pb-2">
+              <div className="flex justify-between items-center mb-2 px-2 border-b border-[#E2E8F0] pb-2 group">
                 <h3 className="text-sm font-bold text-[#020F33] uppercase">{mod.title}</h3>
+                {/* Add Resource Button */}
+                <button 
+                  onClick={() => { setTargetModuleIndex(mIdx); setIsAddResourceOpen(true); }} 
+                  className="p-1 rounded bg-[#E2E8F0]/50 hover:bg-purple-100 text-[#475569] hover:text-purple-600 transition-colors"
+                  title="Add Resource to Module"
+                >
+                  <Plus size={14}/>
+                </button>
               </div>
               <div className="space-y-1">
                 {mod.contents?.map((content, cIdx) => (
@@ -164,7 +243,8 @@ export default function WorkspaceCourseViewer({
                     >
                       {content.is_completed ? <CheckCircle size={18} /> : <Circle size={18} />}
                     </button>
-                    <button onClick={() => { setActiveContent(content); setShowMobileSidebar(false); }} className="flex-1 text-left">
+                    <button onClick={() => { setActiveContent(content); setShowMobileSidebar(false); }} className="flex-1 text-left flex items-start gap-2">
+                      {content.content_type === 'pdf' ? <File size={16} className="shrink-0 mt-0.5 opacity-70"/> : <Video size={16} className="shrink-0 mt-0.5 opacity-70"/>}
                       <span className={`text-sm font-medium leading-snug line-clamp-2 ${content.is_completed && activeContent?.title !== content.title ? 'line-through text-slate-400' : ''}`}>
                         {content.title}
                       </span>
@@ -184,6 +264,40 @@ export default function WorkspaceCourseViewer({
   return (
     <div className="h-screen flex flex-col bg-[#F8FAFC] text-[#020F33] overflow-hidden fixed inset-0 z-[100]">
       
+      {/* Add Resource Modal */}
+      {isAddResourceOpen && (
+        <div className="fixed inset-0 z-[999] flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-[#020F33]/60 backdrop-blur-sm" onClick={() => setIsAddResourceOpen(false)}></div>
+          <div className="bg-white rounded-2xl w-full max-w-md p-6 relative z-10 shadow-2xl animate-in fade-in zoom-in">
+            <div className="flex justify-between items-center mb-5">
+              <h3 className="font-bold text-lg">Add Resource to Module</h3>
+              <button onClick={() => setIsAddResourceOpen(false)} className="text-slate-400 hover:text-red-500"><X size={20}/></button>
+            </div>
+            <form onSubmit={handleAddResource} className="space-y-4">
+              <div>
+                <label className="text-xs font-bold text-[#475569] uppercase mb-1 block">Resource Title</label>
+                <input type="text" value={newResTitle} onChange={(e)=>setNewResTitle(e.target.value)} placeholder="e.g. Extra Reference Video" className="w-full border border-[#E2E8F0] focus:border-purple-500 rounded-xl p-3 outline-none" required/>
+              </div>
+              <div>
+                <label className="text-xs font-bold text-[#475569] uppercase mb-1 block">Type</label>
+                <select value={newResType} onChange={(e)=>setNewResType(e.target.value)} className="w-full border border-[#E2E8F0] focus:border-purple-500 rounded-xl p-3 outline-none">
+                  <option value="youtube">YouTube Video</option>
+                  <option value="video">Direct Video URL</option>
+                  <option value="pdf">PDF Link</option>
+                </select>
+              </div>
+              <div>
+                <label className="text-xs font-bold text-[#475569] uppercase mb-1 block">Link / URL</label>
+                <input type="url" value={newResUrl} onChange={(e)=>setNewResUrl(e.target.value)} placeholder="https://..." className="w-full border border-[#E2E8F0] focus:border-purple-500 rounded-xl p-3 outline-none" required/>
+              </div>
+              <button type="submit" disabled={isAddingResource} className="w-full bg-purple-600 hover:bg-purple-700 text-white font-bold py-3 rounded-xl disabled:opacity-50">
+                {isAddingResource ? 'Adding...' : 'Add Resource'}
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
+
       {/* Mobile Sidebar */}
       {showMobileSidebar && (
         <div className="fixed inset-0 z-50 flex lg:hidden">
@@ -230,7 +344,7 @@ export default function WorkspaceCourseViewer({
         </div>
       </header>
 
-      {/* Main Workspace Layout (Exact Match) */}
+      {/* Main Workspace Layout */}
       <div className="flex-1 flex overflow-hidden">
         <aside className="w-80 bg-white border-r border-[#E2E8F0] flex-col overflow-hidden shrink-0 hidden lg:flex">
           <SidebarContent />
@@ -264,23 +378,44 @@ export default function WorkspaceCourseViewer({
 
           {(viewMode === 'split' || viewMode === 'notes') && (
             <div className={`flex flex-col bg-white rounded-2xl overflow-hidden shadow-lg border border-[#E2E8F0] ${viewMode === 'split' ? 'h-3/5 lg:h-full lg:w-1/2' : 'h-full w-full'}`}>
-              <div className="p-3 md:p-4 border-b border-[#E2E8F0] flex justify-between items-center bg-[#F8FAFC]">
-                <h3 className="font-bold flex items-center gap-2 text-[#020F33] text-sm md:text-base truncate pr-2">
-                  <FileText size={16} className="text-purple-500 shrink-0" /> 
-                  <span className="truncate">My Personal Notes</span>
-                </h3>
-                {activeContent && (
-                  <button onClick={handleSaveNote} disabled={isSavingNote} className="px-3 py-1.5 md:px-4 md:py-2 rounded-lg text-xs md:text-sm font-bold flex items-center gap-2 bg-[#020F33] hover:bg-purple-500 text-white transition-colors shrink-0">
-                    {isSavingNote ? <Loader2 size={14} className="animate-spin" /> : <><Save size={14} /> <span className="hidden sm:inline">Save</span></>}
+              
+              {/* Multiple Notes Tabs Header */}
+              <div className="flex flex-col border-b border-[#E2E8F0] bg-[#F8FAFC]">
+                <div className="p-2 md:p-3 flex justify-between items-center border-b border-[#E2E8F0]/50">
+                  <h3 className="font-bold flex items-center gap-2 text-[#020F33] text-sm md:text-base">
+                    <FileText size={16} className="text-purple-500" /> My Personal Notes
+                  </h3>
+                  <button onClick={handleSaveNote} disabled={isSavingNote || !activeNoteId} className="px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 bg-[#020F33] hover:bg-purple-500 text-white transition-colors disabled:opacity-50">
+                    {isSavingNote ? <Loader2 size={14} className="animate-spin" /> : <><Save size={14} /> Save</>}
                   </button>
-                )}
+                </div>
+                
+                {/* Tabs */}
+                <div className="flex overflow-x-auto hide-scrollbar">
+                  {notes.map((note, idx) => (
+                    <button
+                      key={note.id}
+                      onClick={() => setActiveNoteId(note.id)}
+                      className={`px-4 py-2 text-sm font-bold border-b-2 whitespace-nowrap transition-colors ${
+                        activeNoteId === note.id ? 'border-purple-500 text-purple-600 bg-purple-50/50' : 'border-transparent text-[#475569] hover:bg-[#E2E8F0]/30'
+                      }`}
+                    >
+                      {note.title}
+                    </button>
+                  ))}
+                  {activeContent && (
+                    <button onClick={handleCreateNewNote} className="px-4 py-2 text-sm font-bold text-purple-600 flex items-center gap-1 hover:bg-purple-50/50 whitespace-nowrap">
+                      <Plus size={14}/> New Note
+                    </button>
+                  )}
+                </div>
               </div>
               
               <textarea 
                 value={noteContent} 
                 onChange={(e) => setNoteContent(e.target.value)} 
-                disabled={!activeContent} 
-                placeholder={activeContent ? "Write personal notes for this lesson here..." : "Select a lesson first..."} 
+                disabled={!activeNoteId} 
+                placeholder={activeNoteId ? "Write your notes here..." : (activeContent ? "Click '+ New Note' to start writing..." : "Select a lesson first...")} 
                 className="flex-1 w-full p-4 md:p-6 resize-none focus:outline-none focus:ring-inset focus:ring-2 focus:ring-purple-500 text-[#020F33] text-sm md:text-base leading-relaxed disabled:bg-slate-50 disabled:opacity-50" 
               />
             </div>
