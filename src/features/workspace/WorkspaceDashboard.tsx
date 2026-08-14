@@ -11,45 +11,66 @@ import {
 import WorkspaceCourseViewer from './WorkspaceCourseViewer';
 import WorkspaceBcsViewer from './WorkspaceBcsViewer';
 
+export interface ChatMessage {
+  id: string;
+  group_id?: string;
+  user_id: string;
+  sender_name: string;
+  content: string;
+  message_type: 'text' | 'image' | 'file' | 'audio';
+  file_url?: string;
+  created_at?: string;
+  isOptimistic?: boolean;
+}
+
 export default function WorkspaceDashboard() {
   const navigate = useNavigate();
+  
+  // --- Core States ---
   const [session, setSession] = useState<any>(null);
   const [profileName, setProfileName] = useState('');
-  
   const [groups, setGroups] = useState<any[]>([]);
   const [allContents, setAllContents] = useState<any[]>([]); 
-  
   const [selectedGroup, setSelectedGroup] = useState<any>(null);
   const [groupContents, setGroupContents] = useState<any[]>([]);
-  
   const [loading, setLoading] = useState(true);
   
-  // Navigation & Theme
+  // --- Navigation & Theme ---
   const [activeTab, setActiveTab] = useState<'dashboard' | 'profile'>('dashboard');
   const [theme, setTheme] = useState<'dark' | 'light'>('dark');
   
-  // CRUD States
+  // --- CRUD States ---
   const [showNoteForm, setShowNoteForm] = useState(false);
   const [selectedContent, setSelectedContent] = useState<any>(null); 
   const [noteTitle, setNoteTitle] = useState('');
   const [noteContent, setNoteContent] = useState('');
   const [isEditing, setIsEditing] = useState(false);
 
-  // Floating Chat State
+  // --- Floating Chat States ---
   const [isChatOpen, setIsChatOpen] = useState(false);
-  const [messages, setMessages] = useState<any[]>([]);
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [newMessage, setNewMessage] = useState('');
-  const [isSending, setIsSending] = useState(false);
-  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const [chatLoading, setChatLoading] = useState(false);
+  
+  // --- Voice Recording States ---
+  const [isRecording, setIsRecording] = useState(false);
+  const [mediaRecorder, setMediaRecorder] = useState<MediaRecorder | null>(null);
 
-  // ১. পেজ লোড হলে লোকাল স্টোরেজ থেকে থিম পড়বে এবং ডাটা ফেচ করবে
+  // Auto Scroll Reference
+  const chatBottomRef = useRef<HTMLDivElement | null>(null);
+
+  const scrollToBottom = () => {
+    chatBottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+  };
+
+  // ১. পেজ লোড হলে ডাটা ফেচ ও থিম সেটআপ
   useEffect(() => {
     checkAuthAndFetchData();
     const savedTheme = localStorage.getItem('workspace_theme') || 'dark';
     setTheme(savedTheme as 'dark' | 'light');
   }, []);
 
-  // ২. যখনই theme চেঞ্জ হবে, তখনই এটি HTML ট্যাগে রিয়েল-টাইম ক্লাস বসাবে
+  // ২. থিম রিয়েল-টাইম চেঞ্জ
   useEffect(() => {
     const root = document.documentElement;
     if (theme === 'dark') {
@@ -63,35 +84,49 @@ export default function WorkspaceDashboard() {
     }
   }, [theme]);
 
-  // ৩. Real-time Subscription (selectedGroup ও isChatOpen চেঞ্জ হলে)
+  // ৩. Auto-scroll when new message arrives or chat panel opens
+  useEffect(() => {
+    if (isChatOpen) {
+      scrollToBottom();
+    }
+  }, [chatMessages, isChatOpen]);
+
+  // ৪. REALTIME CHAT LISTENER & FETCH LOGIC
   useEffect(() => {
     if (selectedGroup && isChatOpen) {
-      fetchMessages();
+      fetchChatMessages(selectedGroup.id);
       
-      // Real-time listener setup for new messages
-      const subscription = workspaceSupabase
-        .channel(`group_chat_${selectedGroup.id}`)
-        .on('postgres_changes', { 
-          event: 'INSERT', 
-          schema: 'public', 
-          table: 'group_chats',
-          filter: `group_id=eq.${selectedGroup.id}`
-        }, (payload) => {
-          setMessages((prev) => [...prev, payload.new]);
-        })
+      const chatSubscription = workspaceSupabase
+        .channel(`public:group_chats:group_id=eq.${selectedGroup.id}`)
+        .on(
+          'postgres_changes', 
+          { event: 'INSERT', schema: 'public', table: 'group_chats', filter: `group_id=eq.${selectedGroup.id}` }, 
+          (payload) => {
+            const newMsg = payload.new as ChatMessage;
+            setChatMessages((prev) => {
+              // Duplicate message check
+              const exists = prev.some((msg) => 
+                msg.id === newMsg.id || 
+                (msg.isOptimistic && msg.content === newMsg.content && msg.user_id === newMsg.user_id)
+              );
+              if (exists) {
+                return prev.map((msg) => 
+                  (msg.isOptimistic && msg.content === newMsg.content && msg.user_id === newMsg.user_id) ? newMsg : msg
+                );
+              }
+              return [...prev, newMsg];
+            });
+          }
+        )
         .subscribe();
 
       return () => {
-        workspaceSupabase.removeChannel(subscription);
+        workspaceSupabase.removeChannel(chatSubscription);
       };
     }
   }, [selectedGroup, isChatOpen]);
 
-  // ৪. Auto Scroll (যখনই নতুন মেসেজ আসবে)
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
-
+  // --- Functions ---
   const toggleTheme = () => {
     setTheme((prev) => {
       const newTheme = prev === 'dark' ? 'light' : 'dark';
@@ -120,38 +155,6 @@ export default function WorkspaceDashboard() {
   const fetchGroupContents = async (groupId: string) => {
     const { data } = await workspaceSupabase.from('shared_contents').select('*').eq('group_id', groupId).order('created_at', { ascending: false });
     if (data) setGroupContents(data);
-  };
-
-  const fetchMessages = async () => {
-    const { data } = await workspaceSupabase
-      .from('group_chats')
-      .select('*')
-      .eq('group_id', selectedGroup.id)
-      .order('created_at', { ascending: true });
-    if (data) setMessages(data);
-  };
-
-  const handleSendMessage = async (e?: React.FormEvent) => {
-    if (e) e.preventDefault();
-    if (!newMessage.trim() || !selectedGroup) return;
-
-    setIsSending(true);
-    const { data: { user } } = await workspaceSupabase.auth.getUser();
-
-    const { error } = await workspaceSupabase.from('group_chats').insert([{
-      group_id: selectedGroup.id,
-      user_id: user?.id,
-      sender_name: profileName,
-      content: newMessage,
-      message_type: 'text'
-    }]);
-
-    if (!error) {
-      setNewMessage('');
-    } else {
-      console.error("Chat send error:", error);
-    }
-    setIsSending(false);
   };
 
   const handleGroupClick = (group: any) => {
@@ -202,6 +205,7 @@ export default function WorkspaceDashboard() {
     }
   };
 
+  // 👇 openContent Function placed exactly here
   const openContent = (item: any) => {
     setSelectedContent(item);
     if (item.content_type === 'shared_note') {
@@ -215,6 +219,101 @@ export default function WorkspaceDashboard() {
     navigate('/workspace/login');
   };
 
+  // --- CHAT METHODS ---
+  const fetchChatMessages = async (groupId: string) => {
+    setChatLoading(true);
+    const { data } = await workspaceSupabase
+      .from('group_chats')
+      .select('*')
+      .eq('group_id', groupId)
+      .order('created_at', { ascending: true });
+    if (data) setChatMessages(data as ChatMessage[]);
+    setChatLoading(false);
+  };
+
+  const handleSendMessage = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (!newMessage.trim() || !selectedGroup || !session?.user) return;
+
+    const messageText = newMessage;
+    setNewMessage('');
+
+    const tempId = `temp-${Date.now()}`;
+    const optimisticMsg: ChatMessage = {
+      id: tempId, user_id: session.user.id, sender_name: profileName, content: messageText, message_type: 'text', isOptimistic: true 
+    };
+    setChatMessages((prev) => [...prev, optimisticMsg]);
+
+    const { error } = await workspaceSupabase.from('group_chats').insert([{
+      group_id: selectedGroup.id, user_id: session.user.id, sender_name: profileName, content: messageText, message_type: 'text'
+    }]);
+
+    if (error) {
+      setChatMessages((prev) => prev.filter((m) => m.id !== tempId));
+      alert('Failed to send message');
+    }
+  };
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !selectedGroup || !session?.user) return;
+
+    const type = file.type.startsWith('image/') ? 'image' : 'file';
+    const fileName = `${session.user.id}-${Date.now()}-${file.name}`;
+    
+    const { error } = await workspaceSupabase.storage.from('chat-files').upload(fileName, file);
+    if (error) { alert('Upload failed'); return; }
+
+    const { data: { publicUrl } } = workspaceSupabase.storage.from('chat-files').getPublicUrl(fileName);
+
+    await workspaceSupabase.from('group_chats').insert([{
+      group_id: selectedGroup.id, user_id: session.user.id, sender_name: profileName, content: file.name, message_type: type, file_url: publicUrl
+    }]);
+    
+    e.target.value = '';
+  };
+
+  const startRecording = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const recorder = new MediaRecorder(stream);
+      const audioChunks: Blob[] = [];
+
+      recorder.ondataavailable = (event) => {
+        if (event.data.size > 0) audioChunks.push(event.data);
+      };
+      
+      recorder.onstop = async () => {
+        stream.getTracks().forEach(track => track.stop());
+        if (audioChunks.length === 0 || !selectedGroup || !session?.user) return;
+
+        const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+        const fileName = `${session.user?.id}-${Date.now()}.webm`;
+        
+        const { error } = await workspaceSupabase.storage.from('chat-files').upload(fileName, audioBlob);
+        if (error) return;
+
+        const { data: { publicUrl } } = workspaceSupabase.storage.from('chat-files').getPublicUrl(fileName);
+
+        await workspaceSupabase.from('group_chats').insert([{
+          group_id: selectedGroup.id, user_id: session.user.id, sender_name: profileName, content: 'Voice Message', message_type: 'audio', file_url: publicUrl
+        }]);
+      };
+
+      recorder.start();
+      setMediaRecorder(recorder);
+      setIsRecording(true);
+    } catch (err) { alert('Microphone access denied'); }
+  };
+
+  const stopRecording = () => {
+    if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+      mediaRecorder.stop();
+      setIsRecording(false);
+    }
+  };
+
+  // --- Variable Declarations ---
   const currentDate = new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
   const totalCourses = allContents.filter(c => c.content_type.includes('course') || c.content_type.includes('subject')).length;
   const totalNotes = allContents.filter(c => c.content_type.includes('note')).length;
@@ -255,6 +354,9 @@ export default function WorkspaceDashboard() {
           <button className="p-2.5 text-slate-500 dark:text-[#A3A5A8] hover:bg-slate-100 dark:hover:bg-[#1D1E20] rounded-xl transition-colors relative">
             <Bell size={22} />
             <span className="absolute top-2 right-2.5 w-2 h-2 bg-[#FF5B61] rounded-full"></span>
+          </button>
+          <button onClick={handleLogout} className="p-2.5 text-slate-500 hover:text-[#FF5B61] dark:text-[#A3A5A8] hover:bg-slate-100 dark:hover:bg-[#1D1E20] rounded-xl transition-colors">
+            <LogOut size={22} />
           </button>
           <div className="hidden md:flex items-center gap-3 pl-4 border-l border-slate-200 dark:border-[#292B2E]">
             <div className="text-right">
@@ -471,59 +573,98 @@ export default function WorkspaceDashboard() {
                 </button>
               </div>
 
-              {/* --- REAL CHAT MESSAGES BODY --- */}
-              <div className="flex-1 p-4 overflow-y-auto bg-slate-100 dark:bg-[#0D0E0F] transition-colors flex flex-col gap-4">
-                {messages.length === 0 && (
-                  <div className="text-center text-xs text-slate-400 dark:text-[#707277] mt-10">
-                    No messages yet. Say hello to the group! 👋
+              {/* --- CHAT MESSAGES BODY --- */}
+              <div className="flex-1 p-4 overflow-y-auto bg-slate-100 dark:bg-[#0D0E0F] flex flex-col gap-4 scroll-smooth">
+                {chatLoading ? (
+                  <div className="flex-1 flex justify-center items-center">
+                    <div className="w-6 h-6 border-2 border-[#FF9D2E] border-t-transparent rounded-full animate-spin"></div>
                   </div>
-                )}
+                ) : chatMessages.length === 0 ? (
+                  <div className="flex-1 flex flex-col items-center justify-center text-slate-400 dark:text-[#707277]">
+                    <MessageCircle size={32} className="mb-2 opacity-50" />
+                    <p className="text-sm font-medium">No messages yet. Say hello! 👋</p>
+                  </div>
+                ) : (
+                  chatMessages.map((msg, idx) => {
+                    const isMe = msg.user_id === session?.user?.id;
+                    const timeString = msg.created_at ? new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Sending...';
 
-                {messages.map((msg, idx) => {
-                  const isMe = msg.user_id === session?.user?.id; // Check if the message is mine
-                  
-                  // Format time (e.g., 8:24 PM)
-                  const timeString = new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                    return (
+                      <div key={msg.id || idx} className={`flex flex-col ${isMe ? 'items-end' : 'items-start'}`}>
+                        <span className={`text-[10px] text-slate-500 dark:text-[#A3A5A8] ${isMe ? 'mr-1' : 'ml-1'} mb-1 font-bold`}>
+                          {isMe ? 'You' : msg.sender_name} • {timeString}
+                        </span>
+                        <div className={`px-4 py-2.5 rounded-2xl text-sm shadow-sm max-w-[85%] leading-relaxed ${
+                          isMe ? 'bg-[#FF9D2E] text-slate-900 rounded-tr-sm font-medium' : 'bg-white dark:bg-[#1D1E20] border border-slate-200 dark:border-[#292B2E] text-slate-800 dark:text-[#F5F5F5] rounded-tl-sm'
+                        }`}>
+                          
+                          {/* Rendering Content Based on Type */}
+                          {msg.message_type === 'text' && <p>{msg.content}</p>}
+                          
+                          {msg.message_type === 'image' && (
+                            <div className="space-y-2">
+                              <img src={msg.file_url} alt="Shared" className="rounded-xl max-h-48 object-cover" />
+                            </div>
+                          )}
 
-                  return (
-                    <div key={msg.id || idx} className={`flex flex-col ${isMe ? 'items-end' : 'items-start'} w-full`}>
-                      <span className={`text-[10px] text-slate-500 dark:text-[#A3A5A8] mb-1 font-bold ${isMe ? 'mr-1' : 'ml-1'}`}>
-                        {isMe ? 'You' : msg.sender_name || 'Member'} • {timeString}
-                      </span>
-                      <div 
-                        className={`px-4 py-2.5 rounded-2xl text-sm shadow-sm max-w-[85%] leading-relaxed ${
-                          isMe 
-                          ? 'bg-[#FF9D2E] text-slate-900 font-medium rounded-tr-sm' 
-                          : 'bg-white dark:bg-[#1D1E20] border border-slate-200 dark:border-[#292B2E] text-slate-800 dark:text-[#F5F5F5] rounded-tl-sm transition-colors'
-                        }`}
-                      >
-                        {msg.content}
+                          {msg.message_type === 'file' && (
+                            <a href={msg.file_url} target="_blank" rel="noreferrer" className="flex items-center gap-2 underline underline-offset-2 break-all">
+                              <FileText size={16} className="shrink-0" /> {msg.content}
+                            </a>
+                          )}
+
+                          {msg.message_type === 'audio' && (
+                            <audio controls src={msg.file_url} className="w-48 h-8 rounded-full" />
+                          )}
+
+                        </div>
                       </div>
-                    </div>
-                  );
-                })}
-                {/* Invisible div to auto-scroll to bottom */}
-                <div ref={messagesEndRef} />
+                    );
+                  })
+                )}
+                {/* Auto Scroll Dummy Element */}
+                <div ref={chatBottomRef} />
               </div>
 
-              {/* --- CHAT INPUT --- */}
+              {/* --- CHAT INPUT AREA --- */}
               <form onSubmit={handleSendMessage} className="p-3 bg-white dark:bg-[#18191A] border-t border-slate-200 dark:border-[#292B2E] flex items-center gap-2 transition-colors">
-                <button type="button" className="p-2 text-slate-400 hover:text-[#FF9D2E] transition-colors"><Paperclip size={20}/></button>
+                
+                {/* File Upload Button */}
+                <label className="p-2 text-slate-400 hover:text-[#FF9D2E] cursor-pointer transition-colors">
+                  <Paperclip size={20}/>
+                  <input type="file" onChange={handleFileUpload} className="hidden" />
+                </label>
+                
                 <input 
                   type="text" 
                   value={newMessage}
                   onChange={(e) => setNewMessage(e.target.value)}
-                  placeholder="Type a message..." 
-                  className="flex-1 bg-slate-100 dark:bg-[#1D1E20] border border-transparent focus:border-[#FF9D2E]/50 rounded-full px-4 py-2 text-sm text-slate-900 dark:text-white outline-none transition-all" 
-                  disabled={isSending}
+                  placeholder={isRecording ? "Recording audio..." : "Type a message..."} 
+                  disabled={isRecording}
+                  className="flex-1 bg-slate-100 dark:bg-[#1D1E20] border border-transparent focus:border-[#FF9D2E]/50 rounded-full px-4 py-2 text-sm text-slate-900 dark:text-white outline-none transition-all disabled:opacity-50" 
                 />
-                <button type="submit" disabled={!newMessage.trim() || isSending} className="p-2.5 bg-[#FF9D2E] text-slate-900 rounded-full hover:bg-[#FFAA3D] disabled:opacity-50 transition-colors">
+                
+                {/* Voice Recording Button */}
+                <button 
+                  type="button" 
+                  onMouseDown={startRecording} 
+                  onMouseUp={stopRecording} 
+                  onTouchStart={startRecording} 
+                  onTouchEnd={stopRecording}
+                  className={`p-2 transition-colors ${isRecording ? 'text-red-500 animate-pulse' : 'text-slate-400 hover:text-[#FF9D2E]'}`}
+                  title="Hold to record audio"
+                >
+                  <Mic size={20}/>
+                </button>
+                
+                <button type="submit" disabled={!newMessage.trim() || isRecording} className="p-2.5 bg-[#FF9D2E] text-slate-900 rounded-full hover:bg-[#FFAA3D] disabled:opacity-50 transition-colors">
                   <Send size={16}/>
                 </button>
               </form>
             </div>
           )}
 
+          {/* Floating Toggle Button */}
           <button 
             onClick={() => setIsChatOpen(!isChatOpen)}
             className="w-16 h-16 bg-[#FF9D2E] hover:bg-[#FFAA3D] text-slate-900 rounded-full flex items-center justify-center shadow-[0_10px_30px_rgba(255,157,46,0.3)] transition-transform hover:scale-105 active:scale-95 relative"
