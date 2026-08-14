@@ -88,15 +88,10 @@ export default function WorkspaceDashboard() {
     if (!session) return navigate('/workspace/login');
     setSession(session);
 
-    // Fetch Profile Nickname (Fixed to maybeSingle)
-    const { data: profileData } = await workspaceSupabase
-      .from('workspace_profiles')
-      .select('nickname')
-      .eq('id', session.user.id)
-      .maybeSingle(); 
-
-    if (profileData && profileData.nickname) {
-      setProfileName(profileData.nickname);
+    // সরাসরি ইমেইলের অংশ বা লোকাল স্টোরেজ থেকে নিকনেম নেওয়া (API Call এরর এড়াতে)
+    const savedNickname = localStorage.getItem(`nickname_${session.user.id}`);
+    if (savedNickname) {
+      setProfileName(savedNickname);
     } else {
       setProfileName(session.user?.email?.split('@')[0] || 'Student');
     }
@@ -113,15 +108,15 @@ export default function WorkspaceDashboard() {
   const handleUpdateProfile = async () => {
     if (!profileName.trim()) return;
     setIsUpdatingProfile(true);
-    const { error } = await workspaceSupabase
-      .from('workspace_profiles')
-      .upsert({ id: session.user.id, email: session.user.email, nickname: profileName });
-      
-    if (!error) {
-      alert("Nickname updated successfully!");
+    
+    // ব্রাউজারের লোকাল স্টোরেজে নাম সেভ করে রাখা (ঝামেলা মুক্ত এবং ইনস্ট্যান্ট)
+    if (session?.user?.id) {
+      localStorage.setItem(`nickname_${session.user.id}`, profileName);
+      alert("Nickname updated successfully! 🚀");
     } else {
-      alert("Error saving nickname! Make sure SQL table is created.");
+      alert("Error saving nickname!");
     }
+    
     setIsUpdatingProfile(false);
   };
 
