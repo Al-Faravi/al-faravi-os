@@ -201,12 +201,21 @@ export default function WorkspaceCourseViewer({
     setCourse((prev: any) => ({ ...prev, progress_pct: pct }));
   };
 
+  // --- Updated YouTube URL Embed Converter ---
   const getSafeEmbedUrl = (url: string, type: string) => {
     if (!url) return '';
+    
     if (type === 'youtube' || url.includes('youtu')) {
-      if (url.includes('watch?v=')) return url.replace('watch?v=', 'embed/').split('&')[0];
-      if (url.includes('youtu.be/')) return url.replace('youtu.be/', 'www.youtube.com/embed/').split('?')[0];
+      // এই Regex দুনিয়ার যেকোনো YouTube লিংক থেকে Video ID বের করতে পারে
+      const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|&v=|shorts\/)([^#&?]*).*/;
+      const match = url.match(regExp);
+      
+      if (match && match[2].length === 11) {
+        return `https://www.youtube.com/embed/${match[2]}`;
+      }
     }
+    
+    // পিডিএফ বা অন্যান্য ডিরেক্ট লিংকের জন্য
     return url;
   };
 
