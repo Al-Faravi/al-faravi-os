@@ -8,7 +8,7 @@ export default function WorkspaceManager() {
   const [groups, setGroups] = useState<any[]>([]);
   const [newGroupName, setNewGroupName] = useState('');
   const [loading, setLoading] = useState(false);
-  const navigate = useNavigate();
+  const navigate = useNavigate(); // এটি অ্যাড করা হয়েছে
 
   useEffect(() => {
     fetchGroupsAndMembers();
@@ -76,8 +76,8 @@ export default function WorkspaceManager() {
           {groups.map(group => (
             <div 
               key={group.id} 
-              onClick={() => navigate(`/workspace-manager/group/${group.id}`)}
-              className="bg-[#18191A] border border-[#292B2E] hover:border-[#FF9D2E] p-6 rounded-3xl cursor-pointer transition-all duration-300 group hover:-translate-y-1.5 hover:shadow-[0_12px_30px_rgba(255,157,46,0.08)] flex flex-col justify-between min-h-[210px]"
+              onClick={() => navigate(`/workspace-manager/group/${group.id}`)} // এই লাইনটি অ্যাড করা হয়েছে
+              className="bg-[#18191A] border border-[#292B2E] hover:border-[#FF9D2E] p-6 rounded-3xl cursor-pointer transition-all duration-300 group hover:-translate-y-1.5 hover:shadow-[0_12px_30px_rgba(255,157,46,0.08)] flex flex-col justify-between min-h-[210px]" // cursor-pointer অ্যাড করা হয়েছে
             >
               <div className="flex justify-between items-start">
                 <div className="w-14 h-14 bg-[#1D1E20] border border-[#292B2E] rounded-2xl flex items-center justify-center text-[#FF9D2E] group-hover:bg-[#FF9D2E] group-hover:text-[#0D0E0F] transition-all duration-300">
