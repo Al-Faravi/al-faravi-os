@@ -62,7 +62,7 @@ export default function GroupDetails() {
     if (bcs) setBcsSubjects(bcs);
   };
 
-  // --- Delete & Sync Operations ---
+  // --- Delete Operations ---
   const handleDeleteContent = async (id: string, type: string) => {
     if (!window.confirm(`Are you sure you want to delete this ${type === 'shared_note' || type === 'personal_note' ? 'Note' : 'Course'} from the group?`)) return;
     await workspaceAdmin.from('shared_contents').delete().eq('id', id);
@@ -70,26 +70,76 @@ export default function GroupDetails() {
     fetchGroupContents();
   };
 
+  // --- Smart Non-Destructive Sync Operations ---
   const handleSyncContent = async (item: any) => {
     setSyncingId(item.id);
     try {
       let updatedData = {};
+      const originalId = item.content_data.id;
+      const existingData = item.content_data; // Workspace এর বর্তমান ডাটা
+
       if (item.content_type === 'lms_course') {
-        const originalId = item.content_data.id;
+        // ১. Main OS থেকে লেটেস্ট ডাটা আনা
         const { data: courseData } = await supabase.from('lms_courses').select('*').eq('id', originalId).single();
         const { data: modulesData } = await supabase.from('lms_modules').select('*').eq('course_id', originalId);
         const { data: contentsData } = await supabase.from('lms_contents').select('*').in('module_id', modulesData?.map(m => m.id) || []);
-        updatedData = { ...courseData, modules: modulesData?.map(mod => ({ ...mod, contents: contentsData?.filter(c => c.module_id === mod.id) || [] })) };
-      } else if (item.content_type === 'bcs_subject') {
-        const originalId = item.content_data.id;
+
+        const existingModules = existingData.modules || [];
+
+        // ২. Smart Merge করা
+        const updatedModules = modulesData?.map(newMod => {
+          const oldMod = existingModules.find((m: any) => m.id === newMod.id);
+          const newContents = contentsData?.filter(c => c.module_id === newMod.id) || [];
+
+          // (ক) Main OS এর কন্টেন্টগুলো আপডেট করা কিন্তু Workspace এর Completion Status ধরে রাখা
+          const mergedContents = newContents.map(newC => {
+            const oldC = oldMod?.contents?.find((c: any) => c.id === newC.id);
+            return { ...newC, is_completed: oldC ? oldC.is_completed : false };
+          });
+
+          // (খ) Workspace এ বন্ধুদের অ্যাড করা কাস্টম রিসোর্সগুলো (যা Main OS-এ নেই) খুঁজে বের করে সেভ রাখা
+          const customContents = oldMod?.contents?.filter(
+            (oldC: any) => !newContents.some((newC: any) => newC.id === oldC.id)
+          ) || [];
+
+          // দুইটা জোড়া দিয়ে মডিউল বানানো
+          return { ...newMod, contents: [...mergedContents, ...customContents] };
+        });
+
+        updatedData = { ...courseData, progress_pct: existingData.progress_pct || 0, modules: updatedModules };
+      } 
+      else if (item.content_type === 'bcs_subject') {
         const { data: subjectData } = await supabase.from('bcs_subjects').select('*').eq('id', originalId).single();
         const { data: chaptersData } = await supabase.from('bcs_chapters').select('*').eq('subject_id', originalId);
         const { data: resourcesData } = await supabase.from('bcs_resources').select('*').in('chapter_id', chaptersData?.map(c => c.id) || []);
-        updatedData = { ...subjectData, chapters: chaptersData?.map(chap => ({ ...chap, resources: resourcesData?.filter(r => r.chapter_id === chap.id) || [] })) };
+
+        const existingChapters = existingData.chapters || [];
+
+        const updatedChapters = chaptersData?.map(newChap => {
+          const oldChap = existingChapters.find((c: any) => c.id === newChap.id);
+          const newRes = resourcesData?.filter(r => r.chapter_id === newChap.id) || [];
+
+          const mergedRes = newRes.map(nR => {
+            const oldR = oldChap?.resources?.find((r: any) => r.id === nR.id);
+            return { ...nR, is_completed: oldR ? oldR.is_completed : false };
+          });
+
+          const customRes = oldChap?.resources?.filter(
+            (oldR: any) => !newRes.some((nR: any) => nR.id === oldR.id)
+          ) || [];
+
+          return { ...newChap, resources: [...mergedRes, ...customRes] };
+        });
+
+        updatedData = { ...subjectData, progress_pct: existingData.progress_pct || 0, chapters: updatedChapters };
       }
+
+      // ৩. ডাটাবেসে সেভ করা
       await workspaceAdmin.from('shared_contents').update({ content_data: updatedData }).eq('id', item.id);
       fetchGroupContents();
-    } catch (error) { alert("Sync failed."); }
+    } catch (error) { 
+      alert("Sync failed."); 
+    }
     setSyncingId(null);
   };
 
