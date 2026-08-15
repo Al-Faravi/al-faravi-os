@@ -70,7 +70,9 @@ export default function GroupDetails() {
 
   // Fetch unique list of all friends in the system
   const fetchAllFriends = async () => {
-    const { data } = await workspaceAdmin.from('group_members').select('friend_name, email, password_plain').order('created_at', { ascending: false });
+    // এখানে last_active কলামটি যুক্ত করা হয়েছে
+    const { data } = await workspaceAdmin.from('group_members').select('friend_name, email, password_plain, last_active').order('created_at', { ascending: false });
+    
     if (data) {
       const uniqueFriends = Array.from(new Map(data.filter(item => item.email).map(item => [item.email, item])).values());
       setAllFriends(uniqueFriends);
