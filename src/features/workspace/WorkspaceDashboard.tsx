@@ -5,7 +5,7 @@ import { useNavigate } from 'react-router-dom';
 import { 
   Sun, Moon, LayoutDashboard, Users, User, BookOpen, Clock, FileText, 
   ChevronRight, MessageCircle, X, Send, Paperclip, Mic, Square, ArrowLeft, 
-  Trash2, Edit3, FolderOpen, LogOut, CheckCircle2, Plus, DownloadCloud
+  Trash2, Edit3, FolderOpen, LogOut, CheckCircle2, Plus, DownloadCloud, Sparkles, ShieldCheck
 } from 'lucide-react';
 
 import WorkspaceCourseViewer from './WorkspaceCourseViewer';
