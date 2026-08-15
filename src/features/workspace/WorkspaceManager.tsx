@@ -12,7 +12,7 @@ export default function WorkspaceManager() {
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [fName, setFName] = useState(''); // <--- এটি নতুন যোগ করা হয়েছে
+  const [fName, setFName] = useState('');
   const [showUserModal, setShowUserModal] = useState(false);
 
   // --- New State for Friend List Sidebar ---
@@ -91,6 +91,20 @@ export default function WorkspaceManager() {
     const lastActive = new Date(timestamp).getTime();
     const now = new Date().getTime();
     return (now - lastActive) < 300000; // 5 mins in ms
+  };
+
+  // --- Time Format Logic ---
+  const formatLastActive = (timestamp: string | null) => {
+    if (!timestamp) return "Never";
+    const diff = new Date().getTime() - new Date(timestamp).getTime();
+    const mins = Math.floor(diff / 60000);
+    
+    if (mins < 1) return "Just now";
+    if (mins < 60) return `${mins}m ago`;
+    const hours = Math.floor(mins / 60);
+    if (hours < 24) return `${hours}h ago`;
+    const days = Math.floor(hours / 24);
+    return `${days}d ago`;
   };
 
   return (
@@ -195,10 +209,19 @@ export default function WorkspaceManager() {
                     <p className="text-sm font-bold text-[#F5F5F5] truncate">{f.friend_name || 'Member'}</p>
                     <p className="text-[11px] text-[#A3A5A8] truncate mt-0.5">{f.email}</p>
                   </div>
-                  <div className="flex items-center gap-2 shrink-0">
-                    <span className="text-[10px] font-bold text-[#707277]">{active ? 'Online' : 'Offline'}</span>
-                    <div className={`w-3 h-3 rounded-full ${active ? 'bg-[#19C784] shadow-[0_0_8px_#19C784]' : 'bg-[#292B2E]'}`} />
+                  
+                  {/* স্ট্যাটাস এবং সময় দেখানোর অংশ */}
+                  <div className="flex flex-col items-end shrink-0 ml-3">
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className="text-[10px] font-bold text-[#707277]">{active ? 'Online' : 'Offline'}</span>
+                      <div className={`w-3 h-3 rounded-full ${active ? 'bg-[#19C784] shadow-[0_0_8px_#19C784]' : 'bg-[#292B2E]'}`} />
+                    </div>
+                    {/* লাস্ট অ্যাকটিভ টাইম */}
+                    <span className="text-[9px] font-medium text-[#A3A5A8]">
+                      {active ? 'Active now' : `Last seen: ${formatLastActive(f.last_active)}`}
+                    </span>
                   </div>
+
                 </div>
               );
             })
@@ -224,7 +247,6 @@ export default function WorkspaceManager() {
             <p className="text-[#A3A5A8] text-sm mb-6">Create a new student account to grant them access to workspaces.</p>
 
             <form onSubmit={handleCreateFriendAccount} className="space-y-4">
-              {/* নতুন যোগ করা Name ফিল্ড */}
               <div>
                 <label className="block text-sm font-semibold text-[#A3A5A8] mb-1">Full Name</label>
                 <input 

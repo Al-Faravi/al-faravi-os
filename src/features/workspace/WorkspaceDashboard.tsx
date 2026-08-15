@@ -67,12 +67,11 @@ export default function WorkspaceDashboard() {
     initTheme();
   }, []);
 
-  // ২. লাইভ অনলাইন স্ট্যাটাস (Live Active Tracker)
+  // --- Live Active Heartbeat ---
   useEffect(() => {
     const updatePresence = async () => {
       const { data: { user } } = await workspaceSupabase.auth.getUser();
       if (user?.email) {
-        // প্রতি ২ মিনিটে ডাটাবেসে তার last_active আপডেট হবে
         await workspaceSupabase
           .from('group_members')
           .update({ last_active: new Date().toISOString() })
@@ -80,8 +79,9 @@ export default function WorkspaceDashboard() {
       }
     };
 
-    updatePresence(); // পেজে ঢোকার সাথে সাথে একবার আপডেট
-    const interval = setInterval(updatePresence, 2 * 60 * 1000); // এরপর প্রতি ২ মিনিট পরপর
+    updatePresence(); // পেজে ঢোকার সাথে সাথে একবার আপডেট হবে
+    const interval = setInterval(updatePresence, 60000); // এরপর প্রতি ১ মিনিট পরপর আপডেট হবে
+    
     return () => clearInterval(interval);
   }, []);
 
@@ -113,19 +113,21 @@ export default function WorkspaceDashboard() {
       setProfileName(session.user?.email?.split('@')[0] || 'Student');
     }
 
-    // ১. গ্রুপ ফেচ করার ফাংশনে user_id এর বদলে email দিয়ে চেক করুন
+    // গ্রুপ ফেচ করার ফাংশনে user_id এর বদলে email দিয়ে চেক করা হচ্ছে
     const fetchMyGroups = async () => {
       const { data: { user } } = await workspaceSupabase.auth.getUser();
       if (!user?.email) return;
 
-      // Email দিয়ে গ্রুপ মেম্বারশিপ চেক করা হচ্ছে
+      // ১. প্রথমে ইমেইল দিয়ে চেক করবে সে কোন কোন গ্রুপের মেম্বার
       const { data: memberData } = await workspaceSupabase
         .from('group_members')
         .select('group_id')
-        .eq('email', user.email); // <--- এখানে ইমেইল ব্যবহার করা হলো
+        .eq('email', user.email); // <--- এখানে user.email দিয়ে খোঁজা হচ্ছে
 
       if (memberData && memberData.length > 0) {
         const groupIds = memberData.map(m => m.group_id);
+        
+        // ২. এরপর সেই গ্রুপগুলোর ডাটা আনবে
         const { data: groupsData } = await workspaceSupabase
           .from('study_groups')
           .select('*')
@@ -133,7 +135,7 @@ export default function WorkspaceDashboard() {
           
         setGroups(groupsData || []);
       } else {
-        setGroups([]); // If user is not a member of any group
+        setGroups([]);
       }
     };
 
