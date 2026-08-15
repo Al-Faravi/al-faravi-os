@@ -5,11 +5,20 @@ import { useNavigate } from 'react-router-dom';
 import { 
   Sun, Moon, LayoutDashboard, Users, User, BookOpen, Clock, FileText, 
   ChevronRight, MessageCircle, X, Send, Paperclip, Mic, Square, ArrowLeft, 
-  Trash2, Edit3, FolderOpen, Bell, Sparkles, LogOut, CheckCircle2, Plus 
+  Trash2, Edit3, FolderOpen, Bell, Sparkles, LogOut, CheckCircle2, Plus,
+  ShieldCheck // New import for Profile Tab
 } from 'lucide-react';
 
 import WorkspaceCourseViewer from './WorkspaceCourseViewer';
 import WorkspaceBcsViewer from './WorkspaceBcsViewer';
+
+const DAILY_QUOTES = [
+  "The secret of getting ahead is getting started.",
+  "Push yourself, because no one else is going to do it for you.",
+  "Great things never come from comfort zones.",
+  "Dream it. Wish it. Do it.",
+  "Success doesn't just find you. You have to go out and get it."
+];
 
 interface ChatMessage {
   id: string;
@@ -131,7 +140,6 @@ export default function WorkspaceDashboard() {
     }
 
     if (memberData && memberData.length > 0) {
-      // 🚀 ম্যাজিক ফিক্স: null বা ফাঁকা আইডিগুলোকে ফিল্টার করে বাদ দেওয়া হচ্ছে
       const groupIds = memberData.map(m => m.group_id).filter(id => id !== null);
       
       if (groupIds.length > 0) {
@@ -143,7 +151,7 @@ export default function WorkspaceDashboard() {
         if (groupsError) console.error("Error fetching groups:", groupsError);
         setGroups(groupsData || []);
       } else {
-        setGroups([]); // যদি শুধু null আইডি থাকে
+        setGroups([]);
       }
     } else {
       setGroups([]);
@@ -228,7 +236,6 @@ export default function WorkspaceDashboard() {
   useEffect(() => {
     if (selectedGroup && isChatOpen) {
       fetchChatMessages(selectedGroup.id);
-      // Setup Realtime Subscription
       const chatSubscription = workspaceSupabase
         .channel(`chat_channel_${selectedGroup.id}`)
         .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'group_chats', filter: `group_id=eq.${selectedGroup.id}` }, 
@@ -337,6 +344,7 @@ export default function WorkspaceDashboard() {
   if (selectedContent?.content_type === 'bcs_subject') return <WorkspaceBcsViewer subjectData={selectedContent} onBack={handleBack} />;
 
   const currentDate = new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+  const randomQuote = React.useMemo(() => DAILY_QUOTES[Math.floor(Math.random() * DAILY_QUOTES.length)], []);
   const totalCourses = allContents.filter(c => c.content_type.includes('course') || c.content_type.includes('subject')).length;
   
   const groupCourses = groupContents.filter(c => c.content_type === 'lms_course' || c.content_type === 'bcs_subject');
@@ -384,24 +392,59 @@ export default function WorkspaceDashboard() {
                 <p className="text-[#FF9D2E] font-bold text-sm mb-2">{currentDate}</p>
                 <h2 className="text-3xl md:text-4xl font-black text-slate-900 dark:text-[#F5F5F5] mb-3">Welcome back, {profileName}! 👋</h2>
                 <p className="text-slate-600 dark:text-[#A3A5A8] max-w-lg text-sm md:text-base leading-relaxed">Ready to level up your skills today? Check out your assigned groups and continue your learning journey from where you left off.</p>
+                <div className="mt-4 inline-block bg-white/50 dark:bg-[#1D1E20]/50 backdrop-blur-sm border border-[#FF9D2E]/20 px-4 py-2 rounded-xl text-sm text-slate-800 dark:text-[#A3A5A8] border-l-4 border-l-[#FF9D2E] italic">
+                  "{randomQuote}"
+                </div>
               </div>
             </div>
 
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              <div className="bg-white dark:bg-[#18191A] p-5 rounded-2xl border border-slate-200 dark:border-[#292B2E] shadow-sm flex flex-col justify-center gap-2 transition-colors">
-                <Users size={24} className="text-[#668CFF]" />
-                <h3 className="text-2xl font-black">{groups.length}</h3>
-                <p className="text-xs font-bold text-slate-500 dark:text-[#707277] uppercase tracking-wider">Joined Groups</p>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+              {/* Card 1: Joined Groups */}
+              <div className="bg-white dark:bg-[#18191A] p-6 rounded-3xl border border-slate-200 dark:border-[#292B2E] shadow-sm flex flex-col justify-between transition-colors">
+                <div className="flex justify-between items-start mb-4">
+                  <div className="w-12 h-12 bg-blue-50 dark:bg-[#141516] rounded-xl flex items-center justify-center border border-blue-100 dark:border-[#292B2E]">
+                    <Users size={24} className="text-[#668CFF]" />
+                  </div>
+                  <span className="text-3xl font-black text-slate-900 dark:text-white">{groups.length}</span>
+                </div>
+                <div>
+                  <p className="text-sm font-bold text-slate-500 dark:text-[#707277] uppercase tracking-wider">Joined Groups</p>
+                  <div className="w-full h-1.5 bg-slate-100 dark:bg-[#141516] rounded-full mt-3 overflow-hidden">
+                    <div className="h-full bg-[#668CFF] rounded-full" style={{ width: `${(groups.length / 10) * 100}%` }}></div>
+                  </div>
+                </div>
               </div>
-              <div className="bg-white dark:bg-[#18191A] p-5 rounded-2xl border border-slate-200 dark:border-[#292B2E] shadow-sm flex flex-col justify-center gap-2 transition-colors">
-                <BookOpen size={24} className="text-[#19C784]" />
-                <h3 className="text-2xl font-black">{totalCourses}</h3>
-                <p className="text-xs font-bold text-slate-500 dark:text-[#707277] uppercase tracking-wider">Total Available</p>
+
+              {/* Card 2: Assigned Courses */}
+              <div className="bg-white dark:bg-[#18191A] p-6 rounded-3xl border border-slate-200 dark:border-[#292B2E] shadow-sm flex flex-col justify-between transition-colors">
+                <div className="flex justify-between items-start mb-4">
+                  <div className="w-12 h-12 bg-green-50 dark:bg-[#141516] rounded-xl flex items-center justify-center border border-green-100 dark:border-[#292B2E]">
+                    <BookOpen size={24} className="text-[#19C784]" />
+                  </div>
+                  <span className="text-3xl font-black text-slate-900 dark:text-white">{totalCourses}</span>
+                </div>
+                <div>
+                  <p className="text-sm font-bold text-slate-500 dark:text-[#707277] uppercase tracking-wider">Available Courses</p>
+                  <div className="w-full h-1.5 bg-slate-100 dark:bg-[#141516] rounded-full mt-3 overflow-hidden">
+                    <div className="h-full bg-[#19C784] rounded-full w-3/4"></div>
+                  </div>
+                </div>
               </div>
-              <div className="bg-white dark:bg-[#18191A] p-5 rounded-2xl border border-slate-200 dark:border-[#292B2E] shadow-sm flex flex-col justify-center gap-2 transition-colors">
-                <Clock size={24} className="text-[#FF9D2E]" />
-                <h3 className="text-2xl font-black text-slate-900 dark:text-white">Active</h3>
-                <p className="text-xs font-bold text-slate-500 dark:text-[#707277] uppercase tracking-wider">Status</p>
+
+              {/* Card 3: Study Status */}
+              <div className="bg-white dark:bg-[#18191A] p-6 rounded-3xl border border-slate-200 dark:border-[#292B2E] shadow-sm flex flex-col justify-between transition-colors">
+                <div className="flex justify-between items-start mb-4">
+                  <div className="w-12 h-12 bg-orange-50 dark:bg-[#141516] rounded-xl flex items-center justify-center border border-orange-100 dark:border-[#292B2E]">
+                    <Sparkles size={24} className="text-[#FF9D2E]" />
+                  </div>
+                  <div className="flex items-center gap-1.5 px-3 py-1 bg-green-100 dark:bg-[#19C784]/10 text-green-700 dark:text-[#19C784] rounded-lg text-xs font-bold">
+                    <div className="w-2 h-2 rounded-full bg-current animate-pulse"></div> Active
+                  </div>
+                </div>
+                <div>
+                  <p className="text-sm font-bold text-slate-500 dark:text-[#707277] uppercase tracking-wider">Current Status</p>
+                  <p className="text-xs text-slate-400 dark:text-[#A3A5A8] mt-2 font-medium">Synced with workspace</p>
+                </div>
               </div>
             </div>
 
@@ -572,6 +615,36 @@ export default function WorkspaceDashboard() {
               </div>
               <p className="text-xs text-slate-400 dark:text-[#707277]">This name will appear in group chats and notes.</p>
             </div>
+
+            {/* New Profile Stats Section */}
+            <div className="w-full grid grid-cols-2 gap-4 mt-4">
+              <div className="bg-white dark:bg-[#18191A] p-4 rounded-3xl border border-slate-200 dark:border-[#292B2E] text-center shadow-sm">
+                <div className="mx-auto w-8 h-8 bg-blue-50 dark:bg-blue-500/10 rounded-full flex items-center justify-center mb-2">
+                  <Users size={16} className="text-blue-500" />
+                </div>
+                <h4 className="text-xl font-black text-slate-900 dark:text-white">{groups.length}</h4>
+                <p className="text-[10px] uppercase font-bold text-slate-500 dark:text-[#707277]">Study Groups</p>
+              </div>
+              
+              <div className="bg-white dark:bg-[#18191A] p-4 rounded-3xl border border-slate-200 dark:border-[#292B2E] text-center shadow-sm">
+                <div className="mx-auto w-8 h-8 bg-[#FF9D2E]/10 rounded-full flex items-center justify-center mb-2">
+                  <FileText size={16} className="text-[#FF9D2E]" />
+                </div>
+                <h4 className="text-xl font-black text-slate-900 dark:text-white">{allContents.filter(c => c.content_data?.userId === session?.user?.id).length}</h4>
+                <p className="text-[10px] uppercase font-bold text-slate-500 dark:text-[#707277]">Notes Created</p>
+              </div>
+            </div>
+
+            <div className="w-full mt-4 bg-gradient-to-r from-[#FF9D2E]/10 to-[#E83FCB]/10 p-5 rounded-3xl border border-[#FF9D2E]/20 flex items-center gap-4">
+              <div className="w-12 h-12 bg-white dark:bg-[#141516] rounded-2xl flex items-center justify-center shadow-sm border border-white/50 dark:border-[#292B2E]">
+                <ShieldCheck size={24} className="text-[#FF9D2E]" />
+              </div>
+              <div>
+                <h4 className="font-bold text-slate-900 dark:text-white text-sm">Verified Student</h4>
+                <p className="text-xs text-slate-600 dark:text-[#A3A5A8]">Member of Al_Faravi-os</p>
+              </div>
+            </div>
+
             <button onClick={handleLogout} className="mt-8 w-full flex items-center justify-center gap-3 p-4 bg-white dark:bg-[#18191A] border border-[#FF5B61]/20 rounded-2xl text-[#FF5B61] font-bold hover:bg-[#FF5B61]/10 transition-colors">
               <LogOut className="w-5 h-5" /> Log Out
             </button>
