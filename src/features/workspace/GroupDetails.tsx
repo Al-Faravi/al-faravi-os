@@ -33,6 +33,10 @@ export default function GroupDetails() {
   const [adminNoteContent, setAdminNoteContent] = useState('');
 
   // --- Assign Friend States ---
+  const [assignMode, setAssignMode] = useState<'existing' | 'new'>('existing'); // Tab Switcher
+  const [allFriends, setAllFriends] = useState<any[]>([]); // Database থেকে সব ফ্রেন্ডের লিস্ট
+  const [selectedFriendEmail, setSelectedFriendEmail] = useState(''); // ড্রপডাউন থেকে সিলেক্ট করা ইমেইল
+  
   const [groupMembers, setGroupMembers] = useState<any[]>([]);
   const [fName, setFName] = useState('');
   const [fEmail, setFEmail] = useState('');
@@ -43,6 +47,7 @@ export default function GroupDetails() {
   useEffect(() => {
     fetchGroupDetails();
     fetchMainOsData();
+    fetchAllFriends(); // নতুন ফাংশন কল
     supabase.auth.getUser().then(({ data }) => { if (data?.user) setAdminId(data.user.id); });
   }, [groupId]);
 
@@ -70,33 +75,58 @@ export default function GroupDetails() {
     if (bcs) setBcsSubjects(bcs);
   };
 
-  // --- Assign User & Copy Logic ---
+  // সব ফ্রেন্ডের লিস্ট আনার ফাংশন
+  const fetchAllFriends = async () => {
+    const { data } = await workspaceAdmin.from('group_members').select('friend_name, email, password_plain').order('created_at', { ascending: false });
+    if (data) {
+      // ডুপ্লিকেট ইমেইল বাদ দিয়ে ইউনিক লিস্ট তৈরি
+      const uniqueFriends = Array.from(new Map(data.filter(item => item.email).map(item => [item.email, item])).values());
+      setAllFriends(uniqueFriends);
+    }
+  };
+
+  // --- Assign User Logic ---
   const handleAssignFriend = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!fName || !fEmail || !fPassword) return;
     setIsAssigning(true);
-    try {
-      // Create user in Supabase Auth
-      const { error: authError } = await workspaceSupabase.auth.signUp({
-        email: fEmail,
-        password: fPassword,
-      });
 
-      // Ignore error if user is already registered, just add them to the group
-      if (authError && !authError.message.includes('already registered')) {
-        throw authError;
+    try {
+      if (assignMode === 'existing') {
+        // --- Existing Friend Logic ---
+        if (!selectedFriendEmail) return;
+        const friendToAssign = allFriends.find(f => f.email === selectedFriendEmail);
+        
+        // চেক করা ফ্রেন্ড অলরেডি এই গ্রুপে আছে কিনা
+        const isAlreadyInGroup = groupMembers.some(m => m.email === selectedFriendEmail);
+        if (isAlreadyInGroup) {
+          alert("This friend is already in the group!");
+          setIsAssigning(false);
+          return;
+        }
+
+        // গ্রুপে অ্যাড করা
+        await workspaceAdmin.from('group_members').insert([{
+          group_id: groupId,
+          friend_name: friendToAssign.friend_name,
+          email: friendToAssign.email,
+          password_plain: friendToAssign.password_plain
+        }]);
+        setSelectedFriendEmail('');
+
+      } else {
+        // --- Create New Account Logic ---
+        if (!fName || !fEmail || !fPassword) return;
+        
+        const { error: authError } = await workspaceSupabase.auth.signUp({ email: fEmail, password: fPassword });
+        if (authError && !authError.message.includes('already registered')) throw authError;
+
+        await workspaceAdmin.from('group_members').insert([{
+          group_id: groupId, friend_name: fName, email: fEmail, password_plain: fPassword
+        }]);
+        setFName(''); setFEmail(''); setFPassword('');
       }
 
-      // Insert member data with plain text password for admin reference
-      await workspaceAdmin.from('group_members').insert([{
-        group_id: groupId,
-        friend_name: fName,
-        email: fEmail,
-        password_plain: fPassword
-      }]);
-
-      setFName(''); setFEmail(''); setFPassword('');
-      fetchGroupMembers();
+      fetchGroupMembers(); // লিস্ট আপডেট
     } catch (error: any) {
       alert(error.message);
     } finally {
@@ -268,14 +298,51 @@ export default function GroupDetails() {
           {/* --- ASSIGN USER SECTION --- */}
           <div className="bg-[#18191A] p-6 rounded-3xl border border-[#292B2E] shadow-sm">
             <h2 className="text-xl font-bold mb-5 flex items-center gap-2 text-white"><UserPlus className="text-[#668CFF]" /> Assign Friend</h2>
+            
+            {/* Tabs */}
+            <div className="flex gap-2 mb-4 bg-[#141516] p-1 rounded-xl border border-[#292B2E]">
+              <button 
+                onClick={() => setAssignMode('existing')} 
+                className={`flex-1 py-1.5 text-sm font-bold rounded-lg transition-colors ${assignMode === 'existing' ? 'bg-[#292B2E] text-white' : 'text-[#707277] hover:text-[#A3A5A8]'}`}
+              >
+                Existing Friend
+              </button>
+              <button 
+                onClick={() => setAssignMode('new')} 
+                className={`flex-1 py-1.5 text-sm font-bold rounded-lg transition-colors ${assignMode === 'new' ? 'bg-[#292B2E] text-white' : 'text-[#707277] hover:text-[#A3A5A8]'}`}
+              >
+                Create New
+              </button>
+            </div>
+
             <form onSubmit={handleAssignFriend} className="space-y-3">
-              <input type="text" placeholder="Friend's Name" value={fName} onChange={(e)=>setFName(e.target.value)} className="w-full bg-[#141516] border border-[#292B2E] focus:border-[#FF9D2E] rounded-xl p-2.5 text-sm outline-none text-white" required/>
-              <div className="flex gap-2">
-                <input type="email" placeholder="Email" value={fEmail} onChange={(e)=>setFEmail(e.target.value)} className="flex-1 bg-[#141516] border border-[#292B2E] focus:border-[#FF9D2E] rounded-xl p-2.5 text-sm outline-none text-white" required/>
-                <input type="text" placeholder="Password" value={fPassword} onChange={(e)=>setFPassword(e.target.value)} className="flex-1 bg-[#141516] border border-[#292B2E] focus:border-[#FF9D2E] rounded-xl p-2.5 text-sm outline-none text-white" required/>
-              </div>
+              {assignMode === 'existing' ? (
+                // --- Existing Friend Dropdown ---
+                <select 
+                  value={selectedFriendEmail} 
+                  onChange={(e) => setSelectedFriendEmail(e.target.value)} 
+                  className="w-full bg-[#141516] border border-[#292B2E] focus:border-[#FF9D2E] rounded-xl p-3 outline-none text-white text-sm" 
+                  required
+                >
+                  <option value="">-- Select Existing Friend --</option>
+                  {allFriends.map((f, idx) => (
+                    <option key={idx} value={f.email}>{f.friend_name} ({f.email})</option>
+                  ))}
+                </select>
+              ) : (
+                // --- Create New Form ---
+                <>
+                  <input type="text" placeholder="Friend's Name" value={fName} onChange={(e)=>setFName(e.target.value)} className="w-full bg-[#141516] border border-[#292B2E] focus:border-[#FF9D2E] rounded-xl p-2.5 text-sm outline-none text-white" required/>
+                  <div className="flex gap-2">
+                    <input type="email" placeholder="Email" value={fEmail} onChange={(e)=>setFEmail(e.target.value)} className="flex-1 bg-[#141516] border border-[#292B2E] focus:border-[#FF9D2E] rounded-xl p-2.5 text-sm outline-none text-white" required/>
+                    <input type="text" placeholder="Password" value={fPassword} onChange={(e)=>setFPassword(e.target.value)} className="flex-1 bg-[#141516] border border-[#292B2E] focus:border-[#FF9D2E] rounded-xl p-2.5 text-sm outline-none text-white" required/>
+                  </div>
+                </>
+              )}
+
               <button type="submit" disabled={isAssigning} className="w-full bg-[#668CFF]/10 hover:bg-[#668CFF]/20 text-[#668CFF] border border-[#668CFF]/20 font-bold py-2.5 rounded-xl transition-colors disabled:opacity-50 flex justify-center items-center gap-2">
-                {isAssigning ? <RefreshCw size={16} className="animate-spin" /> : <Plus size={16} />} Assign to Group
+                {isAssigning ? <RefreshCw size={16} className="animate-spin" /> : <Plus size={16} />} 
+                {assignMode === 'existing' ? 'Assign to Group' : 'Create & Assign'}
               </button>
             </form>
           </div>
