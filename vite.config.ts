@@ -25,27 +25,26 @@ export default defineConfig({
         background_color: '#0D0E0F',
         display: 'standalone',
         orientation: 'portrait',
+        scope: '/',               // <-- যুক্ত করা হয়েছে
+        start_url: '/',           // <-- যুক্ত করা হয়েছে (অ্যাপ ক্র্যাশ রোধ করতে)
         icons: [
           {
             src: '/icons/logo.png',
             sizes: '192x192',
-            type: 'image/png'
-          },
-          {
-            src: '/icons/logo.png',
-            sizes: '512x512',
-            type: 'image/png'
+            type: 'image/png',
+            purpose: 'any'
           },
           {
             src: '/icons/logo.png',
             sizes: '512x512',
             type: 'image/png',
-            purpose: 'any maskable'
+            purpose: 'any maskable' // <-- Maskable যুক্ত করে শর্ট করা হয়েছে
           }
         ]
       },
       workbox: {
         globPatterns: ['**/*.{js,css,html,ico,png,svg}'],
+        navigateFallback: '/index.html', // <-- React Router এর সাদা স্ক্রিন এরর রোধ করতে অত্যন্ত জরুরি
       }
     })
   ]
