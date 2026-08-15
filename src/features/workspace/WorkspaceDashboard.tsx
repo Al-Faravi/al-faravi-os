@@ -67,6 +67,24 @@ export default function WorkspaceDashboard() {
     initTheme();
   }, []);
 
+  // ২. লাইভ অনলাইন স্ট্যাটাস (Live Active Tracker)
+  useEffect(() => {
+    const updatePresence = async () => {
+      const { data: { user } } = await workspaceSupabase.auth.getUser();
+      if (user?.email) {
+        // প্রতি ২ মিনিটে ডাটাবেসে তার last_active আপডেট হবে
+        await workspaceSupabase
+          .from('group_members')
+          .update({ last_active: new Date().toISOString() })
+          .eq('email', user.email);
+      }
+    };
+
+    updatePresence(); // পেজে ঢোকার সাথে সাথে একবার আপডেট
+    const interval = setInterval(updatePresence, 2 * 60 * 1000); // এরপর প্রতি ২ মিনিট পরপর
+    return () => clearInterval(interval);
+  }, []);
+
   const initTheme = () => {
     const savedTheme = localStorage.getItem('workspace_theme') || 'dark';
     setTheme(savedTheme as 'dark' | 'light');
@@ -95,8 +113,31 @@ export default function WorkspaceDashboard() {
       setProfileName(session.user?.email?.split('@')[0] || 'Student');
     }
 
-    const { data: gData } = await workspaceSupabase.from('study_groups').select('*');
-    if (gData) setGroups(gData);
+    // ১. গ্রুপ ফেচ করার ফাংশনে user_id এর বদলে email দিয়ে চেক করুন
+    const fetchMyGroups = async () => {
+      const { data: { user } } = await workspaceSupabase.auth.getUser();
+      if (!user?.email) return;
+
+      // Email দিয়ে গ্রুপ মেম্বারশিপ চেক করা হচ্ছে
+      const { data: memberData } = await workspaceSupabase
+        .from('group_members')
+        .select('group_id')
+        .eq('email', user.email); // <--- এখানে ইমেইল ব্যবহার করা হলো
+
+      if (memberData && memberData.length > 0) {
+        const groupIds = memberData.map(m => m.group_id);
+        const { data: groupsData } = await workspaceSupabase
+          .from('study_groups')
+          .select('*')
+          .in('id', groupIds);
+          
+        setGroups(groupsData || []);
+      } else {
+        setGroups([]); // If user is not a member of any group
+      }
+    };
+
+    await fetchMyGroups();
 
     const { data: cData } = await workspaceSupabase.from('shared_contents').select('*').order('created_at', { ascending: false }).limit(10);
     if (cData) setAllContents(cData);

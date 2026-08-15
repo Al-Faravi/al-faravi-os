@@ -1,5 +1,6 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react'; // useEffect যুক্ত করা হয়েছে
 import { supabase } from '../../lib/supabase';
+import { workspaceSupabase } from '../../lib/supabase'; // workspaceSupabase ইমপোর্ট করা হয়েছে
 import { Mail, Lock, Loader2, ShieldCheck, Smartphone, ArrowLeft } from 'lucide-react';
 
 export default function AuthPage() {
@@ -12,6 +13,19 @@ export default function AuthPage() {
   const [mfaRequired, setMfaRequired] = useState(false);
   const [mfaCode, setMfaCode] = useState('');
   const [factorId, setFactorId] = useState('');
+
+  // ফ্রেন্ড লগইন চেক করার useEffect
+  useEffect(() => {
+    const checkWorkspaceSession = async () => {
+      // চেক করা হচ্ছে কোনো ফ্রেন্ড লগইন করা অবস্থায় এখানে এসেছে কিনা
+      const { data } = await workspaceSupabase.auth.getSession();
+      if (data.session) {
+        // যদি সে ফ্রেন্ড হয়, তবে তাকে জোর করে Workspace এ পাঠিয়ে দেওয়া হবে
+        window.location.href = '/workspace'; 
+      }
+    };
+    checkWorkspaceSession();
+  }, []);
 
   // ==========================================
   // Step 1: Email & Password Login
