@@ -1,12 +1,11 @@
 // src/features/workspace/WorkspaceDashboard.tsx
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { workspaceSupabase } from '../../lib/supabase';
 import { useNavigate } from 'react-router-dom';
 import { 
   Sun, Moon, LayoutDashboard, Users, User, BookOpen, Clock, FileText, 
   ChevronRight, MessageCircle, X, Send, Paperclip, Mic, Square, ArrowLeft, 
-  Trash2, Edit3, FolderOpen, Bell, Sparkles, LogOut, CheckCircle2, Plus,
-  ShieldCheck // New import for Profile Tab
+  Trash2, Edit3, FolderOpen, Sparkles, LogOut, CheckCircle2, Plus, ShieldCheck 
 } from 'lucide-react';
 
 import WorkspaceCourseViewer from './WorkspaceCourseViewer';
@@ -34,6 +33,8 @@ interface ChatMessage {
 
 export default function WorkspaceDashboard() {
   const navigate = useNavigate();
+  
+  // --- States ---
   const [session, setSession] = useState<any>(null);
   const [profileName, setProfileName] = useState('');
   const [isUpdatingProfile, setIsUpdatingProfile] = useState(false);
@@ -64,6 +65,10 @@ export default function WorkspaceDashboard() {
 
   const chatBottomRef = useRef<HTMLDivElement | null>(null);
 
+  // ✅ Fix: useMemo is now at the top level
+  const randomQuote = useMemo(() => DAILY_QUOTES[Math.floor(Math.random() * DAILY_QUOTES.length)], []);
+
+  // --- Effects ---
   useEffect(() => {
     if (isChatOpen) chatBottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [chatMessages, isChatOpen]);
@@ -73,7 +78,7 @@ export default function WorkspaceDashboard() {
     initTheme();
   }, []);
 
-  // --- Live Active Heartbeat ---
+  // Live Active Heartbeat
   useEffect(() => {
     const updatePresence = async () => {
       const { data: { user } } = await workspaceSupabase.auth.getUser();
@@ -89,6 +94,7 @@ export default function WorkspaceDashboard() {
     return () => clearInterval(interval);
   }, []);
 
+  // --- Core Functions ---
   const initTheme = () => {
     const savedTheme = localStorage.getItem('workspace_theme') || 'dark';
     setTheme(savedTheme as 'dark' | 'light');
@@ -141,13 +147,8 @@ export default function WorkspaceDashboard() {
 
     if (memberData && memberData.length > 0) {
       const groupIds = memberData.map(m => m.group_id).filter(id => id !== null);
-      
       if (groupIds.length > 0) {
-        const { data: groupsData, error: groupsError } = await workspaceSupabase
-          .from('study_groups')
-          .select('*')
-          .in('id', groupIds);
-          
+        const { data: groupsData, error: groupsError } = await workspaceSupabase.from('study_groups').select('*').in('id', groupIds);
         if (groupsError) console.error("Error fetching groups:", groupsError);
         setGroups(groupsData || []);
       } else {
@@ -196,6 +197,7 @@ export default function WorkspaceDashboard() {
     navigate('/workspace/login');
   };
 
+  // --- CRUD Notes ---
   const handleAddNote = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!noteTitle || !noteContent || !selectedGroup) return;
@@ -232,7 +234,7 @@ export default function WorkspaceDashboard() {
     }
   };
 
-  // --- CHAT LOGIC ---
+  // --- Chat Logic ---
   useEffect(() => {
     if (selectedGroup && isChatOpen) {
       fetchChatMessages(selectedGroup.id);
@@ -334,6 +336,7 @@ export default function WorkspaceDashboard() {
     }
   };
 
+  // --- Render Handlers ---
   if (loading) return (
     <div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-[#0D0E0F]">
       <div className="w-12 h-12 border-4 border-[#FF9D2E] border-t-transparent rounded-full animate-spin"></div>
@@ -344,7 +347,6 @@ export default function WorkspaceDashboard() {
   if (selectedContent?.content_type === 'bcs_subject') return <WorkspaceBcsViewer subjectData={selectedContent} onBack={handleBack} />;
 
   const currentDate = new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
-  const randomQuote = React.useMemo(() => DAILY_QUOTES[Math.floor(Math.random() * DAILY_QUOTES.length)], []);
   const totalCourses = allContents.filter(c => c.content_type.includes('course') || c.content_type.includes('subject')).length;
   
   const groupCourses = groupContents.filter(c => c.content_type === 'lms_course' || c.content_type === 'bcs_subject');
@@ -353,6 +355,7 @@ export default function WorkspaceDashboard() {
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-[#0D0E0F] text-slate-900 dark:text-[#F5F5F5] font-sans pb-24 transition-colors duration-300 selection:bg-[#FF9D2E]/30 relative">
       
+      {/* HEADER */}
       <header className="sticky top-0 bg-white/80 dark:bg-[#141516]/80 backdrop-blur-xl border-b border-slate-200 dark:border-[#292B2E] z-40 px-4 md:px-8 py-4 flex items-center justify-between shadow-sm">
         <div className="flex items-center gap-3">
           {selectedGroup || activeTab === 'profile' ? (
@@ -384,6 +387,7 @@ export default function WorkspaceDashboard() {
       </header>
 
       <main className="max-w-5xl mx-auto p-4 md:p-8 mt-2">
+        {/* --- MAIN DASHBOARD (Home Tab) --- */}
         {!selectedGroup && activeTab === 'dashboard' && (
           <div className="animate-fade-in space-y-8">
             <div className="bg-gradient-to-r from-white to-slate-100 dark:from-[#18191A] dark:to-[#141516] rounded-3xl p-8 border border-slate-200 dark:border-[#292B2E] shadow-xl relative overflow-hidden transition-colors duration-300">
@@ -398,8 +402,8 @@ export default function WorkspaceDashboard() {
               </div>
             </div>
 
+            {/* Premium Stats Cards */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-              {/* Card 1: Joined Groups */}
               <div className="bg-white dark:bg-[#18191A] p-6 rounded-3xl border border-slate-200 dark:border-[#292B2E] shadow-sm flex flex-col justify-between transition-colors">
                 <div className="flex justify-between items-start mb-4">
                   <div className="w-12 h-12 bg-blue-50 dark:bg-[#141516] rounded-xl flex items-center justify-center border border-blue-100 dark:border-[#292B2E]">
@@ -410,12 +414,11 @@ export default function WorkspaceDashboard() {
                 <div>
                   <p className="text-sm font-bold text-slate-500 dark:text-[#707277] uppercase tracking-wider">Joined Groups</p>
                   <div className="w-full h-1.5 bg-slate-100 dark:bg-[#141516] rounded-full mt-3 overflow-hidden">
-                    <div className="h-full bg-[#668CFF] rounded-full" style={{ width: `${(groups.length / 10) * 100}%` }}></div>
+                    <div className="h-full bg-[#668CFF] rounded-full" style={{ width: `${Math.min((groups.length / 10) * 100, 100)}%` }}></div>
                   </div>
                 </div>
               </div>
 
-              {/* Card 2: Assigned Courses */}
               <div className="bg-white dark:bg-[#18191A] p-6 rounded-3xl border border-slate-200 dark:border-[#292B2E] shadow-sm flex flex-col justify-between transition-colors">
                 <div className="flex justify-between items-start mb-4">
                   <div className="w-12 h-12 bg-green-50 dark:bg-[#141516] rounded-xl flex items-center justify-center border border-green-100 dark:border-[#292B2E]">
@@ -431,7 +434,6 @@ export default function WorkspaceDashboard() {
                 </div>
               </div>
 
-              {/* Card 3: Study Status */}
               <div className="bg-white dark:bg-[#18191A] p-6 rounded-3xl border border-slate-200 dark:border-[#292B2E] shadow-sm flex flex-col justify-between transition-colors">
                 <div className="flex justify-between items-start mb-4">
                   <div className="w-12 h-12 bg-orange-50 dark:bg-[#141516] rounded-xl flex items-center justify-center border border-orange-100 dark:border-[#292B2E]">
@@ -539,6 +541,7 @@ export default function WorkspaceDashboard() {
           </div>
         )}
 
+        {/* Modal For New Note */}
         {showNoteForm && (
           <div className="fixed inset-0 z-[1000] flex items-center justify-center p-4 bg-slate-900/60 dark:bg-[#0D0E0F]/80 backdrop-blur-sm">
             <div className="bg-white dark:bg-[#18191A] p-6 rounded-3xl border border-[#FF9D2E]/30 shadow-2xl w-full max-w-lg animate-fade-in transition-colors">
@@ -558,6 +561,7 @@ export default function WorkspaceDashboard() {
           </div>
         )}
 
+        {/* View / Edit Note Full Screen Mode */}
         {(selectedContent?.content_type === 'shared_note' || selectedContent?.content_type === 'personal_note') && (
           <div className="animate-slide-in-right bg-white dark:bg-[#18191A] rounded-3xl p-6 md:p-10 shadow-lg border border-slate-200 dark:border-[#292B2E] min-h-[60vh] transition-colors">
             {!isEditing ? (
@@ -565,19 +569,28 @@ export default function WorkspaceDashboard() {
                 <div className="flex justify-between items-start">
                   <div>
                     <h2 className="text-3xl font-extrabold text-slate-900 dark:text-white">{selectedContent.title}</h2>
-                    <p className="text-sm text-slate-500 dark:text-[#A3A5A8] mt-2">Created by <span className="font-bold text-slate-700 dark:text-[#F5F5F5]">{selectedContent.content_data?.authorName || 'Member'}</span> on {new Date(selectedContent.created_at).toLocaleDateString()}</p>
+                    <p className="text-sm text-slate-500 dark:text-[#A3A5A8] mt-2">
+                      Created by <span className="font-bold text-slate-700 dark:text-[#F5F5F5]">{selectedContent.content_data?.authorName || 'Member'}</span> on {new Date(selectedContent.created_at).toLocaleDateString()}
+                    </p>
                   </div>
                   {selectedContent.content_data?.userId === session?.user?.id && (
-                    <button onClick={() => setIsEditing(true)} className="flex items-center gap-2 px-4 py-2 bg-[#FF9D2E]/10 text-[#FF9D2E] rounded-xl font-bold hover:bg-[#FF9D2E]/20 transition-colors shrink-0"><Edit3 size={16} /> <span className="hidden sm:inline">Edit</span></button>
+                    <button onClick={() => setIsEditing(true)} className="flex items-center gap-2 px-4 py-2 bg-[#FF9D2E]/10 text-[#FF9D2E] rounded-xl font-bold hover:bg-[#FF9D2E]/20 transition-colors shrink-0">
+                      <Edit3 size={16} /> <span className="hidden sm:inline">Edit</span>
+                    </button>
                   )}
                 </div>
+                
                 <div className="w-full h-[1px] bg-slate-100 dark:bg-[#292B2E]"></div>
+                
                 <div className="prose prose-slate dark:prose-invert max-w-none">
                   <p className="leading-relaxed text-lg whitespace-pre-wrap text-slate-700 dark:text-slate-300">{selectedContent.content_data?.text}</p>
                 </div>
+                
                 {selectedContent.content_data?.userId === session?.user?.id && (
                   <div className="mt-12 flex justify-end">
-                    <button onClick={() => handleDeleteNote(selectedContent.id)} className="flex items-center gap-2 text-[#FF5B61] bg-[#FF5B61]/10 hover:bg-[#FF5B61]/20 px-5 py-2.5 rounded-xl font-bold transition-colors"><Trash2 size={18} /> Delete Note</button>
+                    <button onClick={() => handleDeleteNote(selectedContent.id)} className="flex items-center gap-2 text-[#FF5B61] bg-[#FF5B61]/10 hover:bg-[#FF5B61]/20 px-5 py-2.5 rounded-xl font-bold transition-colors">
+                      <Trash2 size={18} /> Delete Note
+                    </button>
                   </div>
                 )}
               </div>
@@ -602,16 +615,33 @@ export default function WorkspaceDashboard() {
         {activeTab === 'profile' && (
           <div className="animate-fade-in flex flex-col items-center mt-6 max-w-md mx-auto">
             <div className="w-full flex justify-start mb-6">
-              <button onClick={() => setActiveTab('dashboard')} className="flex items-center gap-2 text-slate-500 dark:text-[#A3A5A8] hover:text-[#FF9D2E] dark:hover:text-[#FF9D2E] transition-colors font-bold bg-white dark:bg-[#18191A] px-4 py-2.5 rounded-xl border border-slate-200 dark:border-[#292B2E] shadow-sm hover:shadow-md"><ArrowLeft size={18} /> Back to Dashboard</button>
+              <button 
+                onClick={() => setActiveTab('dashboard')} 
+                className="flex items-center gap-2 text-slate-500 dark:text-[#A3A5A8] hover:text-[#FF9D2E] dark:hover:text-[#FF9D2E] transition-colors font-bold bg-white dark:bg-[#18191A] px-4 py-2.5 rounded-xl border border-slate-200 dark:border-[#292B2E] shadow-sm hover:shadow-md"
+              >
+                <ArrowLeft size={18} /> Back to Dashboard
+              </button>
             </div>
             <div className="w-24 h-24 bg-[#FF9D2E]/10 rounded-full flex items-center justify-center mb-6 border border-[#FF9D2E]/30 shadow-lg shadow-[#FF9D2E]/10">
               <User className="w-12 h-12 text-[#FF9D2E]" />
             </div>
+            
             <div className="w-full bg-white dark:bg-[#18191A] p-6 rounded-3xl border border-slate-200 dark:border-[#292B2E] shadow-sm space-y-4 text-center">
               <h3 className="font-bold text-lg text-slate-500 dark:text-[#A3A5A8]">Your Nickname</h3>
               <div className="flex gap-2">
-                <input type="text" value={profileName} onChange={(e) => setProfileName(e.target.value)} className="flex-1 bg-slate-50 dark:bg-[#141516] border border-slate-200 dark:border-[#292B2E] focus:border-[#FF9D2E] rounded-xl p-3 outline-none text-center font-bold text-slate-900 dark:text-white transition-all" />
-                <button onClick={handleUpdateProfile} disabled={isUpdatingProfile} className="bg-[#19C784] text-white px-5 rounded-xl font-bold hover:bg-emerald-600 transition-colors flex items-center gap-2 disabled:opacity-50"><CheckCircle2 size={20} /> Save</button>
+                <input 
+                  type="text" 
+                  value={profileName} 
+                  onChange={(e) => setProfileName(e.target.value)} 
+                  className="flex-1 bg-slate-50 dark:bg-[#141516] border border-slate-200 dark:border-[#292B2E] focus:border-[#FF9D2E] rounded-xl p-3 outline-none text-center font-bold text-slate-900 dark:text-white transition-all" 
+                />
+                <button 
+                  onClick={handleUpdateProfile} 
+                  disabled={isUpdatingProfile}
+                  className="bg-[#19C784] text-white px-5 rounded-xl font-bold hover:bg-emerald-600 transition-colors flex items-center gap-2 disabled:opacity-50"
+                >
+                  <CheckCircle2 size={20} /> Save
+                </button>
               </div>
               <p className="text-xs text-slate-400 dark:text-[#707277]">This name will appear in group chats and notes.</p>
             </div>
@@ -713,6 +743,7 @@ export default function WorkspaceDashboard() {
         </div>
       )}
 
+      {/* MOBILE NAV */}
       <nav className="md:hidden fixed bottom-0 w-full bg-white/90 dark:bg-[#141516]/90 backdrop-blur-xl border-t border-slate-200 dark:border-[#292B2E] pb-safe z-40">
         <div className="flex justify-around items-center h-16">
           <button onClick={() => { setActiveTab('dashboard'); handleBack(); }} className={`flex flex-col items-center justify-center w-full space-y-1 ${activeTab === 'dashboard' ? 'text-[#FF9D2E]' : 'text-slate-400 dark:text-[#707277]'}`}><LayoutDashboard size={22} /> <span className="text-[10px] font-bold">Home</span></button>
