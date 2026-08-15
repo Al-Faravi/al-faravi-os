@@ -7,10 +7,31 @@ import {
   Layout, Menu, Circle, CheckCircle, Plus, X, Video, File, Trash2
 } from 'lucide-react';
 
-interface Content { id: string; module_id: string; title: string; content_type: string; file_path_or_url: string; is_completed: boolean; }
-interface Module { id: string; title: string; contents: Content[]; }
+interface Content { 
+  id: string; 
+  module_id: string; 
+  title: string; 
+  content_type: string; 
+  file_path_or_url: string; 
+  is_completed: boolean; 
+}
 
-export default function WorkspaceCourseViewer({ courseData, onBack }: { courseData: any; onBack: () => void }) {
+interface Module { 
+  id: string; 
+  title: string; 
+  contents: Content[]; 
+}
+
+// ১. কম্পোনেন্ট ডিক্লেয়ারেশন আপডেট করা হয়েছে
+export default function WorkspaceCourseViewer({ 
+  courseData, 
+  onBack, 
+  readOnly = false 
+}: { 
+  courseData: any; 
+  onBack: () => void; 
+  readOnly?: boolean 
+}) {
   const [loading, setLoading] = useState(true);
   const [course, setCourse] = useState<any>(courseData);
   const [modules, setModules] = useState<Module[]>([]);
@@ -42,12 +63,16 @@ export default function WorkspaceCourseViewer({ courseData, onBack }: { courseDa
   useEffect(() => {
     if (courseData?.content_data?.modules) {
       setModules(courseData.content_data.modules);
-      if (courseData.content_data.modules[0]?.contents?.[0]) setActiveContent(courseData.content_data.modules[0].contents[0]);
+      if (courseData.content_data.modules[0]?.contents?.[0]) {
+        setActiveContent(courseData.content_data.modules[0].contents[0]);
+      }
       setLoading(false);
     }
   }, [courseData]);
 
-  useEffect(() => { if (activeContent) fetchPersonalNotes(activeContent.id); }, [activeContent]);
+  useEffect(() => { 
+    if (activeContent) fetchPersonalNotes(activeContent.id); 
+  }, [activeContent]);
 
   useEffect(() => {
     if (activeNoteId && notes.length > 0) {
@@ -63,12 +88,23 @@ export default function WorkspaceCourseViewer({ courseData, onBack }: { courseDa
   const fetchPersonalNotes = async (contentId: string) => {
     const { data: { user } } = await workspaceSupabase.auth.getUser();
     if (!user) return;
-    const { data } = await workspaceSupabase.from('shared_contents').select('*').eq('content_type', 'personal_note').eq('group_id', courseData.group_id).filter('content_data->>contentId', 'eq', contentId).filter('content_data->>userId', 'eq', user.id).order('created_at', { ascending: true });
+    
+    const { data } = await workspaceSupabase
+      .from('shared_contents')
+      .select('*')
+      .eq('content_type', 'personal_note')
+      .eq('group_id', courseData.group_id)
+      .filter('content_data->>contentId', 'eq', contentId)
+      .filter('content_data->>userId', 'eq', user.id)
+      .order('created_at', { ascending: true });
     
     if (data && data.length > 0) {
       setNotes(data);
       if (!activeNoteId || !data.find(n => n.id === activeNoteId)) setActiveNoteId(data[0].id);
-    } else { setNotes([]); setActiveNoteId(null); }
+    } else { 
+      setNotes([]); 
+      setActiveNoteId(null); 
+    }
   };
 
   const handleCreateNewNote = async () => {
@@ -79,10 +115,16 @@ export default function WorkspaceCourseViewer({ courseData, onBack }: { courseDa
     const nickname = localStorage.getItem(`nickname_${user?.id}`) || 'Member';
     
     const { data } = await workspaceSupabase.from('shared_contents').insert([{
-      group_id: courseData.group_id, title: customName, content_type: 'personal_note', content_data: { text: '', contentId: activeContent.id, userId: user?.id, authorName: nickname }
+      group_id: courseData.group_id, 
+      title: customName, 
+      content_type: 'personal_note', 
+      content_data: { text: '', contentId: activeContent.id, userId: user?.id, authorName: nickname }
     }]).select().single();
 
-    if (data) { setNotes([...notes, data]); setActiveNoteId(data.id); }
+    if (data) { 
+      setNotes([...notes, data]); 
+      setActiveNoteId(data.id); 
+    }
   };
 
   const handleSaveNote = async () => {
@@ -92,11 +134,16 @@ export default function WorkspaceCourseViewer({ courseData, onBack }: { courseDa
       const { data: { user } } = await workspaceSupabase.auth.getUser();
       const nickname = localStorage.getItem(`nickname_${user?.id}`) || 'Member';
       await workspaceSupabase.from('shared_contents').update({ 
-        title: noteTitle, content_data: { text: noteContent, contentId: activeContent?.id, userId: user?.id, authorName: nickname } 
+        title: noteTitle, 
+        content_data: { text: noteContent, contentId: activeContent?.id, userId: user?.id, authorName: nickname } 
       }).eq('id', activeNoteId);
+      
       setNotes(notes.map(n => n.id === activeNoteId ? { ...n, title: noteTitle, content_data: { ...n.content_data, text: noteContent } } : n));
-    } catch (error) { alert("Error saving note"); } 
-    finally { setIsSavingNote(false); }
+    } catch (error) { 
+      alert("Error saving note"); 
+    } finally { 
+      setIsSavingNote(false); 
+    }
   };
 
   const handleDeleteNote = async () => {
@@ -122,8 +169,11 @@ export default function WorkspaceCourseViewer({ courseData, onBack }: { courseDa
       setModules(updatedModules);
       setIsAddModuleOpen(false);
       setNewModuleTitle('');
-    } catch (err) { alert("Error adding module. Please check Database permissions."); } 
-    finally { setIsAddingModule(false); }
+    } catch (err) { 
+      alert("Error adding module. Please check Database permissions."); 
+    } finally { 
+      setIsAddingModule(false); 
+    }
   };
 
   // --- Add Resource to Module Logic ---
@@ -133,7 +183,12 @@ export default function WorkspaceCourseViewer({ courseData, onBack }: { courseDa
     setIsAddingResource(true);
 
     const newContent: Content = {
-      id: `res-${Date.now()}`, module_id: modules[targetModuleIndex].id, title: newResTitle, content_type: newResType, file_path_or_url: newResUrl, is_completed: false
+      id: `res-${Date.now()}`, 
+      module_id: modules[targetModuleIndex].id, 
+      title: newResTitle, 
+      content_type: newResType, 
+      file_path_or_url: newResUrl, 
+      is_completed: false
     };
 
     const updatedModules = [...modules];
@@ -146,21 +201,33 @@ export default function WorkspaceCourseViewer({ courseData, onBack }: { courseDa
       if (error) throw error;
       setModules(updatedModules);
       setIsAddResourceOpen(false);
-      setNewResTitle(''); setNewResUrl('');
-    } catch (err) { alert("Error adding resource. Please check Database permissions."); } 
-    finally { setIsAddingResource(false); }
+      setNewResTitle(''); 
+      setNewResUrl('');
+    } catch (err) { 
+      alert("Error adding resource. Please check Database permissions."); 
+    } finally { 
+      setIsAddingResource(false); 
+    }
   };
 
   const toggleContentCompletion = (contentId: string, currentStatus: boolean) => {
+    // Only allow toggling if it's not strictly read-only content viewing. 
+    // If you want read-only users to not be able to mark as done, you can add `if(readOnly) return;` here.
     const newStatus = !currentStatus;
     const newModules = modules.map(mod => ({
-      ...mod, contents: mod.contents.map(c => c.id === contentId ? { ...c, is_completed: newStatus } : c)
+      ...mod, 
+      contents: mod.contents.map(c => c.id === contentId ? { ...c, is_completed: newStatus } : c)
     }));
     setModules(newModules);
+    
     if (activeContent?.id === contentId) setActiveContent({ ...activeContent, is_completed: newStatus });
     
-    let total = 0; let completed = 0;
-    newModules.forEach(mod => mod.contents?.forEach(c => { total++; if (c.is_completed) completed++; }));
+    let total = 0; 
+    let completed = 0;
+    newModules.forEach(mod => mod.contents?.forEach(c => { 
+      total++; 
+      if (c.is_completed) completed++; 
+    }));
     setCourse((prev: any) => ({ ...prev, progress_pct: total === 0 ? 0 : Math.round((completed / total) * 100) }));
   };
 
@@ -186,10 +253,19 @@ export default function WorkspaceCourseViewer({ courseData, onBack }: { courseDa
             <div key={mod.id || mIdx} className="mb-5">
               <div className="flex justify-between items-center mb-2 px-2 border-b border-[#E2E8F0] pb-2 group">
                 <h3 className="text-sm font-bold text-[#020F33] uppercase">{mod.title}</h3>
-                <button onClick={() => { setTargetModuleIndex(mIdx); setIsAddResourceOpen(true); }} className="p-1 rounded bg-[#E2E8F0]/50 hover:bg-purple-100 text-[#475569] hover:text-purple-600 transition-colors" title="Add Resource">
-                  <Plus size={14}/>
-                </button>
+                
+                {/* ২. Add Resource বাটনে readOnly চেকিং */}
+                {!readOnly && (
+                  <button 
+                    onClick={() => { setTargetModuleIndex(mIdx); setIsAddResourceOpen(true); }} 
+                    className="p-1 rounded bg-[#E2E8F0]/50 hover:bg-purple-100 text-[#475569] hover:text-purple-600 transition-colors" 
+                    title="Add Resource"
+                  >
+                    <Plus size={14}/>
+                  </button>
+                )}
               </div>
+              
               <div className="space-y-1">
                 {mod.contents?.map((content, cIdx) => (
                   <div key={content.id || cIdx} className={`flex items-start gap-2 p-2 rounded-xl transition-all ${activeContent?.title === content.title ? 'bg-[#020F33] text-white shadow-md' : 'hover:bg-[#F8FAFC]'}`}>
@@ -206,10 +282,13 @@ export default function WorkspaceCourseViewer({ courseData, onBack }: { courseDa
             </div>
           ))
         )}
-        {/* Add New Module Button */}
-        <button onClick={() => setIsAddModuleOpen(true)} className="w-full mt-6 p-3 border-2 border-dashed border-[#E2E8F0] hover:border-purple-500 hover:text-purple-600 text-[#475569] font-bold rounded-xl flex items-center justify-center gap-2 transition-all">
-          <Plus size={18} /> Add New Module
-        </button>
+
+        {/* ৩. Add New Module বাটনে readOnly চেকিং */}
+        {!readOnly && (
+          <button onClick={() => setIsAddModuleOpen(true)} className="w-full mt-6 p-3 border-2 border-dashed border-[#E2E8F0] hover:border-purple-500 hover:text-purple-600 text-[#475569] font-bold rounded-xl flex items-center justify-center gap-2 transition-all">
+            <Plus size={18} /> Add New Module
+          </button>
+        )}
       </div>
     </>
   );
@@ -229,10 +308,25 @@ export default function WorkspaceCourseViewer({ courseData, onBack }: { courseDa
               <button onClick={() => setIsAddResourceOpen(false)} className="text-slate-400 hover:text-red-500"><X size={20}/></button>
             </div>
             <form onSubmit={handleAddResource} className="space-y-4">
-              <div><label className="text-xs font-bold text-[#475569] uppercase mb-1 block">Resource Title</label><input type="text" value={newResTitle} onChange={(e)=>setNewResTitle(e.target.value)} placeholder="e.g. Extra Reference Video" className="w-full border border-[#E2E8F0] focus:border-purple-500 rounded-xl p-3 outline-none" required/></div>
-              <div><label className="text-xs font-bold text-[#475569] uppercase mb-1 block">Type</label><select value={newResType} onChange={(e)=>setNewResType(e.target.value)} className="w-full border border-[#E2E8F0] focus:border-purple-500 rounded-xl p-3 outline-none"><option value="youtube">YouTube Video</option><option value="video">Direct Video URL</option><option value="pdf">PDF Link</option></select></div>
-              <div><label className="text-xs font-bold text-[#475569] uppercase mb-1 block">Link / URL</label><input type="url" value={newResUrl} onChange={(e)=>setNewResUrl(e.target.value)} placeholder="https://..." className="w-full border border-[#E2E8F0] focus:border-purple-500 rounded-xl p-3 outline-none" required/></div>
-              <button type="submit" disabled={isAddingResource} className="w-full bg-purple-600 hover:bg-purple-700 text-white font-bold py-3 rounded-xl disabled:opacity-50">{isAddingResource ? 'Adding...' : 'Add Resource'}</button>
+              <div>
+                <label className="text-xs font-bold text-[#475569] uppercase mb-1 block">Resource Title</label>
+                <input type="text" value={newResTitle} onChange={(e)=>setNewResTitle(e.target.value)} placeholder="e.g. Extra Reference Video" className="w-full border border-[#E2E8F0] focus:border-purple-500 rounded-xl p-3 outline-none" required/>
+              </div>
+              <div>
+                <label className="text-xs font-bold text-[#475569] uppercase mb-1 block">Type</label>
+                <select value={newResType} onChange={(e)=>setNewResType(e.target.value)} className="w-full border border-[#E2E8F0] focus:border-purple-500 rounded-xl p-3 outline-none">
+                  <option value="youtube">YouTube Video</option>
+                  <option value="video">Direct Video URL</option>
+                  <option value="pdf">PDF Link</option>
+                </select>
+              </div>
+              <div>
+                <label className="text-xs font-bold text-[#475569] uppercase mb-1 block">Link / URL</label>
+                <input type="url" value={newResUrl} onChange={(e)=>setNewResUrl(e.target.value)} placeholder="https://..." className="w-full border border-[#E2E8F0] focus:border-purple-500 rounded-xl p-3 outline-none" required/>
+              </div>
+              <button type="submit" disabled={isAddingResource} className="w-full bg-purple-600 hover:bg-purple-700 text-white font-bold py-3 rounded-xl disabled:opacity-50">
+                {isAddingResource ? 'Adding...' : 'Add Resource'}
+              </button>
             </form>
           </div>
         </div>
@@ -248,8 +342,13 @@ export default function WorkspaceCourseViewer({ courseData, onBack }: { courseDa
               <button onClick={() => setIsAddModuleOpen(false)} className="text-slate-400 hover:text-red-500"><X size={20}/></button>
             </div>
             <form onSubmit={handleAddModule} className="space-y-4">
-              <div><label className="text-xs font-bold text-[#475569] uppercase mb-1 block">Module Title</label><input type="text" value={newModuleTitle} onChange={(e)=>setNewModuleTitle(e.target.value)} placeholder="e.g. Chapter 1: Introduction" className="w-full border border-[#E2E8F0] focus:border-purple-500 rounded-xl p-3 outline-none" required/></div>
-              <button type="submit" disabled={isAddingModule} className="w-full bg-purple-600 hover:bg-purple-700 text-white font-bold py-3 rounded-xl disabled:opacity-50">{isAddingModule ? 'Creating...' : 'Create Module'}</button>
+              <div>
+                <label className="text-xs font-bold text-[#475569] uppercase mb-1 block">Module Title</label>
+                <input type="text" value={newModuleTitle} onChange={(e)=>setNewModuleTitle(e.target.value)} placeholder="e.g. Chapter 1: Introduction" className="w-full border border-[#E2E8F0] focus:border-purple-500 rounded-xl p-3 outline-none" required/>
+              </div>
+              <button type="submit" disabled={isAddingModule} className="w-full bg-purple-600 hover:bg-purple-700 text-white font-bold py-3 rounded-xl disabled:opacity-50">
+                {isAddingModule ? 'Creating...' : 'Create Module'}
+              </button>
             </form>
           </div>
         </div>
@@ -258,18 +357,32 @@ export default function WorkspaceCourseViewer({ courseData, onBack }: { courseDa
       {showMobileSidebar && (
         <div className="fixed inset-0 z-50 flex lg:hidden">
           <div className="fixed inset-0 bg-[#020F33]/60 backdrop-blur-sm" onClick={() => setShowMobileSidebar(false)}></div>
-          <aside className="relative w-4/5 max-w-sm bg-white h-full shadow-2xl flex flex-col animate-in slide-in-from-left"><button onClick={() => setShowMobileSidebar(false)} className="absolute top-4 right-4 p-2 bg-rose-50 text-rose-500 rounded-full z-20"><X size={16} /></button><SidebarContent /></aside>
+          <aside className="relative w-4/5 max-w-sm bg-white h-full shadow-2xl flex flex-col animate-in slide-in-from-left">
+            <button onClick={() => setShowMobileSidebar(false)} className="absolute top-4 right-4 p-2 bg-rose-50 text-rose-500 rounded-full z-20">
+              <X size={16} />
+            </button>
+            <SidebarContent />
+          </aside>
         </div>
       )}
 
       {/* Header */}
       <header className="bg-white border-b border-[#E2E8F0] px-3 md:px-6 py-3 flex flex-col md:flex-row md:items-center justify-between shrink-0 shadow-sm gap-3">
         <div className="flex items-center gap-2 md:gap-4 flex-1 min-w-0">
-          <button onClick={onBack} className="p-2 bg-[#F8FAFC] hover:bg-[#E2E8F0] rounded-xl transition-colors shrink-0"><ArrowLeft size={18} className="text-[#475569]" /></button>
-          <button onClick={() => setShowMobileSidebar(true)} className="lg:hidden p-2 bg-[#F8FAFC] text-[#020F33] rounded-xl border border-[#E2E8F0] shrink-0"><Menu size={18} /></button>
+          <button onClick={onBack} className="p-2 bg-[#F8FAFC] hover:bg-[#E2E8F0] rounded-xl transition-colors shrink-0">
+            <ArrowLeft size={18} className="text-[#475569]" />
+          </button>
+          <button onClick={() => setShowMobileSidebar(true)} className="lg:hidden p-2 bg-[#F8FAFC] text-[#020F33] rounded-xl border border-[#E2E8F0] shrink-0">
+            <Menu size={18} />
+          </button>
           <div className="min-w-0 flex-1">
             <h1 className="font-bold text-sm md:text-lg leading-tight truncate">{courseData.title}</h1>
-            <div className="flex items-center gap-2 mt-1 max-w-[200px]"><div className="flex-1 h-1.5 bg-[#F8FAFC] rounded-full overflow-hidden border border-[#E2E8F0]"><div className="h-full transition-all duration-500 bg-purple-500" style={{ width: `${course?.progress_pct || 0}%` }}></div></div><span className="text-[10px] font-black text-[#475569]">{course?.progress_pct || 0}%</span></div>
+            <div className="flex items-center gap-2 mt-1 max-w-[200px]">
+              <div className="flex-1 h-1.5 bg-[#F8FAFC] rounded-full overflow-hidden border border-[#E2E8F0]">
+                <div className="h-full transition-all duration-500 bg-purple-500" style={{ width: `${course?.progress_pct || 0}%` }}></div>
+              </div>
+              <span className="text-[10px] font-black text-[#475569]">{course?.progress_pct || 0}%</span>
+            </div>
           </div>
         </div>
         <div className="flex items-center gap-2 overflow-x-auto hide-scrollbar shrink-0 ml-10 md:ml-2">
@@ -284,7 +397,9 @@ export default function WorkspaceCourseViewer({ courseData, onBack }: { courseDa
 
       {/* Main Workspace Layout */}
       <div className="flex-1 flex overflow-hidden">
-        <aside className="w-80 bg-white border-r border-[#E2E8F0] flex-col overflow-hidden shrink-0 hidden lg:flex"><SidebarContent /></aside>
+        <aside className="w-80 bg-white border-r border-[#E2E8F0] flex-col overflow-hidden shrink-0 hidden lg:flex">
+          <SidebarContent />
+        </aside>
 
         <main className={`flex-1 flex overflow-hidden bg-[#F8FAFC] p-2 md:p-4 gap-2 md:gap-4 ${viewMode === 'split' ? 'flex-col lg:flex-row' : 'flex-col'}`}>
           {(viewMode === 'split' || viewMode === 'media') && (
@@ -301,7 +416,10 @@ export default function WorkspaceCourseViewer({ courseData, onBack }: { courseDa
               ) : activeContent?.content_type === 'pdf' ? (
                 <iframe className="w-full h-full bg-white min-h-[300px]" src={activeContent.file_path_or_url}></iframe>
               ) : (
-                <div className="flex-1 flex flex-col items-center justify-center text-white p-6"><Target size={48} className="opacity-20 mb-4" /><p className="font-bold text-center">Select material from modules</p></div>
+                <div className="flex-1 flex flex-col items-center justify-center text-white p-6">
+                  <Target size={48} className="opacity-20 mb-4" />
+                  <p className="font-bold text-center">Select material from modules</p>
+                </div>
               )}
             </div>
           )}
@@ -315,23 +433,52 @@ export default function WorkspaceCourseViewer({ courseData, onBack }: { courseDa
                       {note.title}
                     </button>
                   ))}
-                  {activeContent && <button onClick={handleCreateNewNote} className="px-4 py-2 text-sm font-bold text-purple-600 flex items-center gap-1 hover:bg-purple-50/50 whitespace-nowrap"><Plus size={14}/> New Note</button>}
+                  
+                  {/* ৪. New Note বাটনে readOnly চেকিং */}
+                  {!readOnly && activeContent && (
+                    <button onClick={handleCreateNewNote} className="px-4 py-2 text-sm font-bold text-purple-600 flex items-center gap-1 hover:bg-purple-50/50 whitespace-nowrap">
+                      <Plus size={14}/> New Note
+                    </button>
+                  )}
+
                 </div>
               </div>
               
               {activeNoteId ? (
                 <div className="flex flex-col flex-1">
                   <div className="p-3 border-b border-[#E2E8F0] flex gap-2 items-center">
-                    <input type="text" value={noteTitle} onChange={(e) => setNoteTitle(e.target.value)} placeholder="Note Title" className="flex-1 text-lg font-bold outline-none bg-transparent text-[#020F33]" />
-                    <button onClick={handleDeleteNote} className="p-2 text-red-500 hover:bg-red-50 rounded-lg"><Trash2 size={16}/></button>
-                    <button onClick={handleSaveNote} disabled={isSavingNote} className="px-4 py-1.5 rounded-lg text-sm font-bold flex items-center gap-2 bg-[#020F33] hover:bg-purple-500 text-white disabled:opacity-50">
-                      {isSavingNote ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />} Save
-                    </button>
+                    <input 
+                      type="text" 
+                      value={noteTitle} 
+                      onChange={(e) => setNoteTitle(e.target.value)} 
+                      placeholder="Note Title" 
+                      className="flex-1 text-lg font-bold outline-none bg-transparent text-[#020F33]" 
+                      disabled={readOnly} // Optional: Add disabled state if note editing shouldn't happen in readOnly
+                    />
+                    
+                    {!readOnly && (
+                      <>
+                        <button onClick={handleDeleteNote} className="p-2 text-red-500 hover:bg-red-50 rounded-lg">
+                          <Trash2 size={16}/>
+                        </button>
+                        <button onClick={handleSaveNote} disabled={isSavingNote} className="px-4 py-1.5 rounded-lg text-sm font-bold flex items-center gap-2 bg-[#020F33] hover:bg-purple-500 text-white disabled:opacity-50">
+                          {isSavingNote ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />} Save
+                        </button>
+                      </>
+                    )}
                   </div>
-                  <textarea value={noteContent} onChange={(e) => setNoteContent(e.target.value)} placeholder="Write your notes here..." className="flex-1 w-full p-4 resize-none outline-none text-[#020F33] leading-relaxed" />
+                  <textarea 
+                    value={noteContent} 
+                    onChange={(e) => setNoteContent(e.target.value)} 
+                    placeholder="Write your notes here..." 
+                    className="flex-1 w-full p-4 resize-none outline-none text-[#020F33] leading-relaxed" 
+                    disabled={readOnly} // Optional: Add disabled state if note editing shouldn't happen in readOnly
+                  />
                 </div>
               ) : (
-                <div className="flex-1 flex items-center justify-center text-slate-400 p-6 text-center">Select a lesson and click "+ New Note" to start writing separately!</div>
+                <div className="flex-1 flex items-center justify-center text-slate-400 p-6 text-center">
+                  Select a lesson and click "+ New Note" to start writing separately!
+                </div>
               )}
             </div>
           )}

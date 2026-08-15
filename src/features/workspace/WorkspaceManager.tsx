@@ -37,7 +37,9 @@ export default function WorkspaceManager() {
 
   // --- Fetch Unique Friends for Sidebar ---
   const fetchFriendsList = async () => {
-    const { data } = await workspaceAdmin.from('group_members').select('email, friend_name, last_active').order('last_active', { ascending: false });
+    // order('created_at') দিলে নতুন ইউজাররা null status থাকা সত্ত্বেও লিস্টে আসবে
+    const { data } = await workspaceAdmin.from('group_members').select('email, friend_name, last_active').order('created_at', { ascending: false });
+    
     if (data) {
       const uniqueFriends = Array.from(new Map(data.filter(item => item.email).map(item => [item.email, item])).values());
       setAllFriends(uniqueFriends);

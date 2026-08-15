@@ -24,10 +24,12 @@ interface BcsChapter {
 
 export default function WorkspaceBcsViewer({ 
   subjectData, 
-  onBack 
+  onBack,
+  readOnly = false 
 }: { 
   subjectData: any; 
-  onBack: () => void 
+  onBack: () => void;
+  readOnly?: boolean;
 }) {
   const [loading, setLoading] = useState(true);
   const [subject, setSubject] = useState<any>(subjectData);
@@ -148,12 +150,14 @@ export default function WorkspaceBcsViewer({
               <div className="space-y-1">
                 {chap.resources?.map((resource, rIdx) => (
                   <div key={resource.id || rIdx} className={`flex items-start gap-2 p-2 rounded-xl transition-all ${activeResource?.title === resource.title ? 'bg-[#020F33] text-white shadow-md' : 'hover:bg-[#F8FAFC]'}`}>
-                    <button 
-                      onClick={() => toggleResourceCompletion(resource.id || resource.title, resource.is_completed)}
-                      className={`mt-1 shrink-0 ${resource.is_completed ? 'text-[#A3D803]' : (activeResource?.title === resource.title ? 'text-slate-400' : 'text-[#CBD5E1] hover:text-[#02C2D5]')}`}
-                    >
-                      {resource.is_completed ? <CheckCircle size={18} /> : <Circle size={18} />}
-                    </button>
+                    {!readOnly && (
+                      <button 
+                        onClick={() => toggleResourceCompletion(resource.id || resource.title, resource.is_completed)}
+                        className={`mt-1 shrink-0 ${resource.is_completed ? 'text-[#A3D803]' : (activeResource?.title === resource.title ? 'text-slate-400' : 'text-[#CBD5E1] hover:text-[#02C2D5]')}`}
+                      >
+                        {resource.is_completed ? <CheckCircle size={18} /> : <Circle size={18} />}
+                      </button>
+                    )}
                     <button onClick={() => { setActiveResource(resource); setShowMobileSidebar(false); }} className="flex-1 text-left">
                       <span className={`text-sm font-medium leading-snug line-clamp-2 ${resource.is_completed && activeResource?.title !== resource.title ? 'line-through text-slate-400' : ''}`}>
                         {resource.title}
@@ -231,7 +235,7 @@ export default function WorkspaceBcsViewer({
           {(viewMode === 'split' || viewMode === 'media') && (
             <div className={`flex flex-col bg-black rounded-2xl overflow-hidden shadow-lg border border-[#E2E8F0] shrink-0 lg:shrink relative ${viewMode === 'split' ? 'h-2/5 lg:h-full lg:w-1/2' : 'h-full w-full'}`}>
               
-              {activeResource && (
+              {!readOnly && activeResource && (
                 <div className="absolute top-4 right-4 z-10">
                   <button 
                     onClick={() => toggleResourceCompletion(activeResource.id || activeResource.title, activeResource.is_completed)}
@@ -260,7 +264,7 @@ export default function WorkspaceBcsViewer({
                   <FileText size={16} style={{ color: iconColor }} className="shrink-0" /> 
                   <span className="truncate">Personal Notes</span>
                 </h3>
-                {activeResource && (
+                {!readOnly && activeResource && (
                   <button onClick={handleSaveNote} disabled={isSavingNote} className="px-3 py-1.5 md:px-4 md:py-2 rounded-lg text-xs md:text-sm font-bold flex items-center gap-2 bg-[#020F33] text-white hover:opacity-80 transition-colors shrink-0">
                     {isSavingNote ? <Loader2 size={14} className="animate-spin" /> : <><Save size={14} /> <span className="hidden sm:inline">Save</span></>}
                   </button>
@@ -270,8 +274,9 @@ export default function WorkspaceBcsViewer({
               <textarea 
                 value={noteContent} 
                 onChange={(e) => setNoteContent(e.target.value)} 
-                disabled={!activeResource} 
+                disabled={!activeResource || readOnly} 
                 placeholder={activeResource ? "Write your notes for this topic here..." : "Select a topic first..."} 
+                readOnly={readOnly}
                 className="flex-1 w-full p-4 md:p-6 resize-none focus:outline-none focus:ring-inset focus:ring-2 text-[#020F33] text-sm md:text-base leading-relaxed disabled:bg-slate-50 disabled:opacity-50"
                 style={{ '--tw-ring-color': iconColor } as any}
               />

@@ -33,10 +33,10 @@ export default function GroupDetails() {
   const [adminNoteContent, setAdminNoteContent] = useState('');
 
   // --- Assign Friend States ---
-  const [assignMode, setAssignMode] = useState<'existing' | 'new'>('existing'); // Tab Switcher
-  const [allFriends, setAllFriends] = useState<any[]>([]); // Database থেকে সব ফ্রেন্ডের লিস্ট
-  const [selectedFriendEmail, setSelectedFriendEmail] = useState(''); // ড্রপডাউন থেকে সিলেক্ট করা ইমেইল
-  
+  const [assignMode, setAssignMode] = useState<'existing' | 'new'>('existing');
+  const [allFriends, setAllFriends] = useState<any[]>([]);
+  const [selectedFriendEmail, setSelectedFriendEmail] = useState('');
+
   const [groupMembers, setGroupMembers] = useState<any[]>([]);
   const [fName, setFName] = useState('');
   const [fEmail, setFEmail] = useState('');
@@ -47,7 +47,7 @@ export default function GroupDetails() {
   useEffect(() => {
     fetchGroupDetails();
     fetchMainOsData();
-    fetchAllFriends(); // নতুন ফাংশন কল
+    fetchAllFriends(); // Fetch all friends on load
     supabase.auth.getUser().then(({ data }) => { if (data?.user) setAdminId(data.user.id); });
   }, [groupId]);
 
@@ -55,7 +55,7 @@ export default function GroupDetails() {
     const { data: gData } = await workspaceAdmin.from('study_groups').select('*').eq('id', groupId).single();
     if (gData) setGroup(gData);
     fetchGroupContents();
-    fetchGroupMembers(); // Load Members
+    fetchGroupMembers(); 
   };
 
   const fetchGroupContents = async () => {
@@ -68,6 +68,15 @@ export default function GroupDetails() {
     if (data) setGroupMembers(data);
   };
 
+  // Fetch unique list of all friends in the system
+  const fetchAllFriends = async () => {
+    const { data } = await workspaceAdmin.from('group_members').select('friend_name, email, password_plain').order('created_at', { ascending: false });
+    if (data) {
+      const uniqueFriends = Array.from(new Map(data.filter(item => item.email).map(item => [item.email, item])).values());
+      setAllFriends(uniqueFriends);
+    }
+  };
+
   const fetchMainOsData = async () => {
     const { data: lms } = await supabase.from('lms_courses').select('id, title');
     if (lms) setLmsCourses(lms);
@@ -75,28 +84,16 @@ export default function GroupDetails() {
     if (bcs) setBcsSubjects(bcs);
   };
 
-  // সব ফ্রেন্ডের লিস্ট আনার ফাংশন
-  const fetchAllFriends = async () => {
-    const { data } = await workspaceAdmin.from('group_members').select('friend_name, email, password_plain').order('created_at', { ascending: false });
-    if (data) {
-      // ডুপ্লিকেট ইমেইল বাদ দিয়ে ইউনিক লিস্ট তৈরি
-      const uniqueFriends = Array.from(new Map(data.filter(item => item.email).map(item => [item.email, item])).values());
-      setAllFriends(uniqueFriends);
-    }
-  };
-
-  // --- Assign User Logic ---
+  // --- Assign User Logic (Existing & New) ---
   const handleAssignFriend = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsAssigning(true);
 
     try {
       if (assignMode === 'existing') {
-        // --- Existing Friend Logic ---
         if (!selectedFriendEmail) return;
         const friendToAssign = allFriends.find(f => f.email === selectedFriendEmail);
         
-        // চেক করা ফ্রেন্ড অলরেডি এই গ্রুপে আছে কিনা
         const isAlreadyInGroup = groupMembers.some(m => m.email === selectedFriendEmail);
         if (isAlreadyInGroup) {
           alert("This friend is already in the group!");
@@ -104,7 +101,6 @@ export default function GroupDetails() {
           return;
         }
 
-        // গ্রুপে অ্যাড করা
         await workspaceAdmin.from('group_members').insert([{
           group_id: groupId,
           friend_name: friendToAssign.friend_name,
@@ -114,7 +110,6 @@ export default function GroupDetails() {
         setSelectedFriendEmail('');
 
       } else {
-        // --- Create New Account Logic ---
         if (!fName || !fEmail || !fPassword) return;
         
         const { error: authError } = await workspaceSupabase.auth.signUp({ email: fEmail, password: fPassword });
@@ -126,7 +121,8 @@ export default function GroupDetails() {
         setFName(''); setFEmail(''); setFPassword('');
       }
 
-      fetchGroupMembers(); // লিস্ট আপডেট
+      fetchGroupMembers();
+      fetchAllFriends(); // Update dropdown instantly
     } catch (error: any) {
       alert(error.message);
     } finally {
@@ -249,19 +245,18 @@ export default function GroupDetails() {
   const groupCourses = contents.filter(c => c.content_type === 'lms_course' || c.content_type === 'bcs_subject');
   const groupNotes = contents.filter(c => c.content_type === 'shared_note' || c.content_type === 'personal_note');
 
-  if (selectedContent?.content_type === 'lms_course') return <WorkspaceCourseViewer courseData={selectedContent} onBack={() => setSelectedContent(null)} />;
-  if (selectedContent?.content_type === 'bcs_subject') return <WorkspaceBcsViewer subjectData={selectedContent} onBack={() => setSelectedContent(null)} />;
+  // Passing readOnly={true} to disable adding modules/resources from Admin View
+  if (selectedContent?.content_type === 'lms_course') return <WorkspaceCourseViewer courseData={selectedContent} onBack={() => setSelectedContent(null)} readOnly={true} />;
+  if (selectedContent?.content_type === 'bcs_subject') return <WorkspaceBcsViewer subjectData={selectedContent} onBack={() => setSelectedContent(null)} readOnly={true} />;
   if (!group) return <div className="min-h-screen bg-[#0D0E0F] flex items-center justify-center"><div className="w-10 h-10 border-4 border-[#FF9D2E] border-t-transparent rounded-full animate-spin"></div></div>;
 
   return (
     <div className="min-h-screen bg-[#0D0E0F] text-[#F5F5F5] font-sans pb-20 selection:bg-[#FF9D2E]/30 relative">
       <div className="sticky top-0 bg-[#0D0E0F]/80 backdrop-blur-xl border-b border-[#292B2E] z-40 px-6 py-4">
         <div className="max-w-6xl mx-auto flex items-center gap-4">
-          <button onClick={() => navigate('/workspace-manager')} className="p-2.5 bg-[#141516] hover:bg-[#1D1E20] border border-[#292B2E] rounded-xl text-[#A3A5A8] transition-colors">
-            <ArrowLeft size={20} />
-          </button>
+          <button onClick={() => navigate('/workspace-manager')} className="p-2.5 bg-[#141516] border border-[#292B2E] rounded-xl"><ArrowLeft size={20} /></button>
           <div>
-            <h1 className="text-2xl font-extrabold text-[#F5F5F5]">{group.name}</h1>
+            <h1 className="text-2xl font-extrabold">{group.name}</h1>
             <p className="text-[#A3A5A8] text-sm">Full Admin Control Panel</p>
           </div>
         </div>
@@ -271,33 +266,30 @@ export default function GroupDetails() {
         
         {/* Top Row: Import & Assign */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <div className="bg-[#18191A] p-6 rounded-3xl border border-[#292B2E] shadow-sm flex flex-col justify-between">
-            <div>
-              <h2 className="text-xl font-bold mb-5 flex items-center gap-2 text-white">
-                <Download className="text-[#19C784]" /> Push Course to Group
-              </h2>
-              <div className="space-y-4">
-                <div className="flex gap-2">
-                  <select value={selectedLms} onChange={(e) => setSelectedLms(e.target.value)} className="flex-1 bg-[#141516] border border-[#292B2E] focus:border-[#FF9D2E] rounded-xl p-3 outline-none text-sm">
-                    <option value="">-- Select LMS Course --</option>
-                    {lmsCourses.map(c => <option key={c.id} value={c.id}>{c.title}</option>)}
-                  </select>
-                  <button onClick={handleImportLms} disabled={loading || !selectedLms} className="bg-[#19C784]/10 text-[#19C784] hover:bg-[#19C784]/20 border border-[#19C784]/20 px-4 rounded-xl font-bold transition-colors disabled:opacity-50"><Plus size={20}/></button>
-                </div>
-                <div className="flex gap-2">
-                  <select value={selectedBcs} onChange={(e) => setSelectedBcs(e.target.value)} className="flex-1 bg-[#141516] border border-[#292B2E] focus:border-[#FF9D2E] rounded-xl p-3 outline-none text-sm">
-                    <option value="">-- Select BCS Subject --</option>
-                    {bcsSubjects.map(c => <option key={c.id} value={c.id}>{c.title}</option>)}
-                  </select>
-                  <button onClick={handleImportBcs} disabled={loading || !selectedBcs} className="bg-[#668CFF]/10 text-[#668CFF] hover:bg-[#668CFF]/20 border border-[#668CFF]/20 px-4 rounded-xl font-bold transition-colors disabled:opacity-50"><Plus size={20}/></button>
-                </div>
+          {/* Import Section */}
+          <div className="bg-[#18191A] p-6 rounded-3xl border border-[#292B2E] shadow-sm">
+            <h2 className="text-xl font-bold mb-5 flex items-center gap-2"><Download className="text-[#19C784]" /> Push Course to Group</h2>
+            <div className="space-y-4">
+              <div className="flex gap-2">
+                <select value={selectedLms} onChange={(e) => setSelectedLms(e.target.value)} className="flex-1 bg-[#141516] border border-[#292B2E] focus:border-[#FF9D2E] rounded-xl p-3 outline-none text-sm">
+                  <option value="">-- Select LMS Course --</option>
+                  {lmsCourses.map(c => <option key={c.id} value={c.id}>{c.title}</option>)}
+                </select>
+                <button onClick={handleImportLms} disabled={loading || !selectedLms} className="bg-[#19C784]/10 text-[#19C784] px-4 rounded-xl font-bold disabled:opacity-50"><Plus size={20}/></button>
+              </div>
+              <div className="flex gap-2">
+                <select value={selectedBcs} onChange={(e) => setSelectedBcs(e.target.value)} className="flex-1 bg-[#141516] border border-[#292B2E] focus:border-[#FF9D2E] rounded-xl p-3 outline-none text-sm">
+                  <option value="">-- Select BCS Subject --</option>
+                  {bcsSubjects.map(c => <option key={c.id} value={c.id}>{c.title}</option>)}
+                </select>
+                <button onClick={handleImportBcs} disabled={loading || !selectedBcs} className="bg-[#668CFF]/10 text-[#668CFF] px-4 rounded-xl font-bold disabled:opacity-50"><Plus size={20}/></button>
               </div>
             </div>
           </div>
 
-          {/* --- ASSIGN USER SECTION --- */}
+          {/* Assign Friend Section */}
           <div className="bg-[#18191A] p-6 rounded-3xl border border-[#292B2E] shadow-sm">
-            <h2 className="text-xl font-bold mb-5 flex items-center gap-2 text-white"><UserPlus className="text-[#668CFF]" /> Assign Friend</h2>
+            <h2 className="text-xl font-bold mb-5 flex items-center gap-2"><UserPlus className="text-[#668CFF]" /> Assign Friend</h2>
             
             {/* Tabs */}
             <div className="flex gap-2 mb-4 bg-[#141516] p-1 rounded-xl border border-[#292B2E]">
@@ -317,76 +309,59 @@ export default function GroupDetails() {
 
             <form onSubmit={handleAssignFriend} className="space-y-3">
               {assignMode === 'existing' ? (
-                // --- Existing Friend Dropdown ---
-                <select 
-                  value={selectedFriendEmail} 
-                  onChange={(e) => setSelectedFriendEmail(e.target.value)} 
-                  className="w-full bg-[#141516] border border-[#292B2E] focus:border-[#FF9D2E] rounded-xl p-3 outline-none text-white text-sm" 
-                  required
-                >
+                <select value={selectedFriendEmail} onChange={(e) => setSelectedFriendEmail(e.target.value)} className="w-full bg-[#141516] border border-[#292B2E] focus:border-[#FF9D2E] rounded-xl p-3 outline-none text-white text-sm" required>
                   <option value="">-- Select Existing Friend --</option>
                   {allFriends.map((f, idx) => (
                     <option key={idx} value={f.email}>{f.friend_name} ({f.email})</option>
                   ))}
                 </select>
               ) : (
-                // --- Create New Form ---
                 <>
-                  <input type="text" placeholder="Friend's Name" value={fName} onChange={(e)=>setFName(e.target.value)} className="w-full bg-[#141516] border border-[#292B2E] focus:border-[#FF9D2E] rounded-xl p-2.5 text-sm outline-none text-white" required/>
+                  <input type="text" placeholder="Friend's Name" value={fName} onChange={(e)=>setFName(e.target.value)} className="w-full bg-[#141516] border border-[#292B2E] rounded-xl p-2.5 outline-none text-white text-sm" required/>
                   <div className="flex gap-2">
-                    <input type="email" placeholder="Email" value={fEmail} onChange={(e)=>setFEmail(e.target.value)} className="flex-1 bg-[#141516] border border-[#292B2E] focus:border-[#FF9D2E] rounded-xl p-2.5 text-sm outline-none text-white" required/>
-                    <input type="text" placeholder="Password" value={fPassword} onChange={(e)=>setFPassword(e.target.value)} className="flex-1 bg-[#141516] border border-[#292B2E] focus:border-[#FF9D2E] rounded-xl p-2.5 text-sm outline-none text-white" required/>
+                    <input type="email" placeholder="Email" value={fEmail} onChange={(e)=>setFEmail(e.target.value)} className="flex-1 bg-[#141516] border border-[#292B2E] rounded-xl p-2.5 outline-none text-white text-sm" required/>
+                    <input type="text" placeholder="Password" value={fPassword} onChange={(e)=>setFPassword(e.target.value)} className="flex-1 bg-[#141516] border border-[#292B2E] rounded-xl p-2.5 outline-none text-white text-sm" required/>
                   </div>
                 </>
               )}
-
-              <button type="submit" disabled={isAssigning} className="w-full bg-[#668CFF]/10 hover:bg-[#668CFF]/20 text-[#668CFF] border border-[#668CFF]/20 font-bold py-2.5 rounded-xl transition-colors disabled:opacity-50 flex justify-center items-center gap-2">
-                {isAssigning ? <RefreshCw size={16} className="animate-spin" /> : <Plus size={16} />} 
-                {assignMode === 'existing' ? 'Assign to Group' : 'Create & Assign'}
+              <button type="submit" disabled={isAssigning} className="w-full bg-[#668CFF]/10 text-[#668CFF] border border-[#668CFF]/20 font-bold py-2.5 rounded-xl disabled:opacity-50 flex justify-center items-center gap-2">
+                {isAssigning ? <RefreshCw size={16} className="animate-spin" /> : <Plus size={16} />} {assignMode === 'existing' ? 'Assign to Group' : 'Create & Assign'}
               </button>
             </form>
           </div>
         </div>
 
-        {/* --- ASSIGNED MEMBERS & COPY AREA --- */}
+        {/* Assigned Members Area */}
         <div className="bg-[#18191A] p-6 rounded-3xl border border-[#292B2E] shadow-sm">
-          <h2 className="text-xl font-bold mb-4 flex items-center gap-2 text-white"><Users className="text-[#FF9D2E]" size={20}/> Group Members</h2>
+          <h2 className="text-xl font-bold mb-4 flex items-center gap-2"><Users className="text-[#FF9D2E]"/> Group Members (Credentials)</h2>
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-            {groupMembers.length === 0 ? (
-              <p className="text-[#707277] col-span-full py-4 text-center">No friends assigned to this group yet.</p>
-            ) : (
+            {groupMembers.length === 0 ? <p className="text-[#707277]">No friends assigned yet.</p> : 
               groupMembers.map((member) => (
-                <div key={member.id} className="bg-[#141516] border border-[#292B2E] p-4 rounded-2xl flex justify-between items-start group hover:border-[#FF9D2E]/30 transition-colors">
-                  <div className="min-w-0 pr-3">
-                    <p className="font-bold text-sm text-[#F5F5F5] truncate">{member.friend_name || 'Member'}</p>
-                    <p className="text-[11px] text-[#A3A5A8] truncate mt-0.5">{member.email}</p>
-                    <p className="text-[11px] font-mono text-[#707277] mt-1">Pass: {member.password_plain || '***'}</p>
+                <div key={member.id} className="bg-[#141516] border border-[#292B2E] p-4 rounded-2xl flex justify-between items-start">
+                  <div>
+                    <p className="font-bold text-sm">{member.friend_name}</p>
+                    <p className="text-[11px] text-[#A3A5A8] mt-0.5">{member.email}</p>
+                    <p className="text-[11px] font-mono text-[#707277] mt-1">Pass: {member.password_plain}</p>
                   </div>
-                  <div className="flex flex-col gap-2 shrink-0">
-                    <button 
-                      onClick={() => handleCopyCredentials(member)}
-                      className={`p-1.5 rounded-lg border transition-all ${copiedId === member.id ? 'bg-[#19C784]/20 border-[#19C784]/50 text-[#19C784]' : 'bg-[#292B2E] border-transparent text-[#A3A5A8] hover:text-white'}`}
-                      title="Copy Login Details"
-                    >
+                  <div className="flex gap-2">
+                    <button onClick={() => handleCopyCredentials(member)} className={`p-1.5 rounded-lg border ${copiedId === member.id ? 'bg-[#19C784]/20 border-[#19C784]/50 text-[#19C784]' : 'bg-[#292B2E] border-transparent text-[#A3A5A8]'}`}>
                       {copiedId === member.id ? <CheckCircle2 size={16} /> : <Copy size={16} />}
                     </button>
-                    <button onClick={() => handleRemoveMember(member.id)} className="p-1.5 bg-[#292B2E] rounded-lg text-[#707277] hover:text-red-500 hover:bg-red-500/10 transition-colors">
-                      <Trash2 size={16} />
-                    </button>
+                    <button onClick={() => handleRemoveMember(member.id)} className="p-1.5 bg-[#292B2E] rounded-lg text-[#707277] hover:text-red-500"><Trash2 size={16} /></button>
                   </div>
                 </div>
               ))
-            )}
+            }
           </div>
         </div>
 
-        {/* --- COURSES & NOTES (SPLIT) --- */}
+        {/* Existing Content Area (Courses and Notes Split Layout) */}
         <div className="flex flex-col lg:flex-row gap-6 items-start mt-8">
           <div className="flex-1 w-full">
-            <h2 className="text-xl font-bold mb-4 flex items-center gap-2 text-white"><BookOpen className="text-[#19C784]" size={20}/> Courses inside Group</h2>
+            <h2 className="text-xl font-bold mb-4 flex items-center gap-2"><BookOpen className="text-[#19C784]" size={20}/> Courses inside Group</h2>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {groupCourses.map(item => (
-                <div key={item.id} onClick={() => setSelectedContent(item)} className="bg-[#18191A] border border-[#292B2E] hover:border-[#19C784]/60 p-5 rounded-3xl flex flex-col justify-between cursor-pointer group transition-all duration-200 hover:-translate-y-1 hover:shadow-xl">
+                <div key={item.id} onClick={() => setSelectedContent(item)} className="bg-[#18191A] border border-[#292B2E] hover:border-[#19C784]/60 p-5 rounded-3xl flex flex-col justify-between cursor-pointer group hover:-translate-y-1 hover:shadow-xl">
                   <div>
                     <div className="flex justify-between items-start mb-3">
                       <div className="p-2.5 rounded-xl bg-[#19C784]/10 text-[#19C784]"><BookOpen size={20} /></div>
@@ -405,17 +380,17 @@ export default function GroupDetails() {
 
           <div className="w-full lg:w-[340px] shrink-0 bg-[#18191A] border border-[#292B2E] rounded-3xl p-5 shadow-sm">
             <div className="flex justify-between items-center mb-4">
-              <h3 className="font-bold flex items-center gap-2 text-white"><FileText size={18} className="text-[#FF9D2E]"/> Group Notes</h3>
+              <h3 className="font-bold flex items-center gap-2"><FileText size={18} className="text-[#FF9D2E]"/> Group Notes</h3>
               <button onClick={() => { setEditingNoteId(null); setAdminNoteTitle(''); setAdminNoteContent(''); setShowNoteModal(true); }} className="p-1.5 bg-[#FF9D2E]/10 text-[#FF9D2E] rounded-lg hover:bg-[#FF9D2E]/20"><Plus size={16} /></button>
             </div>
             <div className="space-y-3">
               {groupNotes.map(note => (
-                <div key={note.id} className="p-3.5 bg-[#141516] rounded-xl border border-[#292B2E] hover:border-[#FF9D2E]/50 transition-colors flex justify-between items-center">
+                <div key={note.id} className="p-3.5 bg-[#141516] rounded-xl border border-[#292B2E] flex justify-between items-center">
                   <div className="flex-1 pr-2">
-                    <h4 className="font-bold text-sm text-white line-clamp-1">{note.title}</h4>
-                    <p className="text-[11px] text-[#A3A5A8] mt-1 flex items-center gap-1.5"><span className="font-medium">{note.content_data?.authorName || 'User'}</span><span>•</span><span>{new Date(note.created_at).toLocaleDateString()}</span></p>
+                    <h4 className="font-bold text-sm line-clamp-1">{note.title}</h4>
+                    <p className="text-[11px] text-[#A3A5A8] mt-1 flex gap-1.5"><span className="font-medium">{note.content_data?.authorName || 'User'}</span><span>•</span><span>{new Date(note.created_at).toLocaleDateString()}</span></p>
                   </div>
-                  <div className="flex items-center gap-1">
+                  <div className="flex gap-1">
                     <button onClick={() => { setEditingNoteId(note.id); setAdminNoteTitle(note.title); setAdminNoteContent(note.content_data?.text || ''); setShowNoteModal(true); }} className="p-1.5 text-[#707277] hover:text-[#FF9D2E]"><Edit3 size={15}/></button>
                     <button onClick={() => handleDeleteContent(note.id, note.content_type)} className="p-1.5 text-[#707277] hover:text-red-500"><Trash2 size={15}/></button>
                   </div>
@@ -429,10 +404,10 @@ export default function GroupDetails() {
       {showNoteModal && (
         <div className="fixed inset-0 z-[1000] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
           <div className="bg-[#18191A] p-6 rounded-3xl border border-[#FF9D2E]/30 shadow-2xl w-full max-w-lg">
-            <div className="flex justify-between items-center mb-5"><h3 className="text-xl font-bold flex items-center gap-2 text-white"><FileText size={20} className="text-[#FF9D2E]"/> {editingNoteId ? 'Edit Group Note' : 'New Group Note'}</h3><button onClick={() => setShowNoteModal(false)} className="text-[#707277] hover:text-[#FF5B61]"><X size={20}/></button></div>
+            <div className="flex justify-between items-center mb-5"><h3 className="text-xl font-bold flex items-center gap-2"><FileText size={20} className="text-[#FF9D2E]"/> {editingNoteId ? 'Edit Group Note' : 'New Group Note'}</h3><button onClick={() => setShowNoteModal(false)} className="text-[#707277] hover:text-[#FF5B61]"><X size={20}/></button></div>
             <form onSubmit={handleSaveAdminNote} className="space-y-4">
-              <input type="text" placeholder="Note Title..." value={adminNoteTitle} onChange={(e) => setAdminNoteTitle(e.target.value)} className="w-full bg-[#141516] border border-[#292B2E] focus:border-[#FF9D2E] rounded-xl p-4 outline-none font-bold text-white" required />
-              <textarea placeholder="Write note content..." value={adminNoteContent} onChange={(e) => setAdminNoteContent(e.target.value)} className="w-full bg-[#141516] border border-[#292B2E] focus:border-[#FF9D2E] rounded-xl p-4 h-40 resize-none outline-none text-white" required />
+              <input type="text" placeholder="Note Title..." value={adminNoteTitle} onChange={(e) => setAdminNoteTitle(e.target.value)} className="w-full bg-[#141516] border border-[#292B2E] rounded-xl p-4 outline-none font-bold" required />
+              <textarea placeholder="Write note content..." value={adminNoteContent} onChange={(e) => setAdminNoteContent(e.target.value)} className="w-full bg-[#141516] border border-[#292B2E] rounded-xl p-4 h-40 resize-none outline-none" required />
               <div className="flex justify-end gap-3 pt-2"><button type="submit" className="bg-[#FF9D2E] text-black px-6 py-2.5 rounded-xl font-extrabold hover:bg-[#FFAA3D]"><Save size={16} className="inline mr-1" /> {editingNoteId ? 'Update' : 'Publish'}</button></div>
             </form>
           </div>
