@@ -5,7 +5,7 @@ import { useNavigate } from 'react-router-dom';
 import { 
   Sun, Moon, LayoutDashboard, Users, User, BookOpen, Clock, FileText, 
   ChevronRight, MessageCircle, X, Send, Paperclip, Mic, Square, ArrowLeft, 
-  Trash2, Edit3, FolderOpen, Sparkles, LogOut, CheckCircle2, Plus, ShieldCheck 
+  Trash2, Edit3, FolderOpen, LogOut, CheckCircle2, Plus, DownloadCloud
 } from 'lucide-react';
 
 import WorkspaceCourseViewer from './WorkspaceCourseViewer';
@@ -65,8 +65,29 @@ export default function WorkspaceDashboard() {
 
   const chatBottomRef = useRef<HTMLDivElement | null>(null);
 
-  // ✅ Fix: useMemo is now at the top level
   const randomQuote = useMemo(() => DAILY_QUOTES[Math.floor(Math.random() * DAILY_QUOTES.length)], []);
+
+  // --- PWA Install State ---
+  const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
+
+  useEffect(() => {
+    const handleBeforeInstallPrompt = (e: Event) => {
+      e.preventDefault();
+      setDeferredPrompt(e);
+    };
+    window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+    return () => window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+  }, []);
+
+  const handleInstallPWA = async () => {
+    if (deferredPrompt) {
+      deferredPrompt.prompt();
+      const { outcome } = await deferredPrompt.userChoice;
+      if (outcome === 'accepted') {
+        setDeferredPrompt(null);
+      }
+    }
+  };
 
   // --- Effects ---
   useEffect(() => {
@@ -363,8 +384,9 @@ export default function WorkspaceDashboard() {
               <ArrowLeft size={20} />
             </button>
           ) : (
-            <div className="w-10 h-10 bg-gradient-to-br from-[#FF9D2E] to-[#E83FCB] rounded-xl flex items-center justify-center shadow-lg shadow-[#FF9D2E]/20">
-              <Sparkles size={20} className="text-white" />
+            // Updated Header Logo (Replaced Sparkles with custom logo)
+            <div className="w-10 h-10 bg-[#141516] rounded-xl flex items-center justify-center shadow-lg shadow-[#FF9D2E]/20 border border-[#292B2E] overflow-hidden p-1">
+              <img src="/icons/alfaravi logo.png" alt="Logo" className="w-full h-full object-contain" />
             </div>
           )}
           <h1 className="text-xl font-extrabold tracking-tight">{selectedGroup ? selectedGroup.name : 'Study Portal'}</h1>
@@ -611,9 +633,9 @@ export default function WorkspaceDashboard() {
           </div>
         )}
 
-        {/* --- PROFILE TAB --- */}
+        {/* --- PROFILE TAB (Fully Responsive Update) --- */}
         {activeTab === 'profile' && (
-          <div className="animate-fade-in flex flex-col items-center mt-6 max-w-md mx-auto">
+          <div className="animate-fade-in flex flex-col items-center mt-6 w-full max-w-sm md:max-w-md mx-auto px-4 sm:px-0">
             <div className="w-full flex justify-start mb-6">
               <button 
                 onClick={() => setActiveTab('dashboard')} 
@@ -622,23 +644,24 @@ export default function WorkspaceDashboard() {
                 <ArrowLeft size={18} /> Back to Dashboard
               </button>
             </div>
-            <div className="w-24 h-24 bg-[#FF9D2E]/10 rounded-full flex items-center justify-center mb-6 border border-[#FF9D2E]/30 shadow-lg shadow-[#FF9D2E]/10">
+            
+            <div className="w-24 h-24 bg-[#FF9D2E]/10 rounded-full flex items-center justify-center mb-6 border border-[#FF9D2E]/30 shadow-lg shadow-[#FF9D2E]/10 shrink-0">
               <User className="w-12 h-12 text-[#FF9D2E]" />
             </div>
             
-            <div className="w-full bg-white dark:bg-[#18191A] p-6 rounded-3xl border border-slate-200 dark:border-[#292B2E] shadow-sm space-y-4 text-center">
-              <h3 className="font-bold text-lg text-slate-500 dark:text-[#A3A5A8]">Your Nickname</h3>
-              <div className="flex gap-2">
+            <div className="w-full bg-white dark:bg-[#18191A] p-5 sm:p-6 rounded-3xl border border-slate-200 dark:border-[#292B2E] shadow-sm space-y-4 text-center">
+              <h3 className="font-bold text-base sm:text-lg text-slate-500 dark:text-[#A3A5A8]">Your Nickname</h3>
+              <div className="flex flex-col sm:flex-row gap-3">
                 <input 
                   type="text" 
                   value={profileName} 
                   onChange={(e) => setProfileName(e.target.value)} 
-                  className="flex-1 bg-slate-50 dark:bg-[#141516] border border-slate-200 dark:border-[#292B2E] focus:border-[#FF9D2E] rounded-xl p-3 outline-none text-center font-bold text-slate-900 dark:text-white transition-all" 
+                  className="flex-1 w-full bg-slate-50 dark:bg-[#141516] border border-slate-200 dark:border-[#292B2E] focus:border-[#FF9D2E] rounded-xl p-3 outline-none text-center font-bold text-slate-900 dark:text-white transition-all" 
                 />
                 <button 
                   onClick={handleUpdateProfile} 
                   disabled={isUpdatingProfile}
-                  className="bg-[#19C784] text-white px-5 rounded-xl font-bold hover:bg-emerald-600 transition-colors flex items-center gap-2 disabled:opacity-50"
+                  className="bg-[#19C784] w-full sm:w-auto justify-center text-white px-5 py-3 sm:py-0 rounded-xl font-bold hover:bg-emerald-600 transition-colors flex items-center gap-2 disabled:opacity-50"
                 >
                   <CheckCircle2 size={20} /> Save
                 </button>
@@ -646,13 +669,13 @@ export default function WorkspaceDashboard() {
               <p className="text-xs text-slate-400 dark:text-[#707277]">This name will appear in group chats and notes.</p>
             </div>
 
-            {/* New Profile Stats Section */}
-            <div className="w-full grid grid-cols-2 gap-4 mt-4">
+            {/* Profile Stats Section */}
+            <div className="w-full grid grid-cols-2 gap-4 mt-5">
               <div className="bg-white dark:bg-[#18191A] p-4 rounded-3xl border border-slate-200 dark:border-[#292B2E] text-center shadow-sm">
                 <div className="mx-auto w-8 h-8 bg-blue-50 dark:bg-blue-500/10 rounded-full flex items-center justify-center mb-2">
                   <Users size={16} className="text-blue-500" />
                 </div>
-                <h4 className="text-xl font-black text-slate-900 dark:text-white">{groups.length}</h4>
+                <h4 className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white">{groups.length}</h4>
                 <p className="text-[10px] uppercase font-bold text-slate-500 dark:text-[#707277]">Study Groups</p>
               </div>
               
@@ -660,22 +683,36 @@ export default function WorkspaceDashboard() {
                 <div className="mx-auto w-8 h-8 bg-[#FF9D2E]/10 rounded-full flex items-center justify-center mb-2">
                   <FileText size={16} className="text-[#FF9D2E]" />
                 </div>
-                <h4 className="text-xl font-black text-slate-900 dark:text-white">{allContents.filter(c => c.content_data?.userId === session?.user?.id).length}</h4>
+                <h4 className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white">{allContents.filter(c => c.content_data?.userId === session?.user?.id).length}</h4>
                 <p className="text-[10px] uppercase font-bold text-slate-500 dark:text-[#707277]">Notes Created</p>
               </div>
             </div>
 
-            <div className="w-full mt-4 bg-gradient-to-r from-[#FF9D2E]/10 to-[#E83FCB]/10 p-5 rounded-3xl border border-[#FF9D2E]/20 flex items-center gap-4">
-              <div className="w-12 h-12 bg-white dark:bg-[#141516] rounded-2xl flex items-center justify-center shadow-sm border border-white/50 dark:border-[#292B2E]">
-                <ShieldCheck size={24} className="text-[#FF9D2E]" />
+            {/* Verified Student Section (Updated with Custom Logo) */}
+            <div className="w-full mt-5 bg-gradient-to-r from-[#FF9D2E]/10 to-[#E83FCB]/10 p-5 rounded-3xl border border-[#FF9D2E]/20 flex flex-col sm:flex-row items-center gap-4 text-center sm:text-left">
+              <div className="w-14 h-14 bg-white dark:bg-[#141516] rounded-2xl flex items-center justify-center shadow-sm border border-white/50 dark:border-[#292B2E] p-1.5 shrink-0 overflow-hidden">
+                <img src="/icons/alfaravi logo.png" alt="Al_Faravi-os" className="w-full h-full object-contain" />
               </div>
               <div>
-                <h4 className="font-bold text-slate-900 dark:text-white text-sm">Verified Student</h4>
-                <p className="text-xs text-slate-600 dark:text-[#A3A5A8]">Member of Al_Faravi-os</p>
+                <h4 className="font-bold text-slate-900 dark:text-white text-base">Verified Student</h4>
+                <p className="text-xs text-slate-600 dark:text-[#A3A5A8] mt-0.5">Member of Al_Faravi-os</p>
               </div>
             </div>
 
-            <button onClick={handleLogout} className="mt-8 w-full flex items-center justify-center gap-3 p-4 bg-white dark:bg-[#18191A] border border-[#FF5B61]/20 rounded-2xl text-[#FF5B61] font-bold hover:bg-[#FF5B61]/10 transition-colors">
+            {/* PWA Install Button */}
+            {deferredPrompt && (
+              <button 
+                onClick={handleInstallPWA} 
+                className="mt-6 w-full flex items-center justify-center gap-3 p-4 bg-gradient-to-r from-[#FF9D2E] to-[#FFAA3D] rounded-2xl text-[#0D0E0F] font-extrabold shadow-[0_0_20px_rgba(255,157,46,0.2)] hover:shadow-[0_0_30px_rgba(255,157,46,0.4)] transition-all transform hover:-translate-y-1"
+              >
+                <DownloadCloud className="w-5 h-5" /> Install App
+              </button>
+            )}
+
+            <button 
+              onClick={handleLogout} 
+              className="mt-6 sm:mt-8 w-full flex items-center justify-center gap-3 p-4 bg-white dark:bg-[#18191A] border border-[#FF5B61]/20 rounded-2xl text-[#FF5B61] font-bold hover:bg-[#FF5B61]/10 transition-colors"
+            >
               <LogOut className="w-5 h-5" /> Log Out
             </button>
           </div>
