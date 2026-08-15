@@ -35,24 +35,21 @@ export default function WorkspaceDashboard() {
   const [groupContents, setGroupContents] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   
-  // Navigation & Theme
   const [activeTab, setActiveTab] = useState<'dashboard' | 'profile'>('dashboard');
   const [theme, setTheme] = useState<'dark' | 'light'>('dark');
   
-  // CRUD States
   const [showNoteForm, setShowNoteForm] = useState(false);
   const [selectedContent, setSelectedContent] = useState<any>(null); 
   const [noteTitle, setNoteTitle] = useState('');
   const [noteContent, setNoteContent] = useState('');
   const [isEditing, setIsEditing] = useState(false);
 
-  // Floating Chat States
+  // Chat States
   const [isChatOpen, setIsChatOpen] = useState(false);
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [newMessage, setNewMessage] = useState('');
   const [chatLoading, setChatLoading] = useState(false);
   
-  // Live Voice Recording States
   const [isRecording, setIsRecording] = useState(false);
   const [mediaRecorder, setMediaRecorder] = useState<MediaRecorder | null>(null);
 
@@ -78,10 +75,8 @@ export default function WorkspaceDashboard() {
           .eq('email', user.email);
       }
     };
-
     updatePresence(); 
     const interval = setInterval(updatePresence, 60000); 
-    
     return () => clearInterval(interval);
   }, []);
 
@@ -103,48 +98,15 @@ export default function WorkspaceDashboard() {
   const checkAuthAndFetchData = async () => {
     setLoading(true);
     const { data: { session } } = await workspaceSupabase.auth.getSession();
-    if (!session) return navigate('/workspace/login');
+    if (!session) {
+      setLoading(false);
+      return navigate('/workspace/login');
+    }
     setSession(session);
 
     const savedNickname = localStorage.getItem(`nickname_${session.user.id}`);
-    if (savedNickname) {
-      setProfileName(savedNickname);
-    } else {
-      setProfileName(session.user?.email?.split('@')[0] || 'Student');
-    }
-
-    // গ্রুপ ফেচ করার আপডেটেড ফাংশন (এরর হ্যান্ডেলিং সহ)
-    const fetchMyGroups = async () => {
-      // বর্তমান ইউজারের ডাটা আনছি
-      const { data: { user } } = await workspaceSupabase.auth.getUser();
-      if (!user?.email) return;
-
-      // ১. ইমেইল দিয়ে চেক করছি সে কোন কোন গ্রুপের মেম্বার
-      const { data: memberData, error: memberError } = await workspaceSupabase
-        .from('group_members')
-        .select('group_id')
-        .eq('email', user.email);
-
-      if (memberError) {
-        console.error("Error fetching members:", memberError);
-        return;
-      }
-
-      if (memberData && memberData.length > 0) {
-        const groupIds = memberData.map(m => m.group_id);
-        
-        // ২. সেই গ্রুপগুলোর বিস্তারিত তথ্য আনছি
-        const { data: groupsData, error: groupsError } = await workspaceSupabase
-          .from('study_groups')
-          .select('*')
-          .in('id', groupIds);
-          
-        if (groupsError) console.error("Error fetching groups:", groupsError);
-        setGroups(groupsData || []);
-      } else {
-        setGroups([]);
-      }
-    };
+    if (savedNickname) setProfileName(savedNickname);
+    else setProfileName(session.user?.email?.split('@')[0] || 'Student');
 
     await fetchMyGroups();
 
@@ -154,22 +116,36 @@ export default function WorkspaceDashboard() {
     setLoading(false);
   };
 
+  const fetchMyGroups = async () => {
+    const { data: { user } } = await workspaceSupabase.auth.getUser();
+    if (!user?.email) return;
+
+    const { data: memberData, error: memberError } = await workspaceSupabase.from('group_members').select('group_id').eq('email', user.email);
+    if (memberError) console.error("Error fetching members:", memberError);
+
+    if (memberData && memberData.length > 0) {
+      const groupIds = memberData.map(m => m.group_id);
+      const { data: groupsData, error: groupsError } = await workspaceSupabase.from('study_groups').select('*').in('id', groupIds);
+      if (groupsError) console.error("Error fetching groups:", groupsError);
+      setGroups(groupsData || []);
+    } else {
+      setGroups([]);
+    }
+  };
+
   const handleUpdateProfile = async () => {
     if (!profileName.trim()) return;
     setIsUpdatingProfile(true);
-    
     if (session?.user?.id) {
       localStorage.setItem(`nickname_${session.user.id}`, profileName);
       alert("Nickname updated successfully! 🚀");
-    } else {
-      alert("Error saving nickname!");
     }
-    
     setIsUpdatingProfile(false);
   };
 
   const fetchGroupContents = async (groupId: string) => {
-    const { data } = await workspaceSupabase.from('shared_contents').select('*').eq('group_id', groupId).order('created_at', { ascending: false });
+    const { data, error } = await workspaceSupabase.from('shared_contents').select('*').eq('group_id', groupId).order('created_at', { ascending: false });
+    if (error) console.error("Error fetching contents:", error);
     if (data) setGroupContents(data);
   };
 
@@ -195,39 +171,22 @@ export default function WorkspaceDashboard() {
     navigate('/workspace/login');
   };
 
-  // --- NOTES CRUD (UPDATED WITH AUTHOR INFO) ---
   const handleAddNote = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!noteTitle || !noteContent || !selectedGroup) return;
-    
     const { error } = await workspaceSupabase.from('shared_contents').insert([{
-      group_id: selectedGroup.id, 
-      title: noteTitle, 
-      content_type: 'shared_note', 
-      content_data: { 
-        text: noteContent,
-        userId: session?.user?.id,
-        authorName: profileName
-      }
+      group_id: selectedGroup.id, title: noteTitle, content_type: 'shared_note', 
+      content_data: { text: noteContent, userId: session?.user?.id, authorName: profileName }
     }]);
-    
-    if (!error) { 
-      setNoteTitle(''); 
-      setNoteContent(''); 
-      setShowNoteForm(false); 
-      fetchGroupContents(selectedGroup.id); 
-    }
+    if (!error) { setNoteTitle(''); setNoteContent(''); setShowNoteForm(false); fetchGroupContents(selectedGroup.id); }
   };
 
   const handleUpdateNote = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!noteTitle || !noteContent || !selectedContent) return;
-    
     const { error } = await workspaceSupabase.from('shared_contents').update({ 
-      title: noteTitle, 
-      content_data: { ...selectedContent.content_data, text: noteContent } 
+      title: noteTitle, content_data: { ...selectedContent.content_data, text: noteContent } 
     }).eq('id', selectedContent.id);
-    
     if (!error) {
       setIsEditing(false);
       setSelectedContent({ ...selectedContent, title: noteTitle, content_data: { ...selectedContent.content_data, text: noteContent } });
@@ -244,9 +203,7 @@ export default function WorkspaceDashboard() {
   const openContent = (item: any) => {
     setSelectedContent(item);
     if (item.content_type === 'shared_note' || item.content_type === 'personal_note') {
-      setNoteTitle(item.title);
-      setNoteContent(item.content_data?.text || '');
-      setIsEditing(false);
+      setNoteTitle(item.title); setNoteContent(item.content_data?.text || ''); setIsEditing(false);
     }
   };
 
@@ -254,9 +211,9 @@ export default function WorkspaceDashboard() {
   useEffect(() => {
     if (selectedGroup && isChatOpen) {
       fetchChatMessages(selectedGroup.id);
-
+      // Setup Realtime Subscription
       const chatSubscription = workspaceSupabase
-        .channel(`public:group_chats:group_id=eq.${selectedGroup.id}`)
+        .channel(`chat_channel_${selectedGroup.id}`)
         .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'group_chats', filter: `group_id=eq.${selectedGroup.id}` }, 
           (payload: any) => {
             const newMsg = payload.new as ChatMessage;
@@ -266,8 +223,7 @@ export default function WorkspaceDashboard() {
               return [...prev, newMsg];
             });
           }
-        )
-        .subscribe();
+        ).subscribe();
 
       return () => { workspaceSupabase.removeChannel(chatSubscription); };
     }
@@ -276,6 +232,7 @@ export default function WorkspaceDashboard() {
   const fetchChatMessages = async (groupId: string) => {
     setChatLoading(true);
     const { data, error } = await workspaceSupabase.from('group_chats').select('*').eq('group_id', groupId).order('created_at', { ascending: true });
+    if (error) console.error("Chat Fetch Error:", error);
     if (!error && data) setChatMessages(data as ChatMessage[]);
     setChatLoading(false);
   };
@@ -288,15 +245,17 @@ export default function WorkspaceDashboard() {
     setNewMessage(''); 
 
     const tempId = `temp-${Date.now()}`;
-    const optimisticMsg: ChatMessage = {
-      id: tempId, group_id: selectedGroup.id, user_id: session.user.id, sender_name: profileName, content: messageText, message_type: 'text', isOptimistic: true,
-    };
+    const optimisticMsg: ChatMessage = { id: tempId, group_id: selectedGroup.id, user_id: session.user.id, sender_name: profileName, content: messageText, message_type: 'text', isOptimistic: true };
     setChatMessages((prev) => [...prev, optimisticMsg]);
 
     const { error } = await workspaceSupabase.from('group_chats').insert([{
       group_id: selectedGroup.id, user_id: session.user.id, sender_name: profileName, content: messageText, message_type: 'text',
     }]);
-    if (error) setChatMessages((prev) => prev.filter((m) => m.id !== tempId));
+    
+    if (error) {
+      console.error("Failed to send msg:", error);
+      setChatMessages((prev) => prev.filter((m) => m.id !== tempId));
+    }
   };
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -304,9 +263,10 @@ export default function WorkspaceDashboard() {
     if (!file || !selectedGroup || !session?.user) return;
 
     const type = file.type.startsWith('image/') ? 'image' : 'file';
-    const fileName = `${session.user.id}-${Date.now()}-${file.name}`;
+    const fileName = `${session.user.id}-${Date.now()}-${file.name.replace(/[^a-zA-Z0-9.]/g, '')}`;
+    
     const { error: uploadError } = await workspaceSupabase.storage.from('chat-files').upload(fileName, file);
-    if (uploadError) { alert('Upload failed'); return; }
+    if (uploadError) { alert('Upload failed: ' + uploadError.message); return; }
 
     const { data } = workspaceSupabase.storage.from('chat-files').getPublicUrl(fileName);
     await workspaceSupabase.from('group_chats').insert([{
@@ -333,7 +293,8 @@ export default function WorkspaceDashboard() {
           if (audioChunks.length === 0 || !selectedGroup || !session?.user) return;
 
           const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
-          const fileName = `${session.user.id}-${Date.now()}.webm`;
+          const fileName = `audio-${session.user.id}-${Date.now()}.webm`;
+          
           const { error: uploadError } = await workspaceSupabase.storage.from('chat-files').upload(fileName, audioBlob);
           if (uploadError) return;
 
@@ -367,7 +328,6 @@ export default function WorkspaceDashboard() {
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-[#0D0E0F] text-slate-900 dark:text-[#F5F5F5] font-sans pb-24 transition-colors duration-300 selection:bg-[#FF9D2E]/30 relative">
       
-      {/* HEADER */}
       <header className="sticky top-0 bg-white/80 dark:bg-[#141516]/80 backdrop-blur-xl border-b border-slate-200 dark:border-[#292B2E] z-40 px-4 md:px-8 py-4 flex items-center justify-between shadow-sm">
         <div className="flex items-center gap-3">
           {selectedGroup || activeTab === 'profile' ? (
@@ -399,8 +359,6 @@ export default function WorkspaceDashboard() {
       </header>
 
       <main className="max-w-5xl mx-auto p-4 md:p-8 mt-2">
-        
-        {/* --- MAIN DASHBOARD --- */}
         {!selectedGroup && activeTab === 'dashboard' && (
           <div className="animate-fade-in space-y-8">
             <div className="bg-gradient-to-r from-white to-slate-100 dark:from-[#18191A] dark:to-[#141516] rounded-3xl p-8 border border-slate-200 dark:border-[#292B2E] shadow-xl relative overflow-hidden transition-colors duration-300">
@@ -408,9 +366,7 @@ export default function WorkspaceDashboard() {
               <div className="relative z-10">
                 <p className="text-[#FF9D2E] font-bold text-sm mb-2">{currentDate}</p>
                 <h2 className="text-3xl md:text-4xl font-black text-slate-900 dark:text-[#F5F5F5] mb-3">Welcome back, {profileName}! 👋</h2>
-                <p className="text-slate-600 dark:text-[#A3A5A8] max-w-lg text-sm md:text-base leading-relaxed">
-                  Ready to level up your skills today? Check out your assigned groups and continue your learning journey from where you left off.
-                </p>
+                <p className="text-slate-600 dark:text-[#A3A5A8] max-w-lg text-sm md:text-base leading-relaxed">Ready to level up your skills today? Check out your assigned groups and continue your learning journey from where you left off.</p>
               </div>
             </div>
 
@@ -423,7 +379,7 @@ export default function WorkspaceDashboard() {
               <div className="bg-white dark:bg-[#18191A] p-5 rounded-2xl border border-slate-200 dark:border-[#292B2E] shadow-sm flex flex-col justify-center gap-2 transition-colors">
                 <BookOpen size={24} className="text-[#19C784]" />
                 <h3 className="text-2xl font-black">{totalCourses}</h3>
-                <p className="text-xs font-bold text-slate-500 dark:text-[#707277] uppercase tracking-wider">Assigned Courses</p>
+                <p className="text-xs font-bold text-slate-500 dark:text-[#707277] uppercase tracking-wider">Total Available</p>
               </div>
               <div className="bg-white dark:bg-[#18191A] p-5 rounded-2xl border border-slate-200 dark:border-[#292B2E] shadow-sm flex flex-col justify-center gap-2 transition-colors">
                 <Clock size={24} className="text-[#FF9D2E]" />
@@ -459,23 +415,16 @@ export default function WorkspaceDashboard() {
           </div>
         )}
 
-        {/* --- INSIDE GROUP (MODIFIED LAYOUT) --- */}
+        {/* --- INSIDE GROUP --- */}
         {selectedGroup && !selectedContent && (
           <div className="animate-slide-in-right">
-            
             <div className="flex justify-between items-end mb-6 border-b border-slate-200 dark:border-[#292B2E] pb-4">
               <h2 className="text-2xl font-black text-slate-900 dark:text-white">{selectedGroup.name} - Workspace</h2>
             </div>
-
-            {/* Split Layout: Left Courses, Right Notes */}
             <div className="flex flex-col lg:flex-row gap-6 items-start">
               
-              {/* Left Side: Courses */}
               <div className="flex-1 w-full">
-                <h3 className="text-lg font-bold mb-4 text-slate-800 dark:text-[#F5F5F5] flex items-center gap-2">
-                  <BookOpen size={18} className="text-[#19C784]" /> Assigned Courses
-                </h3>
-                
+                <h3 className="text-lg font-bold mb-4 text-slate-800 dark:text-[#F5F5F5] flex items-center gap-2"><BookOpen size={18} className="text-[#19C784]" /> Assigned Courses</h3>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   {groupCourses.length === 0 ? (
                     <div className="col-span-full py-12 text-center bg-white dark:bg-[#18191A] rounded-3xl border border-dashed border-slate-300 dark:border-[#292B2E] transition-colors">
@@ -487,9 +436,7 @@ export default function WorkspaceDashboard() {
                       <div key={item.id} onClick={() => openContent(item)} className="bg-white dark:bg-[#18191A] p-5 rounded-2xl border border-slate-200 dark:border-[#292B2E] hover:border-[#19C784]/60 shadow-sm hover:shadow-xl dark:hover:shadow-[#19C784]/5 transition-all cursor-pointer group flex flex-col justify-between min-h-[140px]">
                         <div>
                           <div className="flex items-start justify-between mb-3">
-                            <div className="p-2.5 rounded-xl bg-[#19C784]/10 text-[#19C784]">
-                              <BookOpen size={20} />
-                            </div>
+                            <div className="p-2.5 rounded-xl bg-[#19C784]/10 text-[#19C784]"><BookOpen size={20} /></div>
                             <span className="text-[10px] font-bold text-slate-500 dark:text-[#A3A5A8] bg-slate-50 dark:bg-[#1D1E20] px-3 py-1 rounded-lg border border-slate-100 dark:border-[#292B2E] uppercase">{item.content_type.replace('_', ' ')}</span>
                           </div>
                           <h3 className="font-bold text-base leading-snug line-clamp-2 text-slate-900 dark:text-white group-hover:text-[#19C784] transition-colors">{item.title}</h3>
@@ -500,22 +447,12 @@ export default function WorkspaceDashboard() {
                 </div>
               </div>
 
-              {/* Right Side: Important Notes Panel */}
               <div className="w-full lg:w-80 shrink-0">
                 <div className="bg-white dark:bg-[#18191A] border border-slate-200 dark:border-[#292B2E] rounded-3xl p-5 shadow-sm sticky top-24">
                   <div className="flex justify-between items-center mb-4">
-                    <h3 className="font-bold flex items-center gap-2 text-slate-900 dark:text-white">
-                      <FileText size={18} className="text-[#FF9D2E]"/> Important Notes
-                    </h3>
-                    <button 
-                      onClick={() => { setNoteTitle(''); setNoteContent(''); setShowNoteForm(true); }} 
-                      className="p-1.5 bg-[#FF9D2E]/10 text-[#FF9D2E] rounded-lg hover:bg-[#FF9D2E]/20 transition-colors"
-                      title="Add New Note"
-                    >
-                      <Plus size={16} />
-                    </button>
+                    <h3 className="font-bold flex items-center gap-2 text-slate-900 dark:text-white"><FileText size={18} className="text-[#FF9D2E]"/> Important Notes</h3>
+                    <button onClick={() => { setNoteTitle(''); setNoteContent(''); setShowNoteForm(true); }} className="p-1.5 bg-[#FF9D2E]/10 text-[#FF9D2E] rounded-lg hover:bg-[#FF9D2E]/20 transition-colors"><Plus size={16} /></button>
                   </div>
-                  
                   <div className="space-y-3">
                     {groupNotes.length === 0 ? (
                       <p className="text-sm text-slate-400 dark:text-[#707277] text-center py-4">No notes created yet.</p>
@@ -525,19 +462,11 @@ export default function WorkspaceDashboard() {
                           <div onClick={() => openContent(note)} className="flex-1 pr-2">
                             <h4 className="font-bold text-sm text-slate-900 dark:text-white group-hover:text-[#FF9D2E] line-clamp-1">{note.title}</h4>
                             <div className="flex items-center gap-1.5 mt-1 text-[10px] text-slate-500 dark:text-[#A3A5A8]">
-                              <span className="font-semibold">{note.content_data?.authorName || 'Member'}</span>
-                              <span>•</span>
-                              <span>{new Date(note.created_at).toLocaleDateString()}</span>
+                              <span className="font-semibold">{note.content_data?.authorName || 'Member'}</span><span>•</span><span>{new Date(note.created_at).toLocaleDateString()}</span>
                             </div>
                           </div>
                           {note.content_data?.userId === session?.user?.id && (
-                            <button 
-                              onClick={(e) => { e.stopPropagation(); openContent(note); setIsEditing(true); }}
-                              className="p-1.5 text-slate-400 hover:text-[#FF9D2E] transition-colors shrink-0"
-                              title="Edit Note"
-                            >
-                              <Edit3 size={14} />
-                            </button>
+                            <button onClick={(e) => { e.stopPropagation(); openContent(note); setIsEditing(true); }} className="p-1.5 text-slate-400 hover:text-[#FF9D2E] transition-colors shrink-0"><Edit3 size={14} /></button>
                           )}
                         </div>
                       ))
@@ -550,7 +479,6 @@ export default function WorkspaceDashboard() {
           </div>
         )}
 
-        {/* Modal For New Note */}
         {showNoteForm && (
           <div className="fixed inset-0 z-[1000] flex items-center justify-center p-4 bg-slate-900/60 dark:bg-[#0D0E0F]/80 backdrop-blur-sm">
             <div className="bg-white dark:bg-[#18191A] p-6 rounded-3xl border border-[#FF9D2E]/30 shadow-2xl w-full max-w-lg animate-fade-in transition-colors">
@@ -570,7 +498,6 @@ export default function WorkspaceDashboard() {
           </div>
         )}
 
-        {/* View / Edit Note Full Screen Mode */}
         {(selectedContent?.content_type === 'shared_note' || selectedContent?.content_type === 'personal_note') && (
           <div className="animate-slide-in-right bg-white dark:bg-[#18191A] rounded-3xl p-6 md:p-10 shadow-lg border border-slate-200 dark:border-[#292B2E] min-h-[60vh] transition-colors">
             {!isEditing ? (
@@ -578,30 +505,19 @@ export default function WorkspaceDashboard() {
                 <div className="flex justify-between items-start">
                   <div>
                     <h2 className="text-3xl font-extrabold text-slate-900 dark:text-white">{selectedContent.title}</h2>
-                    <p className="text-sm text-slate-500 dark:text-[#A3A5A8] mt-2">
-                      Created by <span className="font-bold text-slate-700 dark:text-[#F5F5F5]">{selectedContent.content_data?.authorName || 'Member'}</span> on {new Date(selectedContent.created_at).toLocaleDateString()}
-                    </p>
+                    <p className="text-sm text-slate-500 dark:text-[#A3A5A8] mt-2">Created by <span className="font-bold text-slate-700 dark:text-[#F5F5F5]">{selectedContent.content_data?.authorName || 'Member'}</span> on {new Date(selectedContent.created_at).toLocaleDateString()}</p>
                   </div>
-                  {/* Show Edit Button only if the current user is the author */}
                   {selectedContent.content_data?.userId === session?.user?.id && (
-                    <button onClick={() => setIsEditing(true)} className="flex items-center gap-2 px-4 py-2 bg-[#FF9D2E]/10 text-[#FF9D2E] rounded-xl font-bold hover:bg-[#FF9D2E]/20 transition-colors shrink-0">
-                      <Edit3 size={16} /> <span className="hidden sm:inline">Edit</span>
-                    </button>
+                    <button onClick={() => setIsEditing(true)} className="flex items-center gap-2 px-4 py-2 bg-[#FF9D2E]/10 text-[#FF9D2E] rounded-xl font-bold hover:bg-[#FF9D2E]/20 transition-colors shrink-0"><Edit3 size={16} /> <span className="hidden sm:inline">Edit</span></button>
                   )}
                 </div>
-                
                 <div className="w-full h-[1px] bg-slate-100 dark:bg-[#292B2E]"></div>
-                
                 <div className="prose prose-slate dark:prose-invert max-w-none">
                   <p className="leading-relaxed text-lg whitespace-pre-wrap text-slate-700 dark:text-slate-300">{selectedContent.content_data?.text}</p>
                 </div>
-                
-                {/* Show Delete Button only if the current user is the author */}
                 {selectedContent.content_data?.userId === session?.user?.id && (
                   <div className="mt-12 flex justify-end">
-                    <button onClick={() => handleDeleteNote(selectedContent.id)} className="flex items-center gap-2 text-[#FF5B61] bg-[#FF5B61]/10 hover:bg-[#FF5B61]/20 px-5 py-2.5 rounded-xl font-bold transition-colors">
-                      <Trash2 size={18} /> Delete Note
-                    </button>
+                    <button onClick={() => handleDeleteNote(selectedContent.id)} className="flex items-center gap-2 text-[#FF5B61] bg-[#FF5B61]/10 hover:bg-[#FF5B61]/20 px-5 py-2.5 rounded-xl font-bold transition-colors"><Trash2 size={18} /> Delete Note</button>
                   </div>
                 )}
               </div>
@@ -626,37 +542,19 @@ export default function WorkspaceDashboard() {
         {activeTab === 'profile' && (
           <div className="animate-fade-in flex flex-col items-center mt-6 max-w-md mx-auto">
             <div className="w-full flex justify-start mb-6">
-              <button 
-                onClick={() => setActiveTab('dashboard')} 
-                className="flex items-center gap-2 text-slate-500 dark:text-[#A3A5A8] hover:text-[#FF9D2E] dark:hover:text-[#FF9D2E] transition-colors font-bold bg-white dark:bg-[#18191A] px-4 py-2.5 rounded-xl border border-slate-200 dark:border-[#292B2E] shadow-sm hover:shadow-md"
-              >
-                <ArrowLeft size={18} /> Back to Dashboard
-              </button>
+              <button onClick={() => setActiveTab('dashboard')} className="flex items-center gap-2 text-slate-500 dark:text-[#A3A5A8] hover:text-[#FF9D2E] dark:hover:text-[#FF9D2E] transition-colors font-bold bg-white dark:bg-[#18191A] px-4 py-2.5 rounded-xl border border-slate-200 dark:border-[#292B2E] shadow-sm hover:shadow-md"><ArrowLeft size={18} /> Back to Dashboard</button>
             </div>
             <div className="w-24 h-24 bg-[#FF9D2E]/10 rounded-full flex items-center justify-center mb-6 border border-[#FF9D2E]/30 shadow-lg shadow-[#FF9D2E]/10">
               <User className="w-12 h-12 text-[#FF9D2E]" />
             </div>
-            
             <div className="w-full bg-white dark:bg-[#18191A] p-6 rounded-3xl border border-slate-200 dark:border-[#292B2E] shadow-sm space-y-4 text-center">
               <h3 className="font-bold text-lg text-slate-500 dark:text-[#A3A5A8]">Your Nickname</h3>
               <div className="flex gap-2">
-                <input 
-                  type="text" 
-                  value={profileName} 
-                  onChange={(e) => setProfileName(e.target.value)} 
-                  className="flex-1 bg-slate-50 dark:bg-[#141516] border border-slate-200 dark:border-[#292B2E] focus:border-[#FF9D2E] rounded-xl p-3 outline-none text-center font-bold text-slate-900 dark:text-white transition-all" 
-                />
-                <button 
-                  onClick={handleUpdateProfile} 
-                  disabled={isUpdatingProfile}
-                  className="bg-[#19C784] text-white px-5 rounded-xl font-bold hover:bg-emerald-600 transition-colors flex items-center gap-2 disabled:opacity-50"
-                >
-                  <CheckCircle2 size={20} /> Save
-                </button>
+                <input type="text" value={profileName} onChange={(e) => setProfileName(e.target.value)} className="flex-1 bg-slate-50 dark:bg-[#141516] border border-slate-200 dark:border-[#292B2E] focus:border-[#FF9D2E] rounded-xl p-3 outline-none text-center font-bold text-slate-900 dark:text-white transition-all" />
+                <button onClick={handleUpdateProfile} disabled={isUpdatingProfile} className="bg-[#19C784] text-white px-5 rounded-xl font-bold hover:bg-emerald-600 transition-colors flex items-center gap-2 disabled:opacity-50"><CheckCircle2 size={20} /> Save</button>
               </div>
               <p className="text-xs text-slate-400 dark:text-[#707277]">This name will appear in group chats and notes.</p>
             </div>
-
             <button onClick={handleLogout} className="mt-8 w-full flex items-center justify-center gap-3 p-4 bg-white dark:bg-[#18191A] border border-[#FF5B61]/20 rounded-2xl text-[#FF5B61] font-bold hover:bg-[#FF5B61]/10 transition-colors">
               <LogOut className="w-5 h-5" /> Log Out
             </button>
@@ -725,7 +623,6 @@ export default function WorkspaceDashboard() {
         </div>
       )}
 
-      {/* MOBILE NAV */}
       <nav className="md:hidden fixed bottom-0 w-full bg-white/90 dark:bg-[#141516]/90 backdrop-blur-xl border-t border-slate-200 dark:border-[#292B2E] pb-safe z-40">
         <div className="flex justify-around items-center h-16">
           <button onClick={() => { setActiveTab('dashboard'); handleBack(); }} className={`flex flex-col items-center justify-center w-full space-y-1 ${activeTab === 'dashboard' ? 'text-[#FF9D2E]' : 'text-slate-400 dark:text-[#707277]'}`}><LayoutDashboard size={22} /> <span className="text-[10px] font-bold">Home</span></button>
