@@ -116,19 +116,40 @@ export default function WorkspaceDashboard() {
     setLoading(false);
   };
 
+  // গ্রুপ ফেচ করার ফাইনাল এবং আপডেটেড ফাংশন
   const fetchMyGroups = async () => {
     const { data: { user } } = await workspaceSupabase.auth.getUser();
     if (!user?.email) return;
 
-    const { data: memberData, error: memberError } = await workspaceSupabase.from('group_members').select('group_id').eq('email', user.email);
-    if (memberError) console.error("Error fetching members:", memberError);
+    console.log("1. Logged in as:", user.email); // Debugging
+
+    // .ilike ব্যবহার করা হয়েছে যেন বড়/ছোট হাতের অক্ষরে কোনো সমস্যা না হয়!
+    const { data: memberData, error: memberError } = await workspaceSupabase
+      .from('group_members')
+      .select('group_id')
+      .ilike('email', user.email);
+
+    if (memberError) {
+      console.error("Error fetching members:", memberError);
+      return;
+    }
+
+    console.log("2. Member Data Found:", memberData); // Debugging
 
     if (memberData && memberData.length > 0) {
       const groupIds = memberData.map(m => m.group_id);
-      const { data: groupsData, error: groupsError } = await workspaceSupabase.from('study_groups').select('*').in('id', groupIds);
+      
+      const { data: groupsData, error: groupsError } = await workspaceSupabase
+        .from('study_groups')
+        .select('*')
+        .in('id', groupIds);
+        
       if (groupsError) console.error("Error fetching groups:", groupsError);
+      
+      console.log("3. Groups Data Found:", groupsData); // Debugging
       setGroups(groupsData || []);
     } else {
+      console.log("User is not assigned to any groups.");
       setGroups([]);
     }
   };

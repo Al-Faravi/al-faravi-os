@@ -1,10 +1,11 @@
 // src/features/workspace/GroupDetails.tsx
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { supabase, workspaceAdmin, workspaceSupabase } from '../../lib/supabase';
 import { 
   ArrowLeft, Download, RefreshCw, FileText, BookOpen, Plus, 
-  X, Trash2, Edit3, Save, Users, UserPlus, Copy, CheckCircle2
+  X, Trash2, Edit3, Save, Users, UserPlus, Copy, CheckCircle2,
+  MessageCircle, Send, Paperclip
 } from 'lucide-react';
 
 import WorkspaceCourseViewer from './WorkspaceCourseViewer';
@@ -44,10 +45,21 @@ export default function GroupDetails() {
   const [isAssigning, setIsAssigning] = useState(false);
   const [copiedId, setCopiedId] = useState<string | null>(null);
 
+  // --- Admin Chat States ---
+  const [isChatOpen, setIsChatOpen] = useState(false);
+  const [chatMessages, setChatMessages] = useState<any[]>([]);
+  const [newMessage, setNewMessage] = useState('');
+  const [chatLoading, setChatLoading] = useState(false);
+  const chatBottomRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (isChatOpen) chatBottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [chatMessages, isChatOpen]);
+
   useEffect(() => {
     fetchGroupDetails();
     fetchMainOsData();
-    fetchAllFriends(); // Fetch all friends on load
+    fetchAllFriends();
     supabase.auth.getUser().then(({ data }) => { if (data?.user) setAdminId(data.user.id); });
   }, [groupId]);
 
@@ -68,13 +80,10 @@ export default function GroupDetails() {
     if (data) setGroupMembers(data);
   };
 
-  // Fetch unique list of all friends in the system
   const fetchAllFriends = async () => {
-    // এখানে last_active কলামটি যুক্ত করা হয়েছে
-    const { data } = await workspaceAdmin.from('group_members').select('friend_name, email, password_plain, last_active').order('created_at', { ascending: false });
-    
+    const { data } = await workspaceAdmin.from('group_members').select('friend_name, email, password_plain').order('created_at', { ascending: false });
     if (data) {
-      const uniqueFriends = Array.from(new Map(data.filter(item => item.email).map(item => [item.email, item])).values());
+      const uniqueFriends = Array.from(new Map(data.filter(item => item.email).map(item => [item.email.toLowerCase(), item])).values());
       setAllFriends(uniqueFriends);
     }
   };
@@ -86,7 +95,7 @@ export default function GroupDetails() {
     if (bcs) setBcsSubjects(bcs);
   };
 
-  // --- Assign User Logic (Existing & New) ---
+  // --- Assign User Logic (Updated with lowercase emails) ---
   const handleAssignFriend = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsAssigning(true);
@@ -94,9 +103,10 @@ export default function GroupDetails() {
     try {
       if (assignMode === 'existing') {
         if (!selectedFriendEmail) return;
-        const friendToAssign = allFriends.find(f => f.email === selectedFriendEmail);
+        const targetEmail = selectedFriendEmail.toLowerCase().trim();
+        const friendToAssign = allFriends.find(f => f.email.toLowerCase() === targetEmail);
         
-        const isAlreadyInGroup = groupMembers.some(m => m.email === selectedFriendEmail);
+        const isAlreadyInGroup = groupMembers.some(m => m.email.toLowerCase() === targetEmail);
         if (isAlreadyInGroup) {
           alert("This friend is already in the group!");
           setIsAssigning(false);
@@ -106,25 +116,26 @@ export default function GroupDetails() {
         await workspaceAdmin.from('group_members').insert([{
           group_id: groupId,
           friend_name: friendToAssign.friend_name,
-          email: friendToAssign.email,
+          email: targetEmail,
           password_plain: friendToAssign.password_plain
         }]);
         setSelectedFriendEmail('');
 
       } else {
         if (!fName || !fEmail || !fPassword) return;
+        const cleanEmail = fEmail.toLowerCase().trim();
         
-        const { error: authError } = await workspaceSupabase.auth.signUp({ email: fEmail, password: fPassword });
+        const { error: authError } = await workspaceSupabase.auth.signUp({ email: cleanEmail, password: fPassword });
         if (authError && !authError.message.includes('already registered')) throw authError;
 
         await workspaceAdmin.from('group_members').insert([{
-          group_id: groupId, friend_name: fName, email: fEmail, password_plain: fPassword
+          group_id: groupId, friend_name: fName, email: cleanEmail, password_plain: fPassword
         }]);
         setFName(''); setFEmail(''); setFPassword('');
       }
 
       fetchGroupMembers();
-      fetchAllFriends(); // Update dropdown instantly
+      fetchAllFriends(); 
     } catch (error: any) {
       alert(error.message);
     } finally {
@@ -135,7 +146,6 @@ export default function GroupDetails() {
   const handleCopyCredentials = (member: any) => {
     const appUrl = window.location.origin + '/workspace/login';
     const textToCopy = `🔐 Al_Faravi-os Premium Access\n\n📌 Link: ${appUrl}\n📧 Email: ${member.email}\n🔑 Password: ${member.password_plain}`;
-    
     navigator.clipboard.writeText(textToCopy);
     setCopiedId(member.id);
     setTimeout(() => setCopiedId(null), 2000);
@@ -147,9 +157,48 @@ export default function GroupDetails() {
     fetchGroupMembers();
   };
 
-  // --- Core Actions ---
+  // --- Admin Chat Logic ---
+  useEffect(() => {
+    if (groupId && isChatOpen) {
+      fetchChatMessages();
+      const chatSubscription = workspaceAdmin
+        .channel(`admin_chat_channel_${groupId}`)
+        .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'group_chats', filter: `group_id=eq.${groupId}` }, 
+          (payload: any) => {
+            const newMsg = payload.new;
+            setChatMessages((prev) => {
+              if (prev.some((msg) => msg.id === newMsg.id)) return prev;
+              return [...prev, newMsg];
+            });
+          }
+        ).subscribe();
+
+      return () => { workspaceAdmin.removeChannel(chatSubscription); };
+    }
+  }, [groupId, isChatOpen]);
+
+  const fetchChatMessages = async () => {
+    setChatLoading(true);
+    const { data } = await workspaceAdmin.from('group_chats').select('*').eq('group_id', groupId).order('created_at', { ascending: true });
+    if (data) setChatMessages(data);
+    setChatLoading(false);
+  };
+
+  const handleSendMessage = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newMessage.trim()) return;
+
+    const messageText = newMessage;
+    setNewMessage(''); 
+
+    await workspaceAdmin.from('group_chats').insert([{
+      group_id: groupId, user_id: adminId, sender_name: 'Faravi (Admin)', content: messageText, message_type: 'text',
+    }]);
+  };
+
+  // --- Core Content Actions ---
   const handleDeleteContent = async (id: string, type: string) => {
-    if (!window.confirm(`Are you sure you want to delete this ${type === 'shared_note' || type === 'personal_note' ? 'Note' : 'Course'} from the group?`)) return;
+    if (!window.confirm(`Delete this ${type === 'shared_note' || type === 'personal_note' ? 'Note' : 'Course'} from the group?`)) return;
     await workspaceAdmin.from('shared_contents').delete().eq('id', id);
     if (selectedContent?.id === id) setSelectedContent(null);
     fetchGroupContents();
@@ -247,7 +296,6 @@ export default function GroupDetails() {
   const groupCourses = contents.filter(c => c.content_type === 'lms_course' || c.content_type === 'bcs_subject');
   const groupNotes = contents.filter(c => c.content_type === 'shared_note' || c.content_type === 'personal_note');
 
-  // Passing readOnly={true} to disable adding modules/resources from Admin View
   if (selectedContent?.content_type === 'lms_course') return <WorkspaceCourseViewer courseData={selectedContent} onBack={() => setSelectedContent(null)} readOnly={true} />;
   if (selectedContent?.content_type === 'bcs_subject') return <WorkspaceBcsViewer subjectData={selectedContent} onBack={() => setSelectedContent(null)} readOnly={true} />;
   if (!group) return <div className="min-h-screen bg-[#0D0E0F] flex items-center justify-center"><div className="w-10 h-10 border-4 border-[#FF9D2E] border-t-transparent rounded-full animate-spin"></div></div>;
@@ -268,7 +316,6 @@ export default function GroupDetails() {
         
         {/* Top Row: Import & Assign */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* Import Section */}
           <div className="bg-[#18191A] p-6 rounded-3xl border border-[#292B2E] shadow-sm">
             <h2 className="text-xl font-bold mb-5 flex items-center gap-2"><Download className="text-[#19C784]" /> Push Course to Group</h2>
             <div className="space-y-4">
@@ -289,24 +336,12 @@ export default function GroupDetails() {
             </div>
           </div>
 
-          {/* Assign Friend Section */}
           <div className="bg-[#18191A] p-6 rounded-3xl border border-[#292B2E] shadow-sm">
             <h2 className="text-xl font-bold mb-5 flex items-center gap-2"><UserPlus className="text-[#668CFF]" /> Assign Friend</h2>
             
-            {/* Tabs */}
             <div className="flex gap-2 mb-4 bg-[#141516] p-1 rounded-xl border border-[#292B2E]">
-              <button 
-                onClick={() => setAssignMode('existing')} 
-                className={`flex-1 py-1.5 text-sm font-bold rounded-lg transition-colors ${assignMode === 'existing' ? 'bg-[#292B2E] text-white' : 'text-[#707277] hover:text-[#A3A5A8]'}`}
-              >
-                Existing Friend
-              </button>
-              <button 
-                onClick={() => setAssignMode('new')} 
-                className={`flex-1 py-1.5 text-sm font-bold rounded-lg transition-colors ${assignMode === 'new' ? 'bg-[#292B2E] text-white' : 'text-[#707277] hover:text-[#A3A5A8]'}`}
-              >
-                Create New
-              </button>
+              <button onClick={() => setAssignMode('existing')} className={`flex-1 py-1.5 text-sm font-bold rounded-lg transition-colors ${assignMode === 'existing' ? 'bg-[#292B2E] text-white' : 'text-[#707277] hover:text-[#A3A5A8]'}`}>Existing Friend</button>
+              <button onClick={() => setAssignMode('new')} className={`flex-1 py-1.5 text-sm font-bold rounded-lg transition-colors ${assignMode === 'new' ? 'bg-[#292B2E] text-white' : 'text-[#707277] hover:text-[#A3A5A8]'}`}>Create New</button>
             </div>
 
             <form onSubmit={handleAssignFriend} className="space-y-3">
@@ -333,7 +368,6 @@ export default function GroupDetails() {
           </div>
         </div>
 
-        {/* Assigned Members Area */}
         <div className="bg-[#18191A] p-6 rounded-3xl border border-[#292B2E] shadow-sm">
           <h2 className="text-xl font-bold mb-4 flex items-center gap-2"><Users className="text-[#FF9D2E]"/> Group Members (Credentials)</h2>
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
@@ -357,7 +391,6 @@ export default function GroupDetails() {
           </div>
         </div>
 
-        {/* Existing Content Area (Courses and Notes Split Layout) */}
         <div className="flex flex-col lg:flex-row gap-6 items-start mt-8">
           <div className="flex-1 w-full">
             <h2 className="text-xl font-bold mb-4 flex items-center gap-2"><BookOpen className="text-[#19C784]" size={20}/> Courses inside Group</h2>
@@ -415,6 +448,52 @@ export default function GroupDetails() {
           </div>
         </div>
       )}
+
+      {/* --- ADMIN FLOATING CHAT --- */}
+      {group && (
+        <div className="fixed bottom-8 right-8 z-[999] flex flex-col items-end">
+          {isChatOpen && (
+            <div className="w-[380px] h-[500px] bg-[#141516] border border-[#292B2E] shadow-2xl rounded-3xl mb-4 flex flex-col overflow-hidden">
+              <div className="bg-[#18191A] p-4 border-b border-[#292B2E] flex justify-between items-center">
+                <div>
+                  <h3 className="font-bold flex items-center gap-2 text-white"><MessageCircle size={18} className="text-[#FF9D2E]" /> Group Chat (Admin)</h3>
+                  <p className="text-xs text-[#707277]">{group.name}</p>
+                </div>
+                <button onClick={() => setIsChatOpen(false)} className="text-[#707277] hover:text-[#FF5B61]"><X size={20} /></button>
+              </div>
+              
+              <div className="flex-1 p-4 overflow-y-auto flex flex-col gap-4">
+                {chatLoading ? <p className="text-center text-[#707277] mt-10">Loading chat...</p> :
+                 chatMessages.length === 0 ? <p className="text-center text-[#707277] mt-10">No messages yet.</p> :
+                 chatMessages.map(msg => {
+                   const isMe = msg.user_id === adminId;
+                   return (
+                     <div key={msg.id} className={`flex flex-col ${isMe ? 'items-end' : 'items-start'}`}>
+                       <span className="text-[10px] text-[#A3A5A8] mb-1">{msg.sender_name}</span>
+                       <div className={`px-4 py-2.5 rounded-2xl text-sm max-w-[85%] ${isMe ? 'bg-[#FF9D2E] text-black rounded-tr-sm font-medium' : 'bg-[#1D1E20] text-white border border-[#292B2E] rounded-tl-sm'}`}>
+                         {msg.message_type === 'text' && <p>{msg.content}</p>}
+                         {msg.message_type === 'image' && <a href={msg.file_url} target="_blank" rel="noreferrer"><img src={msg.file_url} alt="Shared" className="rounded-xl max-h-48" /></a>}
+                         {msg.message_type === 'audio' && <audio controls src={msg.file_url} className="w-48 h-8 rounded-full" />}
+                       </div>
+                     </div>
+                   );
+                 })
+                }
+                <div ref={chatBottomRef} />
+              </div>
+
+              <form onSubmit={handleSendMessage} className="p-3 bg-[#18191A] border-t border-[#292B2E] flex items-center gap-2">
+                <input type="text" value={newMessage} onChange={e => setNewMessage(e.target.value)} placeholder="Type as Admin..." className="flex-1 bg-[#1D1E20] border border-transparent focus:border-[#FF9D2E]/50 rounded-full px-4 py-2 text-sm text-white outline-none" />
+                <button type="submit" disabled={!newMessage.trim()} className="p-2.5 bg-[#FF9D2E] text-black rounded-full hover:bg-[#FFAA3D] disabled:opacity-50"><Send size={16}/></button>
+              </form>
+            </div>
+          )}
+          <button onClick={() => setIsChatOpen(!isChatOpen)} className="w-16 h-16 bg-[#FF9D2E] text-black rounded-full flex items-center justify-center shadow-[0_10px_30px_rgba(255,157,46,0.3)] hover:scale-105 transition-transform">
+            {isChatOpen ? <X size={28} strokeWidth={2.5}/> : <MessageCircle size={28} strokeWidth={2.5}/>}
+          </button>
+        </div>
+      )}
+
     </div>
   );
 }
