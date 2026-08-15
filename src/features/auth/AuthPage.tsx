@@ -1,6 +1,5 @@
-import { useState, useEffect } from 'react'; // useEffect যুক্ত করা হয়েছে
+import { useState } from 'react';
 import { supabase } from '../../lib/supabase';
-import { workspaceSupabase } from '../../lib/supabase'; // workspaceSupabase ইমপোর্ট করা হয়েছে
 import { Mail, Lock, Loader2, ShieldCheck, Smartphone, ArrowLeft } from 'lucide-react';
 
 export default function AuthPage() {
@@ -13,19 +12,6 @@ export default function AuthPage() {
   const [mfaRequired, setMfaRequired] = useState(false);
   const [mfaCode, setMfaCode] = useState('');
   const [factorId, setFactorId] = useState('');
-
-  // ফ্রেন্ড লগইন চেক করার useEffect
-  useEffect(() => {
-    const checkWorkspaceSession = async () => {
-      // চেক করা হচ্ছে কোনো ফ্রেন্ড লগইন করা অবস্থায় এখানে এসেছে কিনা
-      const { data } = await workspaceSupabase.auth.getSession();
-      if (data.session) {
-        // যদি সে ফ্রেন্ড হয়, তবে তাকে জোর করে Workspace এ পাঠিয়ে দেওয়া হবে
-        window.location.href = '/workspace'; 
-      }
-    };
-    checkWorkspaceSession();
-  }, []);
 
   // ==========================================
   // Step 1: Email & Password Login
@@ -47,7 +33,7 @@ export default function AuthPage() {
       const { data: aalData, error: aalError } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
       if (aalError) throw aalError;
 
-      // currentLevel 'aal1' মানে পাসওয়ার্ড ঠিক আছে, আর nextLevel 'aal2' মানে 2FA লাগবে!
+      // currentLevel 'aal1' মানে পাসওয়ার্ড ঠিক আছে, আর nextLevel 'aal2' মানে 2FA লাগবে!
       if (aalData.currentLevel === 'aal1' && aalData.nextLevel === 'aal2') {
         const { data: factors, error: factorsError } = await supabase.auth.mfa.listFactors();
         if (factorsError) throw factorsError;
@@ -59,11 +45,11 @@ export default function AuthPage() {
           setFactorId(totpFactor.id);
           setMfaRequired(true); // 2FA স্ক্রিন ওপেন হবে
           setLoading(false);
-          return; // এখানেই থেমে যাবে, 2FA কোড না দেওয়া পর্যন্ত ভেতরে ঢুকতে দেবে না
+          return; // এখানেই থেমে যাবে, 2FA কোড না দেওয়া পর্যন্ত ভেতরে ঢুকতে দেবে না
         }
       }
 
-      // যদি 2FA অন করা না থাকে, তবে সরাসরি লগইন হয়ে যাবে (App.tsx হ্যান্ডেল করবে)
+      // যদি 2FA অন করা না থাকে, তবে সরাসরি লগইন হয়ে যাবে (App.tsx হ্যান্ডেল করবে)
     } catch (err: any) {
       setError(err.message || 'Invalid login credentials.');
     } finally {
