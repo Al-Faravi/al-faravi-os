@@ -12,6 +12,7 @@ export default function WorkspaceManager() {
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [fName, setFName] = useState(''); // <--- এটি নতুন যোগ করা হয়েছে
   const [showUserModal, setShowUserModal] = useState(false);
 
   // --- New State for Friend List Sidebar ---
@@ -68,10 +69,19 @@ export default function WorkspaceManager() {
     if (error) {
       alert(error.message);
     } else {
-      alert("Friend account created successfully!");
+      // ডাটাবেসে সেভ করা হচ্ছে যেন সে Existing Friend লিস্টে চলে আসে
+      await workspaceAdmin.from('group_members').insert([{
+        friend_name: fName,
+        email: email,
+        password_plain: password
+      }]);
+
+      alert("Friend account created successfully! You can assign them inside a group now.");
       setShowUserModal(false);
       setEmail('');
       setPassword('');
+      setFName(''); // স্টেট ক্লিয়ার করা হলো
+      fetchFriendsList(); // সাইডবার রিফ্রেশ হবে
     }
   };
 
@@ -214,6 +224,15 @@ export default function WorkspaceManager() {
             <p className="text-[#A3A5A8] text-sm mb-6">Create a new student account to grant them access to workspaces.</p>
 
             <form onSubmit={handleCreateFriendAccount} className="space-y-4">
+              {/* নতুন যোগ করা Name ফিল্ড */}
+              <div>
+                <label className="block text-sm font-semibold text-[#A3A5A8] mb-1">Full Name</label>
+                <input 
+                  type="text" required value={fName} onChange={(e) => setFName(e.target.value)} 
+                  className="w-full bg-[#141516] border border-[#292B2E] focus:border-[#FF9D2E] rounded-xl p-3.5 text-[#F5F5F5] outline-none transition-colors"
+                  placeholder="Student Name"
+                />
+              </div>
               <div>
                 <label className="block text-sm font-semibold text-[#A3A5A8] mb-1">Email Address</label>
                 <input 
