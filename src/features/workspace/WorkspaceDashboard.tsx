@@ -116,14 +116,10 @@ export default function WorkspaceDashboard() {
     setLoading(false);
   };
 
-  // গ্রুপ ফেচ করার ফাইনাল এবং আপডেটেড ফাংশন
   const fetchMyGroups = async () => {
     const { data: { user } } = await workspaceSupabase.auth.getUser();
     if (!user?.email) return;
 
-    console.log("1. Logged in as:", user.email); // Debugging
-
-    // .ilike ব্যবহার করা হয়েছে যেন বড়/ছোট হাতের অক্ষরে কোনো সমস্যা না হয়!
     const { data: memberData, error: memberError } = await workspaceSupabase
       .from('group_members')
       .select('group_id')
@@ -134,22 +130,22 @@ export default function WorkspaceDashboard() {
       return;
     }
 
-    console.log("2. Member Data Found:", memberData); // Debugging
-
     if (memberData && memberData.length > 0) {
-      const groupIds = memberData.map(m => m.group_id);
+      // 🚀 ম্যাজিক ফিক্স: null বা ফাঁকা আইডিগুলোকে ফিল্টার করে বাদ দেওয়া হচ্ছে
+      const groupIds = memberData.map(m => m.group_id).filter(id => id !== null);
       
-      const { data: groupsData, error: groupsError } = await workspaceSupabase
-        .from('study_groups')
-        .select('*')
-        .in('id', groupIds);
-        
-      if (groupsError) console.error("Error fetching groups:", groupsError);
-      
-      console.log("3. Groups Data Found:", groupsData); // Debugging
-      setGroups(groupsData || []);
+      if (groupIds.length > 0) {
+        const { data: groupsData, error: groupsError } = await workspaceSupabase
+          .from('study_groups')
+          .select('*')
+          .in('id', groupIds);
+          
+        if (groupsError) console.error("Error fetching groups:", groupsError);
+        setGroups(groupsData || []);
+      } else {
+        setGroups([]); // যদি শুধু null আইডি থাকে
+      }
     } else {
-      console.log("User is not assigned to any groups.");
       setGroups([]);
     }
   };
