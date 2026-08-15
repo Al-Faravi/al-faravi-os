@@ -25,8 +25,8 @@ export default defineConfig({
         background_color: '#0D0E0F',
         display: 'standalone',
         orientation: 'portrait',
-        scope: '/',               // <-- যুক্ত করা হয়েছে
-        start_url: '/',           // <-- যুক্ত করা হয়েছে (অ্যাপ ক্র্যাশ রোধ করতে)
+        scope: '/',               
+        start_url: '/workspace/login', // <--- শুধু এই লাইনটি পরিবর্তন করা হয়েছে!
         icons: [
           {
             src: '/icons/logo.png',
@@ -38,13 +38,13 @@ export default defineConfig({
             src: '/icons/logo.png',
             sizes: '512x512',
             type: 'image/png',
-            purpose: 'any maskable' // <-- Maskable যুক্ত করে শর্ট করা হয়েছে
+            purpose: 'any maskable' 
           }
         ]
       },
       workbox: {
         globPatterns: ['**/*.{js,css,html,ico,png,svg}'],
-        navigateFallback: '/index.html', // <-- React Router এর সাদা স্ক্রিন এরর রোধ করতে অত্যন্ত জরুরি
+        navigateFallback: '/index.html', 
       }
     })
   ]

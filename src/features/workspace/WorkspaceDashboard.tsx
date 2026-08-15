@@ -31,6 +31,13 @@ interface ChatMessage {
   isOptimistic?: boolean;
 }
 
+// Extend Window interface to hold the prompt globally
+declare global {
+  interface Window {
+    deferredPrompt: any;
+  }
+}
+
 export default function WorkspaceDashboard() {
   const navigate = useNavigate();
   
@@ -67,15 +74,23 @@ export default function WorkspaceDashboard() {
 
   const randomQuote = useMemo(() => DAILY_QUOTES[Math.floor(Math.random() * DAILY_QUOTES.length)], []);
 
-  // --- PWA Install State ---
-  const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
+  // --- PWA Install State (Updated) ---
+  const [deferredPrompt, setDeferredPrompt] = useState<any>(window.deferredPrompt || null);
 
   useEffect(() => {
     const handleBeforeInstallPrompt = (e: Event) => {
       e.preventDefault();
+      window.deferredPrompt = e; // Save globally
       setDeferredPrompt(e);
     };
+
     window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+    
+    // Check if it was caught earlier
+    if (window.deferredPrompt) {
+      setDeferredPrompt(window.deferredPrompt);
+    }
+
     return () => window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
   }, []);
 
@@ -85,6 +100,7 @@ export default function WorkspaceDashboard() {
       const { outcome } = await deferredPrompt.userChoice;
       if (outcome === 'accepted') {
         setDeferredPrompt(null);
+        window.deferredPrompt = null; // Clear globally
       }
     }
   };
