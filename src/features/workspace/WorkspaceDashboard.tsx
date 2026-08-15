@@ -386,7 +386,7 @@ export default function WorkspaceDashboard() {
           ) : (
             // Updated Header Logo (Replaced Sparkles with custom logo)
             <div className="w-10 h-10 bg-[#141516] rounded-xl flex items-center justify-center shadow-lg shadow-[#FF9D2E]/20 border border-[#292B2E] overflow-hidden p-1">
-              <img src="/icons/alfaravi logo.png" alt="Logo" className="w-full h-full object-contain" />
+              <img src="/icons/logo.png" alt="Logo" className="w-full h-full object-contain" />
             </div>
           )}
           <h1 className="text-xl font-extrabold tracking-tight">{selectedGroup ? selectedGroup.name : 'Study Portal'}</h1>
