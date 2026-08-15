@@ -5,7 +5,7 @@ import { supabase, workspaceAdmin, workspaceSupabase } from '../../lib/supabase'
 import { 
   ArrowLeft, Download, RefreshCw, FileText, BookOpen, Plus, 
   X, Trash2, Edit3, Save, Users, UserPlus, Copy, CheckCircle2,
-  MessageCircle, Send, Paperclip
+  MessageCircle, Send
 } from 'lucide-react';
 
 import WorkspaceCourseViewer from './WorkspaceCourseViewer';
@@ -60,6 +60,7 @@ export default function GroupDetails() {
     fetchGroupDetails();
     fetchMainOsData();
     fetchAllFriends();
+    // Admin ID fetch from Main OS
     supabase.auth.getUser().then(({ data }) => { if (data?.user) setAdminId(data.user.id); });
   }, [groupId]);
 
@@ -83,6 +84,7 @@ export default function GroupDetails() {
   const fetchAllFriends = async () => {
     const { data } = await workspaceAdmin.from('group_members').select('friend_name, email, password_plain').order('created_at', { ascending: false });
     if (data) {
+      // Deduplicate emails with lowercase to avoid case issues
       const uniqueFriends = Array.from(new Map(data.filter(item => item.email).map(item => [item.email.toLowerCase(), item])).values());
       setAllFriends(uniqueFriends);
     }
@@ -95,7 +97,7 @@ export default function GroupDetails() {
     if (bcs) setBcsSubjects(bcs);
   };
 
-  // --- Assign User Logic (Updated with lowercase emails) ---
+  // --- Assign User Logic ---
   const handleAssignFriend = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsAssigning(true);
@@ -157,7 +159,7 @@ export default function GroupDetails() {
     fetchGroupMembers();
   };
 
-  // --- Admin Chat Logic ---
+  // --- Admin Chat Logic (Realtime) ---
   useEffect(() => {
     if (groupId && isChatOpen) {
       fetchChatMessages();
@@ -186,13 +188,18 @@ export default function GroupDetails() {
 
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newMessage.trim()) return;
+    if (!newMessage.trim() || !groupId) return;
 
     const messageText = newMessage;
     setNewMessage(''); 
 
+    // Admin sends message
     await workspaceAdmin.from('group_chats').insert([{
-      group_id: groupId, user_id: adminId, sender_name: 'Faravi (Admin)', content: messageText, message_type: 'text',
+      group_id: groupId, 
+      user_id: adminId, 
+      sender_name: 'Faravi (Admin)', // <--- Admin Tag
+      content: messageText, 
+      message_type: 'text',
     }]);
   };
 
@@ -304,7 +311,7 @@ export default function GroupDetails() {
     <div className="min-h-screen bg-[#0D0E0F] text-[#F5F5F5] font-sans pb-20 selection:bg-[#FF9D2E]/30 relative">
       <div className="sticky top-0 bg-[#0D0E0F]/80 backdrop-blur-xl border-b border-[#292B2E] z-40 px-6 py-4">
         <div className="max-w-6xl mx-auto flex items-center gap-4">
-          <button onClick={() => navigate('/workspace-manager')} className="p-2.5 bg-[#141516] border border-[#292B2E] rounded-xl"><ArrowLeft size={20} /></button>
+          <button onClick={() => navigate('/workspace-manager')} className="p-2.5 bg-[#141516] hover:bg-[#1D1E20] border border-[#292B2E] rounded-xl transition-colors"><ArrowLeft size={20} /></button>
           <div>
             <h1 className="text-2xl font-extrabold">{group.name}</h1>
             <p className="text-[#A3A5A8] text-sm">Full Admin Control Panel</p>
@@ -338,7 +345,6 @@ export default function GroupDetails() {
 
           <div className="bg-[#18191A] p-6 rounded-3xl border border-[#292B2E] shadow-sm">
             <h2 className="text-xl font-bold mb-5 flex items-center gap-2"><UserPlus className="text-[#668CFF]" /> Assign Friend</h2>
-            
             <div className="flex gap-2 mb-4 bg-[#141516] p-1 rounded-xl border border-[#292B2E]">
               <button onClick={() => setAssignMode('existing')} className={`flex-1 py-1.5 text-sm font-bold rounded-lg transition-colors ${assignMode === 'existing' ? 'bg-[#292B2E] text-white' : 'text-[#707277] hover:text-[#A3A5A8]'}`}>Existing Friend</button>
               <button onClick={() => setAssignMode('new')} className={`flex-1 py-1.5 text-sm font-bold rounded-lg transition-colors ${assignMode === 'new' ? 'bg-[#292B2E] text-white' : 'text-[#707277] hover:text-[#A3A5A8]'}`}>Create New</button>
@@ -441,8 +447,8 @@ export default function GroupDetails() {
           <div className="bg-[#18191A] p-6 rounded-3xl border border-[#FF9D2E]/30 shadow-2xl w-full max-w-lg">
             <div className="flex justify-between items-center mb-5"><h3 className="text-xl font-bold flex items-center gap-2"><FileText size={20} className="text-[#FF9D2E]"/> {editingNoteId ? 'Edit Group Note' : 'New Group Note'}</h3><button onClick={() => setShowNoteModal(false)} className="text-[#707277] hover:text-[#FF5B61]"><X size={20}/></button></div>
             <form onSubmit={handleSaveAdminNote} className="space-y-4">
-              <input type="text" placeholder="Note Title..." value={adminNoteTitle} onChange={(e) => setAdminNoteTitle(e.target.value)} className="w-full bg-[#141516] border border-[#292B2E] rounded-xl p-4 outline-none font-bold" required />
-              <textarea placeholder="Write note content..." value={adminNoteContent} onChange={(e) => setAdminNoteContent(e.target.value)} className="w-full bg-[#141516] border border-[#292B2E] rounded-xl p-4 h-40 resize-none outline-none" required />
+              <input type="text" placeholder="Note Title..." value={adminNoteTitle} onChange={(e) => setAdminNoteTitle(e.target.value)} className="w-full bg-[#141516] border border-[#292B2E] rounded-xl p-4 outline-none font-bold text-white" required />
+              <textarea placeholder="Write note content..." value={adminNoteContent} onChange={(e) => setAdminNoteContent(e.target.value)} className="w-full bg-[#141516] border border-[#292B2E] rounded-xl p-4 h-40 resize-none outline-none text-white" required />
               <div className="flex justify-end gap-3 pt-2"><button type="submit" className="bg-[#FF9D2E] text-black px-6 py-2.5 rounded-xl font-extrabold hover:bg-[#FFAA3D]"><Save size={16} className="inline mr-1" /> {editingNoteId ? 'Update' : 'Publish'}</button></div>
             </form>
           </div>
@@ -453,7 +459,7 @@ export default function GroupDetails() {
       {group && (
         <div className="fixed bottom-8 right-8 z-[999] flex flex-col items-end">
           {isChatOpen && (
-            <div className="w-[380px] h-[500px] bg-[#141516] border border-[#292B2E] shadow-2xl rounded-3xl mb-4 flex flex-col overflow-hidden">
+            <div className="w-[380px] h-[500px] bg-[#141516] border border-[#292B2E] shadow-2xl rounded-3xl mb-4 flex flex-col overflow-hidden animate-fade-in origin-bottom-right">
               <div className="bg-[#18191A] p-4 border-b border-[#292B2E] flex justify-between items-center">
                 <div>
                   <h3 className="font-bold flex items-center gap-2 text-white"><MessageCircle size={18} className="text-[#FF9D2E]" /> Group Chat (Admin)</h3>
@@ -463,16 +469,17 @@ export default function GroupDetails() {
               </div>
               
               <div className="flex-1 p-4 overflow-y-auto flex flex-col gap-4">
-                {chatLoading ? <p className="text-center text-[#707277] mt-10">Loading chat...</p> :
+                {chatLoading ? <div className="flex-1 flex justify-center items-center"><div className="w-6 h-6 border-2 border-[#FF9D2E] border-t-transparent rounded-full animate-spin"></div></div> :
                  chatMessages.length === 0 ? <p className="text-center text-[#707277] mt-10">No messages yet.</p> :
-                 chatMessages.map(msg => {
+                 chatMessages.map((msg, idx) => {
                    const isMe = msg.user_id === adminId;
                    return (
-                     <div key={msg.id} className={`flex flex-col ${isMe ? 'items-end' : 'items-start'}`}>
-                       <span className="text-[10px] text-[#A3A5A8] mb-1">{msg.sender_name}</span>
-                       <div className={`px-4 py-2.5 rounded-2xl text-sm max-w-[85%] ${isMe ? 'bg-[#FF9D2E] text-black rounded-tr-sm font-medium' : 'bg-[#1D1E20] text-white border border-[#292B2E] rounded-tl-sm'}`}>
+                     <div key={msg.id || idx} className={`flex flex-col ${isMe ? 'items-end' : 'items-start'}`}>
+                       <span className="text-[10px] text-[#A3A5A8] mb-1 font-bold">{msg.sender_name}</span>
+                       <div className={`px-4 py-2.5 rounded-2xl text-sm max-w-[85%] ${isMe ? 'bg-[#FF9D2E] text-slate-900 rounded-tr-sm font-medium' : 'bg-[#1D1E20] text-white border border-[#292B2E] rounded-tl-sm'}`}>
                          {msg.message_type === 'text' && <p>{msg.content}</p>}
-                         {msg.message_type === 'image' && <a href={msg.file_url} target="_blank" rel="noreferrer"><img src={msg.file_url} alt="Shared" className="rounded-xl max-h-48" /></a>}
+                         {msg.message_type === 'image' && <a href={msg.file_url} target="_blank" rel="noreferrer"><img src={msg.file_url} alt="Shared" className="rounded-xl max-h-48 object-cover border border-black/10" /></a>}
+                         {msg.message_type === 'file' && <a href={msg.file_url} target="_blank" rel="noreferrer" className="flex items-center gap-2 underline underline-offset-2 break-all"><FileText size={16} className="shrink-0" /> {msg.content}</a>}
                          {msg.message_type === 'audio' && <audio controls src={msg.file_url} className="w-48 h-8 rounded-full" />}
                        </div>
                      </div>
@@ -488,12 +495,16 @@ export default function GroupDetails() {
               </form>
             </div>
           )}
-          <button onClick={() => setIsChatOpen(!isChatOpen)} className="w-16 h-16 bg-[#FF9D2E] text-black rounded-full flex items-center justify-center shadow-[0_10px_30px_rgba(255,157,46,0.3)] hover:scale-105 transition-transform">
+          <button onClick={() => setIsChatOpen(!isChatOpen)} className="w-16 h-16 bg-[#FF9D2E] hover:bg-[#FFAA3D] text-slate-900 rounded-full flex items-center justify-center shadow-[0_10px_30px_rgba(255,157,46,0.3)] hover:scale-105 transition-transform">
             {isChatOpen ? <X size={28} strokeWidth={2.5}/> : <MessageCircle size={28} strokeWidth={2.5}/>}
           </button>
         </div>
       )}
 
+      <style>{`
+        .animate-fade-in { animation: fadeIn 0.3s ease-out; }
+        @keyframes fadeIn { from { opacity: 0; transform: scale(0.95); } to { opacity: 1; transform: scale(1); } }
+      `}</style>
     </div>
   );
 }
