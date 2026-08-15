@@ -79,8 +79,8 @@ export default function WorkspaceDashboard() {
       }
     };
 
-    updatePresence(); // পেজে ঢোকার সাথে সাথে একবার আপডেট হবে
-    const interval = setInterval(updatePresence, 60000); // এরপর প্রতি ১ মিনিট পরপর আপডেট হবে
+    updatePresence(); 
+    const interval = setInterval(updatePresence, 60000); 
     
     return () => clearInterval(interval);
   }, []);
@@ -113,26 +113,33 @@ export default function WorkspaceDashboard() {
       setProfileName(session.user?.email?.split('@')[0] || 'Student');
     }
 
-    // গ্রুপ ফেচ করার ফাংশনে user_id এর বদলে email দিয়ে চেক করা হচ্ছে
+    // গ্রুপ ফেচ করার আপডেটেড ফাংশন (এরর হ্যান্ডেলিং সহ)
     const fetchMyGroups = async () => {
+      // বর্তমান ইউজারের ডাটা আনছি
       const { data: { user } } = await workspaceSupabase.auth.getUser();
       if (!user?.email) return;
 
-      // ১. প্রথমে ইমেইল দিয়ে চেক করবে সে কোন কোন গ্রুপের মেম্বার
-      const { data: memberData } = await workspaceSupabase
+      // ১. ইমেইল দিয়ে চেক করছি সে কোন কোন গ্রুপের মেম্বার
+      const { data: memberData, error: memberError } = await workspaceSupabase
         .from('group_members')
         .select('group_id')
-        .eq('email', user.email); // <--- এখানে user.email দিয়ে খোঁজা হচ্ছে
+        .eq('email', user.email);
+
+      if (memberError) {
+        console.error("Error fetching members:", memberError);
+        return;
+      }
 
       if (memberData && memberData.length > 0) {
         const groupIds = memberData.map(m => m.group_id);
         
-        // ২. এরপর সেই গ্রুপগুলোর ডাটা আনবে
-        const { data: groupsData } = await workspaceSupabase
+        // ২. সেই গ্রুপগুলোর বিস্তারিত তথ্য আনছি
+        const { data: groupsData, error: groupsError } = await workspaceSupabase
           .from('study_groups')
           .select('*')
           .in('id', groupIds);
           
+        if (groupsError) console.error("Error fetching groups:", groupsError);
         setGroups(groupsData || []);
       } else {
         setGroups([]);
@@ -234,7 +241,6 @@ export default function WorkspaceDashboard() {
     if (!error) { handleBack(); fetchGroupContents(selectedGroup.id); }
   };
 
-  // জায়গা ২: আপডেটেড openContent ফাংশন
   const openContent = (item: any) => {
     setSelectedContent(item);
     if (item.content_type === 'shared_note' || item.content_type === 'personal_note') {
@@ -355,7 +361,6 @@ export default function WorkspaceDashboard() {
   const currentDate = new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
   const totalCourses = allContents.filter(c => c.content_type.includes('course') || c.content_type.includes('subject')).length;
   
-  // জায়গা ১: আপডেটেড Filter Courses and Notes
   const groupCourses = groupContents.filter(c => c.content_type === 'lms_course' || c.content_type === 'bcs_subject');
   const groupNotes = groupContents.filter(c => c.content_type === 'shared_note' || c.content_type === 'personal_note');
 
@@ -565,7 +570,7 @@ export default function WorkspaceDashboard() {
           </div>
         )}
 
-        {/* জায়গা ৩: View / Edit Note Full Screen Mode */}
+        {/* View / Edit Note Full Screen Mode */}
         {(selectedContent?.content_type === 'shared_note' || selectedContent?.content_type === 'personal_note') && (
           <div className="animate-slide-in-right bg-white dark:bg-[#18191A] rounded-3xl p-6 md:p-10 shadow-lg border border-slate-200 dark:border-[#292B2E] min-h-[60vh] transition-colors">
             {!isEditing ? (
@@ -628,7 +633,6 @@ export default function WorkspaceDashboard() {
                 <ArrowLeft size={18} /> Back to Dashboard
               </button>
             </div>
-            {/* Rest of the profile content... */}
             <div className="w-24 h-24 bg-[#FF9D2E]/10 rounded-full flex items-center justify-center mb-6 border border-[#FF9D2E]/30 shadow-lg shadow-[#FF9D2E]/10">
               <User className="w-12 h-12 text-[#FF9D2E]" />
             </div>
