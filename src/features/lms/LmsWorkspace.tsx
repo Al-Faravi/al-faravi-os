@@ -4,7 +4,7 @@ import { supabase } from '../../lib/supabase';
 import { 
   ArrowLeft, Columns, MonitorPlay, FileText, 
   PlayCircle, File, CheckCircle2, Save, Loader2, Plus,
-  X, Link as LinkIcon, Target, Layout, Trash2, Menu, Circle, CheckCircle, Video
+  X, Link as LinkIcon, Target, Layout, Trash2, Menu, Circle, CheckCircle, Video, Edit3
 } from 'lucide-react';
 
 interface Content { id: string; module_id: string; title: string; content_type: string; file_path_or_url: string; is_completed: boolean; }
@@ -29,14 +29,17 @@ export default function LmsWorkspace() {
   const [showNoteModal, setShowNoteModal] = useState(false);
   const [nTitle, setNTitle] = useState('');
 
-  // Modals States
+  // Modals States (Create & Edit)
   const [showModuleModal, setShowModuleModal] = useState(false);
   const [mTitle, setMTitle] = useState('');
-  const [showContentModal, setShowContentModal] = useState<string | null>(null);
+  const [editingModuleId, setEditingModuleId] = useState<string | null>(null); // For Update
+
+  const [showContentModal, setShowContentModal] = useState<string | null>(null); // holds module_id
   const [cTitle, setCTitle] = useState('');
   const [cType, setCType] = useState('youtube');
   const [cUrl, setCUrl] = useState('');
   const [isSavingResource, setIsSavingResource] = useState(false);
+  const [editingContentId, setEditingContentId] = useState<string | null>(null); // For Update
 
   useEffect(() => { if (courseId) fetchWorkspaceData(); }, [courseId]);
 
@@ -61,7 +64,18 @@ export default function LmsWorkspace() {
           ...mod, contents: (contentsData || []).filter(c => c.module_id === mod.id)
         }));
         setModules(structuredModules);
-        if (!activeContent && structuredModules[0]?.contents[0]) setActiveContent(structuredModules[0].contents[0]);
+        
+        // Only set active content if there isn't one already or if it was deleted
+        if (!activeContent || !contentsData?.find(c => c.id === activeContent.id)) {
+            if(structuredModules[0]?.contents[0]) {
+               setActiveContent(structuredModules[0].contents[0]);
+            } else {
+               setActiveContent(null);
+            }
+        }
+      } else {
+         setModules([]);
+         setActiveContent(null);
       }
     } catch (error) { console.error(error); } finally { setLoading(false); }
   };
@@ -102,6 +116,71 @@ export default function LmsWorkspace() {
     } catch (error) { console.error(error); }
   };
 
+  // --- MODULE CRUD ---
+  const handleSaveModule = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!mTitle || !courseId) return;
+    try {
+      if (editingModuleId) {
+        // UPDATE Module
+        await supabase.from('lms_modules').update({ title: mTitle }).eq('id', editingModuleId);
+      } else {
+        // CREATE Module
+        const { data: { user } } = await supabase.auth.getUser();
+        await supabase.from('lms_modules').insert([{ course_id: courseId, user_id: user?.id, title: mTitle }]);
+      }
+      setMTitle(''); setEditingModuleId(null); setShowModuleModal(false); fetchWorkspaceData();
+    } catch (error) { alert("Error saving module"); }
+  };
+
+  const openEditModule = (mod: Module) => {
+      setMTitle(mod.title); setEditingModuleId(mod.id); setShowModuleModal(true);
+  };
+
+  const handleDeleteModule = async (moduleId: string) => {
+      if(!window.confirm("Are you sure you want to delete this module and all its resources?")) return;
+      try {
+          await supabase.from('lms_modules').delete().eq('id', moduleId);
+          fetchWorkspaceData();
+      } catch (error) { alert("Error deleting module"); }
+  };
+
+  // --- CONTENT/RESOURCE CRUD ---
+  const handleSaveContent = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!cTitle || !cUrl) return;
+    setIsSavingResource(true);
+    try {
+      if (editingContentId) {
+          // UPDATE Content
+          await supabase.from('lms_contents').update({ title: cTitle, content_type: cType, file_path_or_url: cUrl }).eq('id', editingContentId);
+      } else {
+          // CREATE Content
+          if(!showContentModal) return; // need module id
+          const { data: { user } } = await supabase.auth.getUser();
+          await supabase.from('lms_contents').insert([{ module_id: showContentModal, user_id: user?.id, title: cTitle, content_type: cType, file_path_or_url: cUrl }]);
+      }
+      
+      setCTitle(''); setCUrl(''); setEditingContentId(null); setShowContentModal(null); fetchWorkspaceData();
+    } catch (error) { alert("Error saving resource"); } 
+    finally { setIsSavingResource(false); }
+  };
+
+  const openEditContent = (content: Content) => {
+      setCTitle(content.title); setCUrl(content.file_path_or_url); setCType(content.content_type); 
+      setEditingContentId(content.id); setShowContentModal(content.module_id);
+  };
+
+  const handleDeleteContent = async (contentId: string) => {
+      if(!window.confirm("Delete this resource?")) return;
+      try {
+          await supabase.from('lms_contents').delete().eq('id', contentId);
+          fetchWorkspaceData();
+      } catch(error) { alert("Error deleting resource"); }
+  }
+
+
+  // --- Note Logic ---
   const handleCreateNote = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!nTitle || !activeContent) return;
@@ -122,30 +201,7 @@ export default function LmsWorkspace() {
     } catch (error: any) { alert(error.message); } finally { setIsSavingNote(false); }
   };
 
-  // --- Modal Handlers ---
-  const handleAddModule = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!mTitle || !courseId) return;
-    try {
-      const { data: { user } } = await supabase.auth.getUser();
-      await supabase.from('lms_modules').insert([{ course_id: courseId, user_id: user?.id, title: mTitle }]);
-      setMTitle(''); setShowModuleModal(false); fetchWorkspaceData();
-    } catch (error) { alert("Error adding module"); }
-  };
 
-  const handleAddContent = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!cTitle || !showContentModal || !cUrl) return;
-    setIsSavingResource(true);
-    try {
-      const { data: { user } } = await supabase.auth.getUser();
-      await supabase.from('lms_contents').insert([{ module_id: showContentModal, user_id: user?.id, title: cTitle, content_type: cType, file_path_or_url: cUrl }]);
-      setCTitle(''); setCUrl(''); setShowContentModal(null); fetchWorkspaceData();
-    } catch (error) { alert("Error adding resource"); } 
-    finally { setIsSavingResource(false); }
-  };
-
-  // --- Updated Regex URL Embed ---
   const getSafeEmbedUrl = (url: string, type: string) => {
     if (!url) return '';
     if (type === 'youtube' || url.includes('youtu')) {
@@ -159,7 +215,7 @@ export default function LmsWorkspace() {
     <>
       <div className="p-4 border-b border-[#E2E8F0] flex justify-between items-center bg-[#F8FAFC] sticky top-0 z-10">
         <h2 className="font-bold flex items-center gap-2 text-[#020F33]"><Layout size={18} className="text-purple-600"/> Modules</h2>
-        <button onClick={() => setShowModuleModal(true)} className="hover:text-white p-1.5 rounded-lg transition-colors text-purple-600 bg-purple-100 hover:bg-purple-600">
+        <button onClick={() => { setMTitle(''); setEditingModuleId(null); setShowModuleModal(true); }} className="hover:text-white p-1.5 rounded-lg transition-colors text-purple-600 bg-purple-100 hover:bg-purple-600">
           <Plus size={18} />
         </button>
       </div>
@@ -167,12 +223,16 @@ export default function LmsWorkspace() {
         {modules.map(mod => (
           <div key={mod.id} className="mb-5">
             <div className="flex justify-between items-center mb-2 px-2 border-b border-[#E2E8F0] pb-2 group">
-              <h3 className="text-sm font-bold text-[#020F33] uppercase">{mod.title}</h3>
-              <button onClick={() => setShowContentModal(mod.id)} className="text-[#475569] hover:text-purple-600 bg-[#E2E8F0]/50 hover:bg-purple-100 rounded-md p-1 transition-colors"><Plus size={16} /></button>
+              <h3 className="text-sm font-bold text-[#020F33] uppercase flex-1">{mod.title}</h3>
+              <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                 <button onClick={() => openEditModule(mod)} className="text-[#475569] hover:text-blue-500 bg-[#E2E8F0]/50 hover:bg-blue-100 rounded-md p-1"><Edit3 size={14} /></button>
+                 <button onClick={() => handleDeleteModule(mod.id)} className="text-[#475569] hover:text-red-500 bg-[#E2E8F0]/50 hover:bg-red-100 rounded-md p-1"><Trash2 size={14} /></button>
+                 <button onClick={() => { setCTitle(''); setCUrl(''); setCType('youtube'); setEditingContentId(null); setShowContentModal(mod.id); }} className="text-[#475569] hover:text-purple-600 bg-[#E2E8F0]/50 hover:bg-purple-100 rounded-md p-1"><Plus size={14} /></button>
+              </div>
             </div>
             <div className="space-y-1">
               {mod.contents.map(content => (
-                <div key={content.id} className={`flex items-start gap-2 p-2 rounded-xl transition-all ${activeContent?.id === content.id ? 'bg-[#020F33] text-white shadow-md' : 'hover:bg-[#F8FAFC]'}`}>
+                <div key={content.id} className={`flex items-start gap-2 p-2 rounded-xl transition-all group/item ${activeContent?.id === content.id ? 'bg-[#020F33] text-white shadow-md' : 'hover:bg-[#F8FAFC]'}`}>
                   <button onClick={() => toggleContentCompletion(content.id, content.is_completed)} className={`mt-1 shrink-0 ${content.is_completed ? 'text-[#A3D803]' : (activeContent?.id === content.id ? 'text-slate-400' : 'text-[#CBD5E1] hover:text-purple-500')}`}>
                     {content.is_completed ? <CheckCircle size={18} /> : <Circle size={18} />}
                   </button>
@@ -180,6 +240,12 @@ export default function LmsWorkspace() {
                     {content.content_type === 'pdf' ? <File size={16} className="shrink-0 mt-0.5 opacity-70"/> : <Video size={16} className="shrink-0 mt-0.5 opacity-70"/>}
                     <span className={`text-sm font-medium leading-snug line-clamp-2 ${content.is_completed && activeContent?.id !== content.id ? 'line-through text-slate-400' : ''}`}>{content.title}</span>
                   </button>
+                  
+                  {/* Resource Actions (Edit/Delete) */}
+                  <div className="flex flex-col gap-1 opacity-0 group-hover/item:opacity-100 shrink-0">
+                     <button onClick={() => openEditContent(content)} className="text-slate-400 hover:text-blue-400 p-0.5"><Edit3 size={12}/></button>
+                     <button onClick={() => handleDeleteContent(content.id)} className="text-slate-400 hover:text-red-400 p-0.5"><Trash2 size={12}/></button>
+                  </div>
                 </div>
               ))}
             </div>
@@ -194,29 +260,29 @@ export default function LmsWorkspace() {
   return (
     <div className="h-screen flex flex-col bg-[#F8FAFC] text-[#020F33] overflow-hidden relative">
       
-      {/* --- ADD MODULE MODAL --- */}
+      {/* --- ADD/EDIT MODULE MODAL --- */}
       {showModuleModal && (
         <div className="fixed inset-0 z-[1000] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
           <div className="bg-white p-6 rounded-2xl w-full max-w-md shadow-2xl">
-            <div className="flex justify-between items-center mb-5"><h3 className="font-bold text-lg">Create New Module</h3><button onClick={() => setShowModuleModal(false)} className="text-slate-400 hover:text-red-500"><X size={20}/></button></div>
-            <form onSubmit={handleAddModule} className="space-y-4">
+            <div className="flex justify-between items-center mb-5"><h3 className="font-bold text-lg">{editingModuleId ? 'Edit Module' : 'Create New Module'}</h3><button onClick={() => setShowModuleModal(false)} className="text-slate-400 hover:text-red-500"><X size={20}/></button></div>
+            <form onSubmit={handleSaveModule} className="space-y-4">
               <input type="text" value={mTitle} onChange={(e)=>setMTitle(e.target.value)} placeholder="e.g. Chapter 1: Basic" className="w-full border border-[#E2E8F0] focus:border-purple-500 rounded-xl p-3 outline-none" required/>
-              <button type="submit" className="w-full bg-[#020F33] text-white font-bold py-3 rounded-xl hover:bg-purple-600 transition-colors">Create Module</button>
+              <button type="submit" className="w-full bg-[#020F33] text-white font-bold py-3 rounded-xl hover:bg-purple-600 transition-colors">{editingModuleId ? 'Save Changes' : 'Create Module'}</button>
             </form>
           </div>
         </div>
       )}
 
-      {/* --- ADD CONTENT MODAL --- */}
+      {/* --- ADD/EDIT CONTENT MODAL --- */}
       {showContentModal && (
         <div className="fixed inset-0 z-[1000] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
           <div className="bg-white p-6 rounded-2xl w-full max-w-md shadow-2xl">
-            <div className="flex justify-between items-center mb-5"><h3 className="font-bold text-lg">Add Resource</h3><button onClick={() => setShowContentModal(null)} className="text-slate-400 hover:text-red-500"><X size={20}/></button></div>
-            <form onSubmit={handleAddContent} className="space-y-4">
+            <div className="flex justify-between items-center mb-5"><h3 className="font-bold text-lg">{editingContentId ? 'Edit Resource' : 'Add Resource'}</h3><button onClick={() => setShowContentModal(null)} className="text-slate-400 hover:text-red-500"><X size={20}/></button></div>
+            <form onSubmit={handleSaveContent} className="space-y-4">
               <input type="text" value={cTitle} onChange={(e)=>setCTitle(e.target.value)} placeholder="Resource Title" className="w-full border border-[#E2E8F0] focus:border-purple-500 rounded-xl p-3 outline-none" required/>
               <select value={cType} onChange={(e)=>setCType(e.target.value)} className="w-full border border-[#E2E8F0] focus:border-purple-500 rounded-xl p-3 outline-none"><option value="youtube">YouTube Video</option><option value="video">Direct Video URL</option><option value="pdf">PDF Link</option></select>
               <input type="url" value={cUrl} onChange={(e)=>setCUrl(e.target.value)} placeholder="Link URL..." className="w-full border border-[#E2E8F0] focus:border-purple-500 rounded-xl p-3 outline-none" required/>
-              <button type="submit" disabled={isSavingResource} className="w-full bg-[#020F33] text-white font-bold py-3 rounded-xl hover:bg-purple-600 transition-colors disabled:opacity-50">{isSavingResource ? 'Saving...' : 'Save Resource'}</button>
+              <button type="submit" disabled={isSavingResource} className="w-full bg-[#020F33] text-white font-bold py-3 rounded-xl hover:bg-purple-600 transition-colors disabled:opacity-50">{isSavingResource ? 'Saving...' : editingContentId ? 'Update Resource' : 'Save Resource'}</button>
             </form>
           </div>
         </div>

@@ -7,6 +7,8 @@ import {
   X, Trash2, Edit3, Save, Users, UserPlus, Copy, CheckCircle2,
   MessageCircle, Send, Target, TrendingUp, PlayCircle
 } from 'lucide-react';
+import ReactQuill from 'react-quill';
+import 'react-quill/dist/quill.snow.css';
 
 import WorkspaceCourseViewer from './WorkspaceCourseViewer';
 import WorkspaceBcsViewer from './WorkspaceBcsViewer';
@@ -32,6 +34,7 @@ export default function GroupDetails() {
   const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
   const [adminNoteTitle, setAdminNoteTitle] = useState('');
   const [adminNoteContent, setAdminNoteContent] = useState('');
+  const [viewingNote, setViewingNote] = useState<any>(null); 
 
   // --- Assign Friend States ---
   const [assignMode, setAssignMode] = useState<'existing' | 'new'>('existing');
@@ -154,7 +157,6 @@ export default function GroupDetails() {
   // --- Active Course & Live To-Do Logic ---
   const groupCourses = contents.filter(c => c.content_type === 'lms_course' || c.content_type === 'bcs_subject');
   
-  // 🔴 এখন একটি নয়, বরং যেগুলোর is_active: true আছে, সবগুলোর লিস্ট নিচ্ছি
   const activeCourses = groupCourses.filter(c => c.content_data?.is_active);
   const inactiveCourses = groupCourses.filter(c => !c.content_data?.is_active);
 
@@ -497,7 +499,6 @@ export default function GroupDetails() {
                       <button onClick={() => setSelectedContent(course)} className="flex items-center justify-center gap-2 bg-white dark:bg-slate-800 text-slate-900 dark:text-white px-4 py-2 rounded-xl font-bold text-sm hover:scale-105 transition-transform border border-slate-200 dark:border-slate-700">
                         Enter Course <PlayCircle size={16} />
                       </button>
-                      {/* 🔴 Inactive করার বাটন */}
                       <button onClick={() => handleToggleActiveCourse(course.id)} className="bg-red-500/10 text-red-500 hover:bg-red-500/20 px-4 py-1.5 rounded-xl font-bold text-xs transition-colors flex items-center justify-center">
                         Remove Active Status
                       </button>
@@ -611,14 +612,14 @@ export default function GroupDetails() {
             </div>
             <div className="space-y-3">
               {groupNotes.map(note => (
-                <div key={note.id} className="p-3.5 bg-slate-50 dark:bg-[#141516] rounded-xl border border-slate-200 dark:border-[#292B2E] flex justify-between items-center">
-                  <div className="flex-1 pr-2 min-w-0">
-                    <h4 className="font-bold text-sm line-clamp-1">{note.title}</h4>
-                    <p className="text-[11px] text-slate-500 dark:text-[#A3A5A8] mt-1 flex gap-1.5"><span className="font-medium truncate">{note.content_data?.authorName || 'User'}</span><span>•</span><span>{new Date(note.created_at).toLocaleDateString()}</span></p>
+                <div key={note.id} onClick={() => setViewingNote(note)} className="p-3.5 bg-[#141516] rounded-xl border border-[#292B2E] hover:border-[#FF9D2E]/50 cursor-pointer transition-colors flex justify-between items-center group">
+                  <div className="flex-1 pr-2">
+                    <h4 className="font-bold text-sm line-clamp-1 group-hover:text-[#FF9D2E] transition-colors">{note.title}</h4>
+                    <p className="text-[11px] text-[#A3A5A8] mt-1 flex gap-1.5"><span className="font-medium">{note.content_data?.authorName || 'User'}</span><span>•</span><span>{new Date(note.created_at).toLocaleDateString()}</span></p>
                   </div>
-                  <div className="flex gap-1 shrink-0">
-                    <button onClick={() => { setEditingNoteId(note.id); setAdminNoteTitle(note.title); setAdminNoteContent(note.content_data?.text || ''); setShowNoteModal(true); }} className="p-1.5 text-slate-400 dark:text-[#707277] hover:text-[#FF9D2E]"><Edit3 size={15}/></button>
-                    <button onClick={() => handleDeleteContent(note.id, note.content_type)} className="p-1.5 text-slate-400 dark:text-[#707277] hover:text-red-500"><Trash2 size={15}/></button>
+                  <div className="flex gap-1">
+                    <button onClick={(e) => { e.stopPropagation(); setEditingNoteId(note.id); setAdminNoteTitle(note.title); setAdminNoteContent(note.content_data?.text || ''); setShowNoteModal(true); }} className="p-1.5 text-[#707277] hover:text-[#FF9D2E]"><Edit3 size={15}/></button>
+                    <button onClick={(e) => { e.stopPropagation(); handleDeleteContent(note.id, note.content_type) }} className="p-1.5 text-[#707277] hover:text-red-500"><Trash2 size={15}/></button>
                   </div>
                 </div>
               ))}
@@ -633,9 +634,45 @@ export default function GroupDetails() {
             <div className="flex justify-between items-center mb-5"><h3 className="text-xl font-bold flex items-center gap-2"><FileText size={20} className="text-[#FF9D2E]"/> {editingNoteId ? 'Edit Group Note' : 'New Group Note'}</h3><button onClick={() => setShowNoteModal(false)} className="text-slate-400 dark:text-[#707277] hover:text-[#FF5B61]"><X size={20}/></button></div>
             <form onSubmit={handleSaveAdminNote} className="space-y-4">
               <input type="text" placeholder="Note Title..." value={adminNoteTitle} onChange={(e) => setAdminNoteTitle(e.target.value)} className="w-full bg-slate-50 dark:bg-[#141516] border border-slate-200 dark:border-[#292B2E] rounded-xl p-4 outline-none font-bold" required />
-              <textarea placeholder="Write note content..." value={adminNoteContent} onChange={(e) => setAdminNoteContent(e.target.value)} className="w-full bg-slate-50 dark:bg-[#141516] border border-slate-200 dark:border-[#292B2E] rounded-xl p-4 h-40 resize-none outline-none" required />
+              <div className="bg-[#141516] rounded-xl overflow-hidden border border-[#292B2E] focus-within:border-[#FF9D2E] transition-colors pb-10">
+                <ReactQuill 
+                  theme="snow" 
+                  value={adminNoteContent} 
+                  onChange={setAdminNoteContent} 
+                  placeholder="Write your beautiful notes here (Use Bold, Lists, Links)..."
+                  className="text-white h-48 border-none"
+                  modules={{
+                    toolbar: [
+                      [{ 'header': [1, 2, 3, false] }],
+                      ['bold', 'italic', 'underline', 'strike', 'blockquote'],
+                      [{'list': 'ordered'}, {'list': 'bullet'}],
+                      ['link', 'code-block'],
+                      ['clean']
+                    ],
+                  }}
+                />
+              </div>
               <div className="flex justify-end gap-3 pt-2"><button type="submit" className="bg-[#FF9D2E] text-black px-6 py-2.5 rounded-xl font-extrabold hover:bg-[#FFAA3D]"><Save size={16} className="inline mr-1" /> {editingNoteId ? 'Update' : 'Publish'}</button></div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* 🟢 READ NOTE MODAL (Admin View) */}
+      {viewingNote && (
+        <div className="fixed inset-0 z-[1100] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fade-in">
+          <div className="bg-[#18191A] p-8 rounded-3xl border border-[#292B2E] shadow-2xl w-full max-w-3xl max-h-[85vh] overflow-y-auto custom-scrollbar relative">
+            <button onClick={() => setViewingNote(null)} className="absolute top-6 right-6 text-[#707277] hover:text-[#FF5B61] bg-[#141516] p-2 rounded-full"><X size={20}/></button>
+            
+            <h2 className="text-3xl font-extrabold text-white mb-2">{viewingNote.title}</h2>
+            <p className="text-sm text-[#A3A5A8] mb-6 border-b border-[#292B2E] pb-4">
+              Created by <span className="text-[#FF9D2E] font-bold">{viewingNote.content_data?.authorName || 'Admin'}</span> on {new Date(viewingNote.created_at).toLocaleDateString()}
+            </p>
+            
+            {/* HTML Note Content */}
+            <div className="prose prose-invert max-w-none">
+              <div dangerouslySetInnerHTML={{ __html: viewingNote.content_data?.text }} className="text-[#F5F5F5] leading-relaxed text-lg whitespace-pre-wrap" />
+            </div>
           </div>
         </div>
       )}

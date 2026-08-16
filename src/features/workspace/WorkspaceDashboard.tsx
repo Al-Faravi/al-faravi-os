@@ -8,6 +8,8 @@ import {
   Trash2, Edit3, FolderOpen, LogOut, CheckCircle2, Plus, DownloadCloud, Sparkles, ShieldCheck,
   Target, TrendingUp, PlayCircle, BellRing
 } from 'lucide-react';
+import ReactQuill from 'react-quill';
+import 'react-quill/dist/quill.snow.css';
 
 import WorkspaceCourseViewer from './WorkspaceCourseViewer';
 import WorkspaceBcsViewer from './WorkspaceBcsViewer';
@@ -304,7 +306,6 @@ export default function WorkspaceDashboard() {
   // --- ACTIVE COURSE TRACKING LOGIC ---
   const groupCourses = groupContents.filter(c => c.content_type === 'lms_course' || c.content_type === 'bcs_subject');
   
-  // 🔴 এখন একটি নয়, বরং যেগুলোর is_active: true আছে, সবগুলোর লিস্ট নিচ্ছি
   const activeCourses = groupCourses.filter(c => c.content_data?.is_active);
   const inactiveCourses = groupCourses.filter(c => !c.content_data?.is_active);
 
@@ -647,7 +648,6 @@ export default function WorkspaceDashboard() {
                            <button onClick={() => setSelectedContent(course)} className="bg-slate-900 dark:bg-white text-white dark:text-slate-900 px-5 py-2.5 rounded-xl font-bold text-sm hover:scale-105 transition-transform flex items-center justify-center gap-2">
                              Enter Course <PlayCircle size={18}/>
                            </button>
-                           {/* 🔴 Inactive করার বাটন */}
                            <button onClick={() => handleToggleActiveCourse(course.id)} className="bg-red-500/10 text-red-500 hover:bg-red-500/20 px-4 py-1.5 rounded-xl font-bold text-xs transition-colors flex items-center justify-center">
                              Remove Active Status
                            </button>
@@ -788,7 +788,24 @@ export default function WorkspaceDashboard() {
               </div>
               <form onSubmit={handleAddNote} className="space-y-4">
                 <input type="text" placeholder="Note Title..." value={noteTitle} onChange={(e) => setNoteTitle(e.target.value)} className="w-full bg-slate-50 dark:bg-[#141516] border border-slate-200 dark:border-[#292B2E] focus:border-[#FF9D2E] rounded-xl p-4 outline-none font-bold text-slate-900 dark:text-white transition-all" required />
-                <textarea placeholder="Write important context here..." value={noteContent} onChange={(e) => setNoteContent(e.target.value)} className="w-full bg-slate-50 dark:bg-[#141516] border border-slate-200 dark:border-[#292B2E] focus:border-[#FF9D2E] rounded-xl p-4 h-40 resize-none outline-none text-slate-900 dark:text-white transition-all" required />
+                <div className="bg-slate-50 dark:bg-[#141516] rounded-xl overflow-hidden border border-slate-200 dark:border-[#292B2E] focus-within:border-[#FF9D2E] transition-colors pb-10">
+                  <ReactQuill 
+                    theme="snow" 
+                    value={noteContent} 
+                    onChange={setNoteContent} 
+                    placeholder="Write your beautiful notes here (Use Bold, Lists, Links)..."
+                    className="text-slate-900 dark:text-white h-48 border-none"
+                    modules={{
+                      toolbar: [
+                        [{ 'header': [1, 2, 3, false] }],
+                        ['bold', 'italic', 'underline', 'strike', 'blockquote'],
+                        [{'list': 'ordered'}, {'list': 'bullet'}],
+                        ['link', 'code-block'],
+                        ['clean']
+                      ],
+                    }}
+                  />
+                </div>
                 <div className="flex justify-end gap-3 pt-2">
                   <button type="button" onClick={() => setShowNoteForm(false)} className="px-5 py-2.5 rounded-xl font-bold text-slate-500 hover:bg-slate-100 dark:hover:bg-[#1D1E20] transition-colors">Cancel</button>
                   <button type="submit" className="bg-[#FF9D2E] text-slate-900 px-6 py-2.5 rounded-xl font-extrabold hover:bg-[#FFAA3D] transition-colors">Publish Note</button>
@@ -800,189 +817,162 @@ export default function WorkspaceDashboard() {
 
         {/* View / Edit Note Full Screen Mode */}
         {(selectedContent?.content_type === 'shared_note' || selectedContent?.content_type === 'personal_note') && (
-          <div className="animate-slide-in-right bg-white dark:bg-[#18191A] rounded-3xl p-6 md:p-10 shadow-lg border border-slate-200 dark:border-[#292B2E] min-h-[60vh] transition-colors">
+          <div className="animate-fade-in">
             {!isEditing ? (
-              <div className="space-y-6">
-                <div className="flex justify-between items-start">
+              <div className="bg-white dark:bg-[#18191A] p-8 rounded-3xl border border-slate-200 dark:border-[#292B2E] shadow-sm transition-colors">
+                <div className="flex justify-between items-start mb-6">
                   <div>
-                    <h2 className="text-3xl font-extrabold text-slate-900 dark:text-white">{selectedContent.title}</h2>
-                    <p className="text-sm text-slate-500 dark:text-[#A3A5A8] mt-2">
-                      Created by <span className="font-bold text-slate-700 dark:text-[#F5F5F5]">{selectedContent.content_data?.authorName || 'Member'}</span> on {new Date(selectedContent.created_at).toLocaleDateString()}
-                    </p>
+                    <h2 className="text-2xl font-black text-slate-900 dark:text-white">{selectedContent.title}</h2>
+                    <p className="text-sm text-slate-500 dark:text-[#A3A5A8] mt-1">Created by {selectedContent.content_data?.authorName || 'User'}</p>
                   </div>
-                  {selectedContent.content_data?.userId === session?.user?.id && (
-                    <button onClick={() => setIsEditing(true)} className="flex items-center gap-2 px-4 py-2 bg-[#FF9D2E]/10 text-[#FF9D2E] rounded-xl font-bold hover:bg-[#FF9D2E]/20 transition-colors shrink-0">
-                      <Edit3 size={16} /> <span className="hidden sm:inline">Edit</span>
-                    </button>
-                  )}
-                </div>
-                
-                <div className="w-full h-[1px] bg-slate-100 dark:bg-[#292B2E]"></div>
-                
-                <div className="prose prose-slate dark:prose-invert max-w-none">
-                  <p className="leading-relaxed text-lg whitespace-pre-wrap text-slate-700 dark:text-slate-300">{selectedContent.content_data?.text}</p>
-                </div>
-                
-                {selectedContent.content_data?.userId === session?.user?.id && (
-                  <div className="mt-12 flex justify-end">
-                    <button onClick={() => handleDeleteNote(selectedContent.id)} className="flex items-center gap-2 text-[#FF5B61] bg-[#FF5B61]/10 hover:bg-[#FF5B61]/20 px-5 py-2.5 rounded-xl font-bold transition-colors">
-                      <Trash2 size={18} /> Delete Note
-                    </button>
+                  <div className="flex gap-2">
+                    {selectedContent.content_data?.userId === session?.user?.id && (
+                      <button onClick={() => setIsEditing(true)} className="p-2 text-slate-400 dark:text-[#707277] hover:text-[#FF9D2E] bg-slate-100 dark:bg-[#1D1E20] rounded-xl"><Edit3 size={18} /></button>
+                    )}
+                    <button onClick={() => handleDeleteNote(selectedContent.id)} className="p-2 text-slate-400 dark:text-[#707277] hover:text-red-500 bg-slate-100 dark:bg-[#1D1E20] rounded-xl"><Trash2 size={18} /></button>
                   </div>
-                )}
+                </div>
+                <div dangerouslySetInnerHTML={{ __html: selectedContent.content_data?.text }} className="text-slate-700 dark:text-slate-300 leading-relaxed text-lg whitespace-pre-wrap" />
               </div>
             ) : (
-              <form onSubmit={handleUpdateNote} className="space-y-5">
-                <div className="flex justify-between items-center mb-2">
-                  <h3 className="text-xl font-bold flex items-center gap-2 text-[#FF9D2E]"><Edit3 /> Edit Note</h3>
-                  <button type="button" onClick={() => setIsEditing(false)} className="text-slate-400 hover:text-[#FF5B61]"><X size={20}/></button>
-                </div>
-                <input type="text" value={noteTitle} onChange={(e) => setNoteTitle(e.target.value)} className="w-full bg-slate-50 dark:bg-[#141516] border border-slate-200 dark:border-[#292B2E] focus:border-[#FF9D2E] rounded-xl p-4 font-bold text-lg outline-none text-slate-900 dark:text-white transition-all" required/>
-                <textarea value={noteContent} onChange={(e) => setNoteContent(e.target.value)} className="w-full bg-slate-50 dark:bg-[#141516] border border-slate-200 dark:border-[#292B2E] focus:border-[#FF9D2E] rounded-xl p-4 h-[50vh] resize-none outline-none text-lg text-slate-900 dark:text-white transition-all" required/>
-                <div className="flex justify-end gap-3 pt-2">
-                  <button type="button" onClick={() => setIsEditing(false)} className="px-6 py-3 rounded-xl font-bold text-slate-500 hover:bg-slate-100 dark:hover:bg-[#1D1E20] transition-colors">Cancel</button>
-                  <button type="submit" className="bg-[#FF9D2E] text-slate-900 px-8 py-3 rounded-xl font-extrabold hover:bg-[#FFAA3D] transition-colors">Save Changes</button>
-                </div>
-              </form>
+              <div className="bg-white dark:bg-[#18191A] p-8 rounded-3xl border border-[#FF9D2E]/30 shadow-2xl transition-colors">
+                <h3 className="text-xl font-bold mb-5 flex items-center gap-2 text-slate-900 dark:text-white"><Edit3 size={20} className="text-[#FF9D2E]"/> Edit Note</h3>
+                <form onSubmit={handleUpdateNote} className="space-y-4">
+                  <input type="text" value={noteTitle} onChange={(e) => setNoteTitle(e.target.value)} className="w-full bg-slate-50 dark:bg-[#141516] border border-slate-200 dark:border-[#292B2E] focus:border-[#FF9D2E] rounded-xl p-4 outline-none font-bold text-slate-900 dark:text-white transition-all" required />
+                  <div className="bg-slate-50 dark:bg-[#141516] rounded-xl overflow-hidden border border-slate-200 dark:border-[#292B2E] focus-within:border-[#FF9D2E] transition-colors pb-10">
+                    <ReactQuill 
+                      theme="snow" 
+                      value={noteContent} 
+                      onChange={setNoteContent} 
+                      placeholder="Write your beautiful notes here (Use Bold, Lists, Links)..."
+                      className="text-slate-900 dark:text-white h-48 border-none"
+                      modules={{
+                        toolbar: [
+                          [{ 'header': [1, 2, 3, false] }],
+                          ['bold', 'italic', 'underline', 'strike', 'blockquote'],
+                          [{'list': 'ordered'}, {'list': 'bullet'}],
+                          ['link', 'code-block'],
+                          ['clean']
+                        ],
+                      }}
+                    />
+                  </div>
+                  <div className="flex justify-end gap-3 pt-2">
+                    <button type="button" onClick={() => setIsEditing(false)} className="px-5 py-2.5 rounded-xl font-bold text-slate-500 hover:bg-slate-100 dark:hover:bg-[#1D1E20] transition-colors">Cancel</button>
+                    <button type="submit" className="bg-[#FF9D2E] text-slate-900 px-6 py-2.5 rounded-xl font-extrabold hover:bg-[#FFAA3D] transition-colors">Update Note</button>
+                  </div>
+                </form>
+              </div>
             )}
           </div>
         )}
 
-        {/* --- PROFILE TAB --- */}
+        {/* PROFILE TAB */}
         {activeTab === 'profile' && (
-          <div className="animate-fade-in flex flex-col items-center mt-6 max-w-md mx-auto">
-            <div className="w-full flex justify-start mb-6">
-              <button onClick={() => setActiveTab('dashboard')} className="flex items-center gap-2 text-slate-500 dark:text-[#A3A5A8] hover:text-[#FF9D2E] dark:hover:text-[#FF9D2E] transition-colors font-bold bg-white dark:bg-[#18191A] px-4 py-2.5 rounded-xl border border-slate-200 dark:border-[#292B2E] shadow-sm hover:shadow-md"><ArrowLeft size={18} /> Back to Dashboard</button>
-            </div>
-            <div className="w-24 h-24 bg-[#FF9D2E]/10 rounded-full flex items-center justify-center mb-6 border border-[#FF9D2E]/30 shadow-lg shadow-[#FF9D2E]/10">
-              <User className="w-12 h-12 text-[#FF9D2E]" />
-            </div>
-            <div className="w-full bg-white dark:bg-[#18191A] p-6 rounded-3xl border border-slate-200 dark:border-[#292B2E] shadow-sm space-y-4 text-center">
-              <h3 className="font-bold text-lg text-slate-500 dark:text-[#A3A5A8]">Your Nickname</h3>
-              <div className="flex gap-2">
-                <input type="text" value={profileName} onChange={(e) => setProfileName(e.target.value)} className="flex-1 bg-slate-50 dark:bg-[#141516] border border-slate-200 dark:border-[#292B2E] focus:border-[#FF9D2E] rounded-xl p-3 outline-none text-center font-bold text-slate-900 dark:text-white transition-all" />
-                <button onClick={handleUpdateProfile} disabled={isUpdatingProfile} className="bg-[#19C784] text-white px-5 rounded-xl font-bold hover:bg-emerald-600 transition-colors flex items-center gap-2 disabled:opacity-50"><CheckCircle2 size={20} /> Save</button>
-              </div>
-              <p className="text-xs text-slate-400 dark:text-[#707277]">This name will appear in group chats and notes.</p>
-            </div>
-
-            <div className="w-full grid grid-cols-2 gap-4 mt-4">
-              <div className="bg-white dark:bg-[#18191A] p-4 rounded-3xl border border-slate-200 dark:border-[#292B2E] text-center shadow-sm">
-                <div className="mx-auto w-8 h-8 bg-blue-50 dark:bg-blue-500/10 rounded-full flex items-center justify-center mb-2">
-                  <Users size={16} className="text-blue-500" />
+          <div className="animate-fade-in max-w-lg mx-auto space-y-6 mt-8">
+            <div className="bg-white dark:bg-[#18191A] p-8 rounded-3xl border border-slate-200 dark:border-[#292B2E] shadow-sm transition-colors">
+              <div className="flex flex-col items-center mb-6">
+                <div className="w-24 h-24 bg-[#FF9D2E]/10 rounded-full flex items-center justify-center border-4 border-[#FF9D2E]/30 mb-4">
+                  <User size={48} className="text-[#FF9D2E]" />
                 </div>
-                <h4 className="text-xl font-black text-slate-900 dark:text-white">{groups.length}</h4>
-                <p className="text-[10px] uppercase font-bold text-slate-500 dark:text-[#707277]">Study Groups</p>
+                <h2 className="text-2xl font-black text-slate-900 dark:text-white">{profileName}</h2>
+                <p className="text-slate-500 dark:text-[#A3A5A8] text-sm mt-1">{session?.user?.email}</p>
               </div>
-              
-              <div className="bg-white dark:bg-[#18191A] p-4 rounded-3xl border border-slate-200 dark:border-[#292B2E] text-center shadow-sm">
-                <div className="mx-auto w-8 h-8 bg-[#FF9D2E]/10 rounded-full flex items-center justify-center mb-2">
-                  <FileText size={16} className="text-[#FF9D2E]" />
+              <div className="space-y-4">
+                <div>
+                  <label className="text-sm font-bold text-slate-600 dark:text-[#A3A5A8] mb-2 block">Display Name</label>
+                  <input type="text" value={profileName} onChange={(e) => setProfileName(e.target.value)} className="w-full bg-slate-50 dark:bg-[#141516] border border-slate-200 dark:border-[#292B2E] focus:border-[#FF9D2E] rounded-xl p-3 outline-none text-sm text-slate-900 dark:text-white" />
                 </div>
-                <h4 className="text-xl font-black text-slate-900 dark:text-white">{allContents.filter(c => c.content_data?.userId === session?.user?.id).length}</h4>
-                <p className="text-[10px] uppercase font-bold text-slate-500 dark:text-[#707277]">Notes Created</p>
+                <button onClick={handleUpdateProfile} disabled={isUpdatingProfile} className="w-full bg-[#FF9D2E] text-slate-900 py-3 rounded-xl font-extrabold hover:bg-[#FFAA3D] transition-colors disabled:opacity-50 flex items-center justify-center gap-2">
+                  {isUpdatingProfile ? <div className="w-4 h-4 border-2 border-slate-900 border-t-transparent rounded-full animate-spin"></div> : <CheckCircle2 size={18}/>} Save Profile
+                </button>
               </div>
             </div>
-
-            <div className="w-full mt-4 bg-gradient-to-r from-[#FF9D2E]/10 to-[#E83FCB]/10 p-5 rounded-3xl border border-[#FF9D2E]/20 flex items-center gap-4">
-              <div className="w-12 h-12 bg-white dark:bg-[#141516] rounded-2xl flex items-center justify-center shadow-sm border border-white/50 dark:border-[#292B2E]">
-                <ShieldCheck size={24} className="text-[#FF9D2E]" />
-              </div>
-              <div>
-                <h4 className="font-bold text-slate-900 dark:text-white text-sm">Verified Student</h4>
-                <p className="text-xs text-slate-600 dark:text-[#A3A5A8]">Member of Al_Faravi-os</p>
-              </div>
+            <div className="bg-white dark:bg-[#18191A] p-8 rounded-3xl border border-slate-200 dark:border-[#292B2E] shadow-sm transition-colors space-y-3">
+              <h3 className="font-bold text-lg text-slate-900 dark:text-white mb-4 flex items-center gap-2"><ShieldCheck size={20} className="text-[#19C784]" /> Actions</h3>
+              {deferredPrompt && (
+                <button onClick={handleInstallPWA} className="w-full flex items-center justify-center gap-2 py-3 bg-blue-50 dark:bg-[#668CFF]/10 text-[#668CFF] rounded-xl font-bold hover:bg-blue-100 dark:hover:bg-[#668CFF]/20 transition-colors border border-blue-100 dark:border-[#668CFF]/20">
+                  <DownloadCloud size={18} /> Install App (PWA)
+                </button>
+              )}
+              <button onClick={handleLogout} className="w-full flex items-center justify-center gap-2 py-3 bg-red-50 dark:bg-red-500/10 text-red-500 rounded-xl font-bold hover:bg-red-100 dark:hover:bg-red-500/20 transition-colors border border-red-100 dark:border-red-500/20">
+                <LogOut size={18} /> Logout
+              </button>
             </div>
-
-            <button onClick={handleLogout} className="mt-8 w-full flex items-center justify-center gap-3 p-4 bg-white dark:bg-[#18191A] border border-[#FF5B61]/20 rounded-2xl text-[#FF5B61] font-bold hover:bg-[#FF5B61]/10 transition-colors">
-              <LogOut className="w-5 h-5" /> Log Out
-            </button>
           </div>
         )}
       </main>
 
-      {/* --- FLOATING CHAT --- */}
-      {selectedGroup && (
-        <div className="fixed bottom-20 md:bottom-8 right-4 md:right-8 z-[999] flex flex-col items-end">
-          {isChatOpen && (
-            <div className="w-[90vw] md:w-[380px] h-[500px] max-h-[80vh] bg-white dark:bg-[#141516] border border-slate-200 dark:border-[#292B2E] shadow-2xl rounded-3xl mb-4 flex flex-col overflow-hidden animate-fade-in origin-bottom-right transition-colors">
-              <div className="bg-slate-50 dark:bg-[#18191A] p-4 border-b border-slate-200 dark:border-[#292B2E] flex justify-between items-center transition-colors">
-                <div><h3 className="font-bold flex items-center gap-2 text-slate-900 dark:text-white"><MessageCircle size={18} className="text-[#FF9D2E]" /> Group Chat</h3><p className="text-xs text-slate-500 dark:text-[#707277]">{selectedGroup.name}</p></div>
-                <button onClick={toggleChat} className="text-slate-400 hover:text-[#FF5B61] transition-colors p-1"><X size={20} /></button>
-              </div>
-
-              <div className="flex-1 p-4 overflow-y-auto bg-slate-100 dark:bg-[#0D0E0F] flex flex-col gap-4 scroll-smooth transition-colors">
-                {chatLoading ? <div className="flex-1 flex justify-center items-center"><div className="w-6 h-6 border-2 border-[#FF9D2E] border-t-transparent rounded-full animate-spin"></div></div> : 
-                 chatMessages.length === 0 ? <div className="flex-1 flex flex-col items-center justify-center text-slate-400 dark:text-[#707277]"><MessageCircle size={32} className="mb-2 opacity-50" /><p className="text-sm font-medium">No messages yet.</p></div> : 
-                 chatMessages.map((msg, idx) => {
-                  const isMe = msg.user_id === session?.user?.id;
-                  return (
-                    <div key={msg.id || idx} className={`flex flex-col ${isMe ? 'items-end' : 'items-start'}`}>
-                      <span className={`text-[10px] text-slate-500 dark:text-[#A3A5A8] ${isMe ? 'mr-1' : 'ml-1'} mb-1 font-bold`}>{isMe ? 'You' : msg.sender_name}</span>
-                      <div className={`px-4 py-2.5 rounded-2xl text-sm shadow-sm max-w-[85%] leading-relaxed ${isMe ? 'bg-[#FF9D2E] text-slate-900 rounded-tr-sm font-medium' : 'bg-white dark:bg-[#1D1E20] border border-slate-200 dark:border-[#292B2E] text-slate-800 dark:text-[#F5F5F5] rounded-tl-sm transition-colors'}`}>
-                        {msg.message_type === 'text' && <p>{msg.content}</p>}
-                        {msg.message_type === 'image' && <a href={msg.file_url} target="_blank" rel="noreferrer" className="block cursor-pointer hover:opacity-90 transition-opacity"><img src={msg.file_url} alt="Shared" className="rounded-xl max-h-48 object-cover border border-black/10" /></a>}
-                        {msg.message_type === 'file' && <a href={msg.file_url} target="_blank" rel="noreferrer" className="flex items-center gap-2 underline underline-offset-2 break-all"><FileText size={16} className="shrink-0" /> {msg.content}</a>}
-                        {msg.message_type === 'audio' && <audio controls src={msg.file_url} className="w-48 h-8 rounded-full" />}
-                      </div>
-                    </div>
-                  );
-                })}
-                <div ref={chatBottomRef} />
-              </div>
-
-              <form onSubmit={handleSendMessage} className="p-3 bg-white dark:bg-[#18191A] border-t border-slate-200 dark:border-[#292B2E] flex items-center gap-2 relative overflow-hidden transition-colors">
-                {!isRecording && (
-                  <label className="p-2 text-slate-400 hover:text-[#FF9D2E] cursor-pointer transition-colors shrink-0">
-                    <Paperclip size={20} />
-                    <input type="file" onChange={handleFileUpload} className="hidden" />
-                  </label>
-                )}
-                {isRecording ? (
-                  <div className="flex-1 flex items-center gap-2 px-4 py-2 text-red-500 font-bold bg-red-50 dark:bg-red-500/10 rounded-full border border-red-200 dark:border-red-500/20">
-                    <span className="w-2.5 h-2.5 rounded-full bg-red-500 animate-ping"></span> Recording Live Audio...
-                  </div>
-                ) : (
-                  <input type="text" value={newMessage} onChange={(e) => setNewMessage(e.target.value)} placeholder="Type a message..." className="flex-1 bg-slate-100 dark:bg-[#1D1E20] border border-transparent focus:border-[#FF9D2E]/50 rounded-full px-4 py-2 text-sm text-slate-900 dark:text-white outline-none transition-all disabled:opacity-50 min-w-0" />
-                )}
-                <button type="button" onClick={toggleRecording} className={`p-2.5 rounded-full transition-all shrink-0 ${isRecording ? 'bg-red-500 text-white hover:bg-red-600 shadow-md animate-pulse' : 'bg-slate-100 dark:bg-[#1D1E20] text-slate-500 dark:text-[#A3A5A8] hover:text-[#FF9D2E]'}`}>
-                  {isRecording ? <Square size={16} fill="currentColor" /> : <Mic size={18} />}
-                </button>
-                {!isRecording && (
-                  <button type="submit" disabled={!newMessage.trim()} className="p-2.5 bg-[#FF9D2E] text-slate-900 rounded-full hover:bg-[#FFAA3D] disabled:opacity-50 shrink-0">
-                    <Send size={16} />
-                  </button>
-                )}
-              </form>
-            </div>
+      {/* BOTTOM NAVIGATION */}
+      <nav className="fixed bottom-0 left-0 right-0 bg-white/80 dark:bg-[#141516]/80 backdrop-blur-xl border-t border-slate-200 dark:border-[#292B2E] z-50 px-6 py-3 flex justify-around items-center">
+        <button onClick={() => { setActiveTab('dashboard'); setSelectedGroup(null); }} className={`flex flex-col items-center gap-1 transition-colors ${activeTab === 'dashboard' ? 'text-[#FF9D2E]' : 'text-slate-400 dark:text-[#707277]'}`}>
+          <LayoutDashboard size={22} />
+          <span className="text-[10px] font-bold">Home</span>
+        </button>
+        <button onClick={toggleChat} className={`relative flex flex-col items-center gap-1 transition-colors text-slate-400 dark:text-[#707277] ${isChatOpen ? '!text-[#FF9D2E]' : ''}`}>
+          <MessageCircle size={22} />
+          <span className="text-[10px] font-bold">Chat</span>
+          {selectedGroup && unreadCounts[selectedGroup.id] > 0 && !isChatOpen && (
+            <span className="absolute -top-1 right-1/4 bg-[#FF5B61] text-white text-[9px] font-black w-4 h-4 flex items-center justify-center rounded-full border border-white dark:border-[#141516]">{unreadCounts[selectedGroup.id]}</span>
           )}
-          <button onClick={toggleChat} className="w-16 h-16 bg-[#FF9D2E] hover:bg-[#FFAA3D] text-slate-900 rounded-full flex items-center justify-center shadow-[0_10px_30px_rgba(255,157,46,0.3)] transition-transform hover:scale-105 active:scale-95 relative">
-           3            {/* 🔴 RED UNREAD BADGE FOR CHAT BUTTON */}
-            {!isChatOpen && selectedGroup && unreadCounts[selectedGroup.id] > 0 && (
-              <span className="absolute top-0 right-0 -translate-y-1 translate-x-1 bg-[#FF5B61] text-white text-[11px] font-black w-6 h-6 flex items-center justify-center rounded-full border-2 border-white dark:border-[#18191A] animate-pulse shadow-lg">
-                {unreadCounts[selectedGroup.id] > 9 ? '9+' : unreadCounts[selectedGroup.id]}
-              </span>
-            )}
-            {isChatOpen ? <X size={28} strokeWidth={2.5} /> : <MessageCircle size={28} strokeWidth={2.5} />}
-          </button>
+        </button>
+        <button onClick={() => setActiveTab('profile')} className={`flex flex-col items-center gap-1 transition-colors ${activeTab === 'profile' ? 'text-[#FF9D2E]' : 'text-slate-400 dark:text-[#707277]'}`}>
+          <User size={22} />
+          <span className="text-[10px] font-bold">Profile</span>
+        </button>
+      </nav>
+
+      {/* CHAT MODAL */}
+      {selectedGroup && isChatOpen && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 dark:bg-[#0D0E0F]/80 backdrop-blur-sm animate-fade-in">
+          <div className="bg-white dark:bg-[#18191A] w-full max-w-lg h-[80vh] rounded-3xl border border-slate-200 dark:border-[#292B2E] shadow-2xl flex flex-col overflow-hidden relative">
+            <div className="bg-slate-50 dark:bg-[#141516] p-4 border-b border-slate-200 dark:border-[#292B2E] flex justify-between items-center">
+              <h3 className="font-bold flex items-center gap-2 text-slate-900 dark:text-white"><MessageCircle size={18} className="text-[#FF9D2E]" /> {selectedGroup.name} Chat</h3>
+              <button onClick={toggleChat} className="text-slate-400 dark:text-[#707277] hover:text-[#FF5B61]"><X size={20} /></button>
+            </div>
+            <div className="flex-1 p-4 overflow-y-auto bg-slate-100 dark:bg-[#0D0E0F] flex flex-col gap-4">
+              {chatLoading ? <div className="flex-1 flex justify-center items-center"><div className="w-6 h-6 border-2 border-[#FF9D2E] border-t-transparent rounded-full animate-spin"></div></div> :
+               chatMessages.length === 0 ? <p className="text-center text-slate-500 dark:text-[#707277] mt-10">No messages yet. Say hi! 👋</p> :
+               chatMessages.map((msg, idx) => {
+                 const isMe = msg.user_id === session?.user?.id;
+                 return (
+                   <div key={msg.id || idx} className={`flex flex-col ${isMe ? 'items-end' : 'items-start'}`}>
+                     <span className="text-[10px] text-slate-500 dark:text-[#A3A5A8] mb-1 font-bold">{msg.sender_name}</span>
+                     <div className={`px-4 py-2.5 rounded-2xl text-sm max-w-[85%] ${isMe ? 'bg-[#FF9D2E] text-slate-900 rounded-tr-sm font-medium' : 'bg-white dark:bg-[#1D1E20] text-slate-900 dark:text-white border border-slate-200 dark:border-[#292B2E] rounded-tl-sm'}`}>
+                       {msg.message_type === 'text' && <p>{msg.content}</p>}
+                       {msg.message_type === 'image' && <a href={msg.file_url} target="_blank" rel="noreferrer"><img src={msg.file_url} alt="Shared" className="rounded-xl max-h-48 object-cover border border-black/10" /></a>}
+                       {msg.message_type === 'file' && <a href={msg.file_url} target="_blank" rel="noreferrer" className="flex items-center gap-2 underline underline-offset-2 break-all"><FileText size={16} className="shrink-0" /> {msg.content}</a>}
+                       {msg.message_type === 'audio' && <audio controls src={msg.file_url} className="w-48 h-8 rounded-full" />}
+                     </div>
+                   </div>
+                 );
+               })
+              }
+              <div ref={chatBottomRef} />
+            </div>
+            <div className="p-3 bg-white dark:bg-[#18191A] border-t border-slate-200 dark:border-[#292B2E] flex items-center gap-2">
+              <label className="p-2 text-slate-400 dark:text-[#707277] hover:text-[#FF9D2E] cursor-pointer"><Paperclip size={18} /><input type="file" onChange={handleFileUpload} className="hidden" /></label>
+              <button onClick={toggleRecording} className={`p-2 rounded-full transition-colors ${isRecording ? 'bg-red-500 text-white animate-pulse' : 'text-slate-400 dark:text-[#707277] hover:text-red-500'}`}>{isRecording ? <Square size={18} /> : <Mic size={18} />}</button>
+              <input type="text" value={newMessage} onChange={e => setNewMessage(e.target.value)} placeholder="Type a message..." className="flex-1 bg-slate-100 dark:bg-[#1D1E20] border border-transparent focus:border-[#FF9D2E]/50 rounded-full px-4 py-2 text-sm outline-none text-slate-900 dark:text-white" />
+              <button onClick={handleSendMessage} disabled={!newMessage.trim()} className="p-2.5 bg-[#FF9D2E] text-slate-900 rounded-full hover:bg-[#FFAA3D] disabled:opacity-50"><Send size={16}/></button>
+            </div>
+          </div>
         </div>
       )}
 
-      <nav className="md:hidden fixed bottom-0 w-full bg-white/90 dark:bg-[#141516]/90 backdrop-blur-xl border-t border-slate-200 dark:border-[#292B2E] pb-safe z-40">
-        <div className="flex justify-around items-center h-16">
-          <button onClick={() => { setActiveTab('dashboard'); handleBack(); }} className={`flex flex-col items-center justify-center w-full space-y-1 ${activeTab === 'dashboard' ? 'text-[#FF9D2E]' : 'text-slate-400 dark:text-[#707277]'}`}><LayoutDashboard size={22} /> <span className="text-[10px] font-bold">Home</span></button>
-          <button onClick={() => setActiveTab('profile')} className={`flex flex-col items-center justify-center w-full space-y-1 ${activeTab === 'profile' ? 'text-[#FF9D2E]' : 'text-slate-400 dark:text-[#707277]'}`}><User size={22} /> <span className="text-[10px] font-bold">Profile</span></button>
-        </div>
-      </nav>
-
       <style>{`
-        .pb-safe { padding-bottom: env(safe-area-inset-bottom, 20px); }
-        .hide-scrollbar::-webkit-scrollbar { display: none; }
-        .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
         .animate-fade-in { animation: fadeIn 0.3s ease-out; }
-        .animate-slide-in-right { animation: slideInRight 0.3s ease-out; }
         @keyframes fadeIn { from { opacity: 0; transform: scale(0.95); } to { opacity: 1; transform: scale(1); } }
+        .animate-slide-in-right { animation: slideInRight 0.3s ease-out; }
         @keyframes slideInRight { from { opacity: 0; transform: translateX(30px); } to { opacity: 1; transform: translateX(0); } }
+        @keyframes shimmer { 0% { background-position: -20px 0; } 100% { background-position: 20px 0; } }
+        
+        /* 🎨 React Quill Dark Mode Fix */
+        .ql-toolbar.ql-snow { border: none !important; border-bottom: 1px solid #292B2E !important; }
+        .ql-container.ql-snow { border: none !important; }
+        .dark .ql-snow .ql-stroke { stroke: #A3A5A8; }
+        .dark .ql-snow .ql-fill { fill: #A3A5A8; }
+        .dark .ql-snow .ql-picker { color: #A3A5A8; }
       `}</style>
     </div>
   );
