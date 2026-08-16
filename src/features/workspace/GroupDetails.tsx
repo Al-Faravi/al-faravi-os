@@ -219,28 +219,22 @@ export default function GroupDetails() {
     if (!activeCourse) return;
     const newStatus = !target.isCompleted;
     
-    // Deep clone to update statuses safely
     const updatedData = JSON.parse(JSON.stringify(activeCourse.content_data));
-    
-    // 1. Update the To-Do target check
     const targetIndex = updatedData.group_targets.findIndex((t: any) => t.id === target.id);
     if (targetIndex > -1) updatedData.group_targets[targetIndex].isCompleted = newStatus;
 
-    // 2. Update the actual Course contents (Syncing)
     const modulesList = isLms ? updatedData.modules : updatedData.chapters;
     const modIndex = modulesList.findIndex((m: any) => m.id === target.moduleId);
     if (modIndex > -1) {
       const contentsList = isLms ? modulesList[modIndex].contents : modulesList[modIndex].resources;
       if (target.contentId === 'all') {
-        contentsList.forEach((c: any) => c.is_completed = newStatus); // Mark whole module
+        contentsList.forEach((c: any) => c.is_completed = newStatus);
       } else {
         const conIndex = contentsList.findIndex((c: any) => c.id === target.contentId);
-        if (conIndex > -1) contentsList[conIndex].is_completed = newStatus; // Mark single resource
+        if (conIndex > -1) contentsList[conIndex].is_completed = newStatus;
       }
     }
 
-    // 3. Overall progress is auto-handled by getCalculatedProgress on next render, 
-    // but we can ensure the JSON's manual pct matches just in case.
     updatedData.progress_pct = getCalculatedProgress({ content_type: activeCourse.content_type, content_data: updatedData });
 
     setContents(prev => prev.map(c => c.id === activeCourse.id ? { ...c, content_data: updatedData } : c));
@@ -389,36 +383,36 @@ export default function GroupDetails() {
 
   if (selectedContent?.content_type === 'lms_course') return <WorkspaceCourseViewer courseData={selectedContent} onBack={() => setSelectedContent(null)} readOnly={true} />;
   if (selectedContent?.content_type === 'bcs_subject') return <WorkspaceBcsViewer subjectData={selectedContent} onBack={() => setSelectedContent(null)} readOnly={true} />;
-  if (!group) return <div className="min-h-screen bg-[#0D0E0F] flex items-center justify-center"><div className="w-10 h-10 border-4 border-[#FF9D2E] border-t-transparent rounded-full animate-spin"></div></div>;
+  if (!group) return <div className="min-h-screen bg-slate-50 dark:bg-[#0D0E0F] flex items-center justify-center"><div className="w-10 h-10 border-4 border-[#FF9D2E] border-t-transparent rounded-full animate-spin"></div></div>;
 
   return (
-    <div className="min-h-screen bg-[#0D0E0F] text-[#F5F5F5] font-sans pb-20 selection:bg-[#FF9D2E]/30 relative">
-      <div className="sticky top-0 bg-[#0D0E0F]/80 backdrop-blur-xl border-b border-[#292B2E] z-40 px-6 py-4">
-        <div className="max-w-6xl mx-auto flex items-center gap-4">
-          <button onClick={() => navigate('/workspace-manager')} className="p-2.5 bg-[#141516] hover:bg-[#1D1E20] border border-[#292B2E] rounded-xl transition-colors"><ArrowLeft size={20} /></button>
+    <div className="min-h-screen bg-slate-50 dark:bg-[#0D0E0F] text-slate-900 dark:text-[#F5F5F5] font-sans pb-20 selection:bg-[#FF9D2E]/30 relative">
+      <div className="sticky top-0 bg-white/80 dark:bg-[#0D0E0F]/80 backdrop-blur-xl border-b border-slate-200 dark:border-[#292B2E] z-40 px-4 md:px-6 py-4">
+        <div className="max-w-6xl mx-auto flex items-center gap-3 md:gap-4">
+          <button onClick={() => navigate('/workspace-manager')} className="p-2 md:p-2.5 bg-slate-100 dark:bg-[#141516] hover:bg-slate-200 dark:hover:bg-[#1D1E20] border border-slate-200 dark:border-[#292B2E] rounded-xl transition-colors"><ArrowLeft size={20} /></button>
           <div>
-            <h1 className="text-2xl font-extrabold">{group.name}</h1>
-            <p className="text-[#A3A5A8] text-sm">Full Admin Control Panel</p>
+            <h1 className="text-xl md:text-2xl font-extrabold">{group.name}</h1>
+            <p className="text-slate-500 dark:text-[#A3A5A8] text-xs md:text-sm">Full Admin Control Panel</p>
           </div>
         </div>
       </div>
 
-      <div className="max-w-6xl mx-auto p-6 mt-4 space-y-8">
+      <div className="max-w-6xl mx-auto p-4 md:p-6 mt-4 space-y-6 md:space-y-8">
         
         {/* Top Row: Import & Assign */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <div className="bg-[#18191A] p-6 rounded-3xl border border-[#292B2E] shadow-sm">
-            <h2 className="text-xl font-bold mb-5 flex items-center gap-2"><Download className="text-[#19C784]" /> Push Course to Group</h2>
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 md:gap-6">
+          <div className="bg-white dark:bg-[#18191A] p-5 md:p-6 rounded-3xl border border-slate-200 dark:border-[#292B2E] shadow-sm">
+            <h2 className="text-lg md:text-xl font-bold mb-5 flex items-center gap-2"><Download className="text-[#19C784]" size={20} /> Push Course to Group</h2>
             <div className="space-y-4">
               <div className="flex gap-2">
-                <select value={selectedLms} onChange={(e) => setSelectedLms(e.target.value)} className="flex-1 bg-[#141516] border border-[#292B2E] focus:border-[#FF9D2E] rounded-xl p-3 outline-none text-sm">
+                <select value={selectedLms} onChange={(e) => setSelectedLms(e.target.value)} className="flex-1 bg-slate-50 dark:bg-[#141516] border border-slate-200 dark:border-[#292B2E] focus:border-[#FF9D2E] rounded-xl p-3 outline-none text-sm">
                   <option value="">-- Select LMS Course --</option>
                   {lmsCourses.map(c => <option key={c.id} value={c.id}>{c.title}</option>)}
                 </select>
                 <button onClick={handleImportLms} disabled={loading || !selectedLms} className="bg-[#19C784]/10 text-[#19C784] px-4 rounded-xl font-bold disabled:opacity-50"><Plus size={20}/></button>
               </div>
               <div className="flex gap-2">
-                <select value={selectedBcs} onChange={(e) => setSelectedBcs(e.target.value)} className="flex-1 bg-[#141516] border border-[#292B2E] focus:border-[#FF9D2E] rounded-xl p-3 outline-none text-sm">
+                <select value={selectedBcs} onChange={(e) => setSelectedBcs(e.target.value)} className="flex-1 bg-slate-50 dark:bg-[#141516] border border-slate-200 dark:border-[#292B2E] focus:border-[#FF9D2E] rounded-xl p-3 outline-none text-sm">
                   <option value="">-- Select BCS Subject --</option>
                   {bcsSubjects.map(c => <option key={c.id} value={c.id}>{c.title}</option>)}
                 </select>
@@ -427,16 +421,16 @@ export default function GroupDetails() {
             </div>
           </div>
 
-          <div className="bg-[#18191A] p-6 rounded-3xl border border-[#292B2E] shadow-sm">
-            <h2 className="text-xl font-bold mb-5 flex items-center gap-2"><UserPlus className="text-[#668CFF]" /> Assign Friend</h2>
-            <div className="flex gap-2 mb-4 bg-[#141516] p-1 rounded-xl border border-[#292B2E]">
-              <button onClick={() => setAssignMode('existing')} className={`flex-1 py-1.5 text-sm font-bold rounded-lg transition-colors ${assignMode === 'existing' ? 'bg-[#292B2E] text-white' : 'text-[#707277] hover:text-[#A3A5A8]'}`}>Existing Friend</button>
-              <button onClick={() => setAssignMode('new')} className={`flex-1 py-1.5 text-sm font-bold rounded-lg transition-colors ${assignMode === 'new' ? 'bg-[#292B2E] text-white' : 'text-[#707277] hover:text-[#A3A5A8]'}`}>Create New</button>
+          <div className="bg-white dark:bg-[#18191A] p-5 md:p-6 rounded-3xl border border-slate-200 dark:border-[#292B2E] shadow-sm">
+            <h2 className="text-lg md:text-xl font-bold mb-5 flex items-center gap-2"><UserPlus className="text-[#668CFF]" size={20} /> Assign Friend</h2>
+            <div className="flex gap-2 mb-4 bg-slate-100 dark:bg-[#141516] p-1 rounded-xl border border-slate-200 dark:border-[#292B2E]">
+              <button onClick={() => setAssignMode('existing')} className={`flex-1 py-1.5 text-xs md:text-sm font-bold rounded-lg transition-colors ${assignMode === 'existing' ? 'bg-white dark:bg-[#292B2E] text-slate-900 dark:text-white shadow-sm' : 'text-slate-500 dark:text-[#707277]'}`}>Existing Friend</button>
+              <button onClick={() => setAssignMode('new')} className={`flex-1 py-1.5 text-xs md:text-sm font-bold rounded-lg transition-colors ${assignMode === 'new' ? 'bg-white dark:bg-[#292B2E] text-slate-900 dark:text-white shadow-sm' : 'text-slate-500 dark:text-[#707277]'}`}>Create New</button>
             </div>
 
             <form onSubmit={handleAssignFriend} className="space-y-3">
               {assignMode === 'existing' ? (
-                <select value={selectedFriendEmail} onChange={(e) => setSelectedFriendEmail(e.target.value)} className="w-full bg-[#141516] border border-[#292B2E] focus:border-[#FF9D2E] rounded-xl p-3 outline-none text-white text-sm" required>
+                <select value={selectedFriendEmail} onChange={(e) => setSelectedFriendEmail(e.target.value)} className="w-full bg-slate-50 dark:bg-[#141516] border border-slate-200 dark:border-[#292B2E] focus:border-[#FF9D2E] rounded-xl p-3 outline-none text-sm" required>
                   <option value="">-- Select Existing Friend --</option>
                   {allFriends.map((f, idx) => (
                     <option key={idx} value={f.email}>{f.friend_name} ({f.email})</option>
@@ -444,36 +438,36 @@ export default function GroupDetails() {
                 </select>
               ) : (
                 <>
-                  <input type="text" placeholder="Friend's Name" value={fName} onChange={(e)=>setFName(e.target.value)} className="w-full bg-[#141516] border border-[#292B2E] rounded-xl p-2.5 outline-none text-white text-sm" required/>
+                  <input type="text" placeholder="Friend's Name" value={fName} onChange={(e)=>setFName(e.target.value)} className="w-full bg-slate-50 dark:bg-[#141516] border border-slate-200 dark:border-[#292B2E] rounded-xl p-2.5 outline-none text-sm" required/>
                   <div className="flex gap-2">
-                    <input type="email" placeholder="Email" value={fEmail} onChange={(e)=>setFEmail(e.target.value)} className="flex-1 bg-[#141516] border border-[#292B2E] rounded-xl p-2.5 outline-none text-white text-sm" required/>
-                    <input type="text" placeholder="Password" value={fPassword} onChange={(e)=>setFPassword(e.target.value)} className="flex-1 bg-[#141516] border border-[#292B2E] rounded-xl p-2.5 outline-none text-white text-sm" required/>
+                    <input type="email" placeholder="Email" value={fEmail} onChange={(e)=>setFEmail(e.target.value)} className="flex-1 bg-slate-50 dark:bg-[#141516] border border-slate-200 dark:border-[#292B2E] rounded-xl p-2.5 outline-none text-sm" required/>
+                    <input type="text" placeholder="Password" value={fPassword} onChange={(e)=>setFPassword(e.target.value)} className="flex-1 bg-slate-50 dark:bg-[#141516] border border-slate-200 dark:border-[#292B2E] rounded-xl p-2.5 outline-none text-sm" required/>
                   </div>
                 </>
               )}
-              <button type="submit" disabled={isAssigning} className="w-full bg-[#668CFF]/10 text-[#668CFF] border border-[#668CFF]/20 font-bold py-2.5 rounded-xl disabled:opacity-50 flex justify-center items-center gap-2">
+              <button type="submit" disabled={isAssigning} className="w-full bg-[#668CFF]/10 text-[#668CFF] border border-[#668CFF]/20 font-bold py-2.5 rounded-xl disabled:opacity-50 flex justify-center items-center gap-2 text-sm">
                 {isAssigning ? <RefreshCw size={16} className="animate-spin" /> : <Plus size={16} />} {assignMode === 'existing' ? 'Assign to Group' : 'Create & Assign'}
               </button>
             </form>
           </div>
         </div>
 
-        <div className="bg-[#18191A] p-6 rounded-3xl border border-[#292B2E] shadow-sm">
-          <h2 className="text-xl font-bold mb-4 flex items-center gap-2"><Users className="text-[#FF9D2E]"/> Group Members (Credentials)</h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-            {groupMembers.length === 0 ? <p className="text-[#707277]">No friends assigned yet.</p> : 
+        <div className="bg-white dark:bg-[#18191A] p-5 md:p-6 rounded-3xl border border-slate-200 dark:border-[#292B2E] shadow-sm">
+          <h2 className="text-lg md:text-xl font-bold mb-4 flex items-center gap-2"><Users className="text-[#FF9D2E]" size={20}/> Group Members (Credentials)</h2>
+          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
+            {groupMembers.length === 0 ? <p className="text-slate-500 dark:text-[#707277]">No friends assigned yet.</p> : 
               groupMembers.map((member) => (
-                <div key={member.id} className="bg-[#141516] border border-[#292B2E] p-4 rounded-2xl flex justify-between items-start">
-                  <div>
-                    <p className="font-bold text-sm">{member.friend_name}</p>
-                    <p className="text-[11px] text-[#A3A5A8] mt-0.5">{member.email}</p>
-                    <p className="text-[11px] font-mono text-[#707277] mt-1">Pass: {member.password_plain}</p>
+                <div key={member.id} className="bg-slate-50 dark:bg-[#141516] border border-slate-200 dark:border-[#292B2E] p-4 rounded-2xl flex justify-between items-start">
+                  <div className="min-w-0 mr-2">
+                    <p className="font-bold text-sm truncate">{member.friend_name}</p>
+                    <p className="text-[11px] text-slate-500 dark:text-[#A3A5A8] mt-0.5 truncate">{member.email}</p>
+                    <p className="text-[11px] font-mono text-slate-400 dark:text-[#707277] mt-1">Pass: {member.password_plain}</p>
                   </div>
-                  <div className="flex gap-2">
-                    <button onClick={() => handleCopyCredentials(member)} className={`p-1.5 rounded-lg border ${copiedId === member.id ? 'bg-[#19C784]/20 border-[#19C784]/50 text-[#19C784]' : 'bg-[#292B2E] border-transparent text-[#A3A5A8]'}`}>
+                  <div className="flex gap-2 shrink-0">
+                    <button onClick={() => handleCopyCredentials(member)} className={`p-1.5 rounded-lg border ${copiedId === member.id ? 'bg-[#19C784]/20 border-[#19C784]/50 text-[#19C784]' : 'bg-white dark:bg-[#292B2E] border-slate-200 dark:border-transparent text-slate-500 dark:text-[#A3A5A8]'}`}>
                       {copiedId === member.id ? <CheckCircle2 size={16} /> : <Copy size={16} />}
                     </button>
-                    <button onClick={() => handleRemoveMember(member.id)} className="p-1.5 bg-[#292B2E] rounded-lg text-[#707277] hover:text-red-500"><Trash2 size={16} /></button>
+                    <button onClick={() => handleRemoveMember(member.id)} className="p-1.5 bg-white dark:bg-[#292B2E] rounded-lg text-slate-400 dark:text-[#707277] hover:text-red-500"><Trash2 size={16} /></button>
                   </div>
                 </div>
               ))
@@ -486,80 +480,80 @@ export default function GroupDetails() {
           {/* --- MAIN COURSES AREA --- */}
           <div className="flex-1 w-full space-y-8">
             
-            {/* ACTIVE COURSE HIGHLIGHT & TO-DO (Admin View & Control) */}
+            {/* ACTIVE COURSE HIGHLIGHT & TO-DO */}
             {activeCourse && (
-              <div className="bg-[#1D1E20] border-2 border-[#FF9D2E] rounded-3xl p-6 shadow-[0_0_20px_rgba(255,157,46,0.15)] relative overflow-hidden group">
+              <div className="bg-white dark:bg-[#1D1E20] border-2 border-[#FF9D2E] rounded-3xl p-5 md:p-6 shadow-[0_0_20px_rgba(255,157,46,0.15)] relative overflow-hidden group">
                 <div className="absolute top-0 right-0 w-32 h-32 bg-[#FF9D2E]/10 rounded-full blur-2xl -translate-y-1/2 translate-x-1/3"></div>
                 
-                <div className="flex justify-between items-start mb-6 relative z-10">
+                <div className="flex flex-col sm:flex-row justify-between items-start mb-6 relative z-10 gap-4">
                   <div className="flex items-center gap-3">
-                    <div className="p-3 bg-[#FF9D2E] text-slate-900 rounded-xl shadow-md"><Target size={24} /></div>
+                    <div className="p-3 bg-[#FF9D2E] text-slate-900 rounded-xl shadow-md shrink-0"><Target size={24} /></div>
                     <div>
                       <span className="text-[10px] uppercase font-bold text-[#FF9D2E] tracking-wider bg-[#FF9D2E]/10 px-2 py-1 rounded-md mb-1 inline-block">Active Group Focus</span>
-                      <h3 className="text-xl font-bold text-white leading-tight">{activeCourse.title}</h3>
+                      <h3 className="text-lg md:text-xl font-bold text-slate-900 dark:text-white leading-tight">{activeCourse.title}</h3>
                     </div>
                   </div>
-                  <button onClick={() => setSelectedContent(activeCourse)} className="hidden sm:flex items-center gap-2 bg-white text-slate-900 px-4 py-2 rounded-xl font-bold text-sm hover:scale-105 transition-transform">
+                  <button onClick={() => setSelectedContent(activeCourse)} className="w-full sm:w-auto flex items-center justify-center gap-2 bg-white dark:bg-slate-800 text-slate-900 dark:text-white px-4 py-2 rounded-xl font-bold text-sm hover:scale-105 transition-transform border border-slate-200 dark:border-slate-700">
                     Enter Course <PlayCircle size={16} />
                   </button>
                 </div>
 
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 relative z-10">
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 md:gap-6 relative z-10">
                   
-                  {/* Live Progress Bar (Calculated Automatically) */}
-                  <div className="bg-[#141516] p-5 rounded-2xl border border-[#292B2E] flex flex-col justify-center">
+                  {/* Live Progress Bar */}
+                  <div className="bg-slate-100 dark:bg-[#141516] p-5 rounded-2xl border border-slate-200 dark:border-[#292B2E] flex flex-col justify-center">
                     <div className="flex justify-between items-center mb-4">
-                      <label className="text-sm font-bold flex items-center gap-2 text-[#A3A5A8]"><TrendingUp size={16} className="text-[#19C784]" /> Live Group Progress</label>
+                      <label className="text-xs md:text-sm font-bold flex items-center gap-2 text-slate-500 dark:text-[#A3A5A8]"><TrendingUp size={16} className="text-[#19C784]" /> Live Group Progress</label>
                       <span className="font-black text-[#19C784] text-2xl">{calculatedProgress}%</span>
                     </div>
-                    <div className="w-full h-3 bg-[#292B2E] rounded-full overflow-hidden">
+                    <div className="w-full h-3 bg-slate-200 dark:bg-[#292B2E] rounded-full overflow-hidden">
                       <div className="h-full bg-[#19C784] rounded-full transition-all duration-500 ease-out" style={{ width: `${calculatedProgress}%` }}></div>
                     </div>
-                    <p className="text-xs text-[#707277] mt-3 text-center">Calculated automatically as targets are marked Done.</p>
+                    <p className="text-[10px] md:text-xs text-slate-400 dark:text-[#707277] mt-3 text-center">Calculated automatically as targets are marked Done.</p>
                   </div>
 
                   {/* To-Do / Target Assignment Builder */}
-                  <div className="bg-[#141516] p-5 rounded-2xl border border-[#292B2E] flex flex-col gap-4">
-                    <h4 className="text-sm font-bold flex items-center gap-2 text-[#A3A5A8] border-b border-[#292B2E] pb-3">
+                  <div className="bg-slate-100 dark:bg-[#141516] p-5 rounded-2xl border border-slate-200 dark:border-[#292B2E] flex flex-col gap-4">
+                    <h4 className="text-xs md:text-sm font-bold flex items-center gap-2 text-slate-500 dark:text-[#A3A5A8] border-b border-slate-200 dark:border-[#292B2E] pb-3">
                       <CheckCircle2 size={16} className="text-[#668CFF]" /> Target assigned by Admin/Group
                     </h4>
                     
                     {/* Add Target UI */}
                     <div className="flex flex-col gap-3">
-                      <div className="flex flex-col sm:flex-row gap-3">
-                        <select value={targetModuleId} onChange={(e) => { setTargetModuleId(e.target.value); setTargetContentId('all'); }} className="flex-1 bg-[#1D1E20] border border-[#292B2E] rounded-xl px-3 py-2 text-sm text-white outline-none">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <select value={targetModuleId} onChange={(e) => { setTargetModuleId(e.target.value); setTargetContentId('all'); }} className="bg-white dark:bg-[#1D1E20] border border-slate-200 dark:border-[#292B2E] rounded-xl px-3 py-2 text-sm outline-none">
                           <option value="">-- Select Module/Chapter --</option>
                           {activeModules.map((m: any) => <option key={m.id} value={m.id}>{m.title}</option>)}
                         </select>
-                        <select value={targetContentId} disabled={!targetModuleId} onChange={(e) => setTargetContentId(e.target.value)} className="flex-1 bg-[#1D1E20] border border-[#292B2E] rounded-xl px-3 py-2 text-sm text-white outline-none disabled:opacity-50">
+                        <select value={targetContentId} disabled={!targetModuleId} onChange={(e) => setTargetContentId(e.target.value)} className="bg-white dark:bg-[#1D1E20] border border-slate-200 dark:border-[#292B2E] rounded-xl px-3 py-2 text-sm outline-none disabled:opacity-50">
                           <option value="all">📚 Entire Module (All Resources)</option>
                           {activeContentsList.map((c: any) => <option key={c.id} value={c.id}>📄 {c.title}</option>)}
                         </select>
                       </div>
-                      <div className="flex gap-3">
-                        <input type="date" value={targetDate} onChange={(e) => setTargetDate(e.target.value)} className="flex-1 bg-[#1D1E20] border border-[#292B2E] rounded-xl px-3 py-2 text-sm text-white outline-none [color-scheme:dark]" />
-                        <button onClick={handleAddTarget} disabled={!targetModuleId || !targetDate || isSavingTarget} className="bg-[#668CFF] text-white px-5 rounded-xl font-bold text-sm hover:bg-blue-600 transition-colors disabled:opacity-50 flex items-center gap-2">
-                          <Plus size={16} /> Add
+                      <div className="flex flex-col sm:flex-row gap-3">
+                        <input type="date" value={targetDate} onChange={(e) => setTargetDate(e.target.value)} className="flex-1 bg-white dark:bg-[#1D1E20] border border-slate-200 dark:border-[#292B2E] rounded-xl px-3 py-2 text-sm outline-none [color-scheme:dark]" />
+                        <button onClick={handleAddTarget} disabled={!targetModuleId || !targetDate || isSavingTarget} className="bg-[#668CFF] text-white px-5 rounded-xl font-bold text-sm hover:bg-blue-600 transition-colors disabled:opacity-50 flex items-center justify-center gap-2 py-2">
+                          <Plus size={16} /> Add Target
                         </button>
                       </div>
                     </div>
 
                     {/* Active Targets List */}
-                    <div className="space-y-2 mt-2 max-h-48 overflow-y-auto pr-1">
+                    <div className="space-y-2 mt-2 max-h-60 overflow-y-auto pr-1">
                       {activeCourse.content_data?.group_targets?.map((target: any) => (
-                        <div key={target.id} className={`flex items-center justify-between p-3 rounded-xl border ${target.isCompleted ? 'bg-[#19C784]/10 border-[#19C784]/30' : 'bg-[#1D1E20] border-[#292B2E]'}`}>
-                          <label className="flex items-center gap-3 cursor-pointer flex-1">
+                        <div key={target.id} className={`flex items-center justify-between p-3 rounded-xl border ${target.isCompleted ? 'bg-[#19C784]/10 border-[#19C784]/30' : 'bg-white dark:bg-[#1D1E20] border-slate-200 dark:border-[#292B2E]'}`}>
+                          <label className="flex items-center gap-3 cursor-pointer flex-1 min-w-0">
                             <input type="checkbox" checked={target.isCompleted} onChange={() => handleToggleTarget(target)} className="w-4 h-4 accent-[#19C784] rounded-md cursor-pointer shrink-0" />
                             <div className="flex flex-col min-w-0">
-                              <span className={`text-sm font-bold truncate ${target.isCompleted ? 'text-[#19C784] line-through' : 'text-white'}`}>{target.title}</span>
-                              <span className="text-[10px] text-[#A3A5A8] truncate">{target.parentTitle} • By {new Date(target.dueDate).toLocaleDateString()}</span>
+                              <span className={`text-xs md:text-sm font-bold truncate ${target.isCompleted ? 'text-[#19C784] line-through' : 'text-slate-900 dark:text-white'}`}>{target.title}</span>
+                              <span className="text-[10px] text-slate-500 dark:text-[#A3A5A8] truncate">{target.parentTitle} • By {new Date(target.dueDate).toLocaleDateString()}</span>
                             </div>
                           </label>
-                          <button onClick={() => handleDeleteTarget(target.id)} className="text-[#707277] hover:text-red-500 p-1.5 shrink-0"><Trash2 size={14} /></button>
+                          <button onClick={() => handleDeleteTarget(target.id)} className="text-slate-400 dark:text-[#707277] hover:text-red-500 p-1.5 shrink-0"><Trash2 size={14} /></button>
                         </div>
                       ))}
                       {(!activeCourse.content_data?.group_targets || activeCourse.content_data.group_targets.length === 0) && (
-                        <p className="text-xs text-[#707277] text-center italic py-2">No active targets set.</p>
+                        <p className="text-xs text-slate-400 dark:text-[#707277] text-center italic py-2">No active targets set.</p>
                       )}
                     </div>
                   </div>
@@ -570,25 +564,25 @@ export default function GroupDetails() {
 
             {/* OTHER COURSES */}
             <div>
-              <h2 className="text-xl font-bold mb-4 flex items-center gap-2"><BookOpen className="text-[#19C784]" size={20}/> Group Courses Hub</h2>
+              <h2 className="text-lg md:text-xl font-bold mb-4 flex items-center gap-2"><BookOpen className="text-[#19C784]" size={20}/> Group Courses Hub</h2>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {inactiveCourses.map(item => (
-                  <div key={item.id} className="bg-[#18191A] border border-[#292B2E] hover:border-[#19C784]/60 p-5 rounded-3xl flex flex-col justify-between group transition-all">
+                  <div key={item.id} className="bg-white dark:bg-[#18191A] border border-slate-200 dark:border-[#292B2E] hover:border-[#19C784]/60 p-5 rounded-3xl flex flex-col justify-between group transition-all">
                     <div onClick={() => setSelectedContent(item)} className="cursor-pointer">
                       <div className="flex justify-between items-start mb-3">
                         <div className="p-2.5 rounded-xl bg-[#19C784]/10 text-[#19C784]"><BookOpen size={20} /></div>
-                        <button onClick={(e) => { e.stopPropagation(); handleDeleteContent(item.id, item.content_type); }} className="p-2 text-[#707277] hover:text-red-500 hover:bg-red-500/10 rounded-lg"><Trash2 size={16}/></button>
+                        <button onClick={(e) => { e.stopPropagation(); handleDeleteContent(item.id, item.content_type); }} className="p-2 text-slate-400 dark:text-[#707277] hover:text-red-500 hover:bg-red-500/10 rounded-lg"><Trash2 size={16}/></button>
                       </div>
-                      <h3 className="font-bold text-lg leading-snug mb-4 group-hover:text-[#19C784] transition-colors">{item.title}</h3>
+                      <h3 className="font-bold text-base md:text-lg leading-snug mb-4 group-hover:text-[#19C784] transition-colors">{item.title}</h3>
                     </div>
-                    <div className="pt-3 border-t border-[#292B2E] flex flex-col gap-2">
+                    <div className="pt-3 border-t border-slate-200 dark:border-[#292B2E] flex flex-col gap-2">
                       <div className="flex justify-between items-center text-xs">
-                        <span className="text-[#A3A5A8] font-medium">Synced Content</span>
-                        <button onClick={(e) => { e.stopPropagation(); handleSyncContent(item); }} disabled={syncingId === item.id} className="p-1.5 text-[#707277] hover:text-[#FF9D2E] rounded-md"><RefreshCw size={14} className={syncingId === item.id ? 'animate-spin text-[#FF9D2E]' : ''} /></button>
+                        <span className="text-slate-500 dark:text-[#A3A5A8] font-medium">Synced Content</span>
+                        <button onClick={(e) => { e.stopPropagation(); handleSyncContent(item); }} disabled={syncingId === item.id} className="p-1.5 text-slate-400 dark:text-[#707277] hover:text-[#FF9D2E] rounded-md"><RefreshCw size={14} className={syncingId === item.id ? 'animate-spin text-[#FF9D2E]' : ''} /></button>
                       </div>
                       <button 
                         onClick={(e) => { e.stopPropagation(); handleSetActiveCourse(item.id); }}
-                        className="w-full py-2 bg-[#141516] text-[#A3A5A8] hover:bg-[#FF9D2E] hover:text-slate-900 rounded-lg text-xs font-bold transition-colors flex items-center justify-center gap-1.5"
+                        className="w-full py-2 bg-slate-100 dark:bg-[#141516] text-slate-600 dark:text-[#A3A5A8] hover:bg-[#FF9D2E] hover:text-slate-900 rounded-lg text-xs font-bold transition-colors flex items-center justify-center gap-1.5"
                       >
                         <Target size={14} /> Force Set as Active Focus
                       </button>
@@ -596,28 +590,28 @@ export default function GroupDetails() {
                   </div>
                 ))}
                 {inactiveCourses.length === 0 && !activeCourse && (
-                  <p className="text-[#707277] py-8 text-center col-span-full">No courses added yet. Push a course to get started.</p>
+                  <p className="text-slate-500 dark:text-[#707277] py-8 text-center col-span-full">No courses added yet. Push a course to get started.</p>
                 )}
               </div>
             </div>
           </div>
 
           {/* --- RIGHT SIDEBAR (NOTES) --- */}
-          <div className="w-full lg:w-[340px] shrink-0 bg-[#18191A] border border-[#292B2E] rounded-3xl p-5 shadow-sm">
+          <div className="w-full lg:w-[340px] shrink-0 bg-white dark:bg-[#18191A] border border-slate-200 dark:border-[#292B2E] rounded-3xl p-5 shadow-sm">
             <div className="flex justify-between items-center mb-4">
               <h3 className="font-bold flex items-center gap-2"><FileText size={18} className="text-[#FF9D2E]"/> Group Notes</h3>
               <button onClick={() => { setEditingNoteId(null); setAdminNoteTitle(''); setAdminNoteContent(''); setShowNoteModal(true); }} className="p-1.5 bg-[#FF9D2E]/10 text-[#FF9D2E] rounded-lg hover:bg-[#FF9D2E]/20"><Plus size={16} /></button>
             </div>
             <div className="space-y-3">
               {groupNotes.map(note => (
-                <div key={note.id} className="p-3.5 bg-[#141516] rounded-xl border border-[#292B2E] flex justify-between items-center">
-                  <div className="flex-1 pr-2">
+                <div key={note.id} className="p-3.5 bg-slate-50 dark:bg-[#141516] rounded-xl border border-slate-200 dark:border-[#292B2E] flex justify-between items-center">
+                  <div className="flex-1 pr-2 min-w-0">
                     <h4 className="font-bold text-sm line-clamp-1">{note.title}</h4>
-                    <p className="text-[11px] text-[#A3A5A8] mt-1 flex gap-1.5"><span className="font-medium">{note.content_data?.authorName || 'User'}</span><span>•</span><span>{new Date(note.created_at).toLocaleDateString()}</span></p>
+                    <p className="text-[11px] text-slate-500 dark:text-[#A3A5A8] mt-1 flex gap-1.5"><span className="font-medium truncate">{note.content_data?.authorName || 'User'}</span><span>•</span><span>{new Date(note.created_at).toLocaleDateString()}</span></p>
                   </div>
-                  <div className="flex gap-1">
-                    <button onClick={() => { setEditingNoteId(note.id); setAdminNoteTitle(note.title); setAdminNoteContent(note.content_data?.text || ''); setShowNoteModal(true); }} className="p-1.5 text-[#707277] hover:text-[#FF9D2E]"><Edit3 size={15}/></button>
-                    <button onClick={() => handleDeleteContent(note.id, note.content_type)} className="p-1.5 text-[#707277] hover:text-red-500"><Trash2 size={15}/></button>
+                  <div className="flex gap-1 shrink-0">
+                    <button onClick={() => { setEditingNoteId(note.id); setAdminNoteTitle(note.title); setAdminNoteContent(note.content_data?.text || ''); setShowNoteModal(true); }} className="p-1.5 text-slate-400 dark:text-[#707277] hover:text-[#FF9D2E]"><Edit3 size={15}/></button>
+                    <button onClick={() => handleDeleteContent(note.id, note.content_type)} className="p-1.5 text-slate-400 dark:text-[#707277] hover:text-red-500"><Trash2 size={15}/></button>
                   </div>
                 </div>
               ))}
@@ -628,11 +622,11 @@ export default function GroupDetails() {
 
       {showNoteModal && (
         <div className="fixed inset-0 z-[1000] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-          <div className="bg-[#18191A] p-6 rounded-3xl border border-[#FF9D2E]/30 shadow-2xl w-full max-w-lg">
-            <div className="flex justify-between items-center mb-5"><h3 className="text-xl font-bold flex items-center gap-2"><FileText size={20} className="text-[#FF9D2E]"/> {editingNoteId ? 'Edit Group Note' : 'New Group Note'}</h3><button onClick={() => setShowNoteModal(false)} className="text-[#707277] hover:text-[#FF5B61]"><X size={20}/></button></div>
+          <div className="bg-white dark:bg-[#18191A] p-6 rounded-3xl border border-[#FF9D2E]/30 shadow-2xl w-full max-w-lg">
+            <div className="flex justify-between items-center mb-5"><h3 className="text-xl font-bold flex items-center gap-2"><FileText size={20} className="text-[#FF9D2E]"/> {editingNoteId ? 'Edit Group Note' : 'New Group Note'}</h3><button onClick={() => setShowNoteModal(false)} className="text-slate-400 dark:text-[#707277] hover:text-[#FF5B61]"><X size={20}/></button></div>
             <form onSubmit={handleSaveAdminNote} className="space-y-4">
-              <input type="text" placeholder="Note Title..." value={adminNoteTitle} onChange={(e) => setAdminNoteTitle(e.target.value)} className="w-full bg-[#141516] border border-[#292B2E] rounded-xl p-4 outline-none font-bold text-white" required />
-              <textarea placeholder="Write note content..." value={adminNoteContent} onChange={(e) => setAdminNoteContent(e.target.value)} className="w-full bg-[#141516] border border-[#292B2E] rounded-xl p-4 h-40 resize-none outline-none text-white" required />
+              <input type="text" placeholder="Note Title..." value={adminNoteTitle} onChange={(e) => setAdminNoteTitle(e.target.value)} className="w-full bg-slate-50 dark:bg-[#141516] border border-slate-200 dark:border-[#292B2E] rounded-xl p-4 outline-none font-bold" required />
+              <textarea placeholder="Write note content..." value={adminNoteContent} onChange={(e) => setAdminNoteContent(e.target.value)} className="w-full bg-slate-50 dark:bg-[#141516] border border-slate-200 dark:border-[#292B2E] rounded-xl p-4 h-40 resize-none outline-none" required />
               <div className="flex justify-end gap-3 pt-2"><button type="submit" className="bg-[#FF9D2E] text-black px-6 py-2.5 rounded-xl font-extrabold hover:bg-[#FFAA3D]"><Save size={16} className="inline mr-1" /> {editingNoteId ? 'Update' : 'Publish'}</button></div>
             </form>
           </div>
@@ -641,26 +635,26 @@ export default function GroupDetails() {
 
       {/* --- ADMIN FLOATING CHAT --- */}
       {group && (
-        <div className="fixed bottom-8 right-8 z-[999] flex flex-col items-end">
+        <div className="fixed bottom-20 md:bottom-8 right-4 md:right-8 z-[999] flex flex-col items-end">
           {isChatOpen && (
-            <div className="w-[380px] h-[500px] bg-[#141516] border border-[#292B2E] shadow-2xl rounded-3xl mb-4 flex flex-col overflow-hidden animate-fade-in origin-bottom-right">
-              <div className="bg-[#18191A] p-4 border-b border-[#292B2E] flex justify-between items-center">
+            <div className="w-[90vw] md:w-[380px] h-[500px] max-h-[80vh] bg-white dark:bg-[#141516] border border-slate-200 dark:border-[#292B2E] shadow-2xl rounded-3xl mb-4 flex flex-col overflow-hidden animate-fade-in origin-bottom-right">
+              <div className="bg-slate-50 dark:bg-[#18191A] p-4 border-b border-slate-200 dark:border-[#292B2E] flex justify-between items-center">
                 <div>
-                  <h3 className="font-bold flex items-center gap-2 text-white"><MessageCircle size={18} className="text-[#FF9D2E]" /> Group Chat (Admin)</h3>
-                  <p className="text-xs text-[#707277]">{group.name}</p>
+                  <h3 className="font-bold flex items-center gap-2 text-slate-900 dark:text-white"><MessageCircle size={18} className="text-[#FF9D2E]" /> Group Chat (Admin)</h3>
+                  <p className="text-xs text-slate-500 dark:text-[#707277]">{group.name}</p>
                 </div>
-                <button onClick={() => setIsChatOpen(false)} className="text-[#707277] hover:text-[#FF5B61]"><X size={20} /></button>
+                <button onClick={() => setIsChatOpen(false)} className="text-slate-400 dark:text-[#707277] hover:text-[#FF5B61]"><X size={20} /></button>
               </div>
               
-              <div className="flex-1 p-4 overflow-y-auto flex flex-col gap-4">
+              <div className="flex-1 p-4 overflow-y-auto bg-slate-100 dark:bg-[#0D0E0F] flex flex-col gap-4">
                 {chatLoading ? <div className="flex-1 flex justify-center items-center"><div className="w-6 h-6 border-2 border-[#FF9D2E] border-t-transparent rounded-full animate-spin"></div></div> :
-                 chatMessages.length === 0 ? <p className="text-center text-[#707277] mt-10">No messages yet.</p> :
+                 chatMessages.length === 0 ? <p className="text-center text-slate-500 dark:text-[#707277] mt-10">No messages yet.</p> :
                  chatMessages.map((msg, idx) => {
                    const isMe = msg.user_id === adminId;
                    return (
                      <div key={msg.id || idx} className={`flex flex-col ${isMe ? 'items-end' : 'items-start'}`}>
-                       <span className="text-[10px] text-[#A3A5A8] mb-1 font-bold">{msg.sender_name}</span>
-                       <div className={`px-4 py-2.5 rounded-2xl text-sm max-w-[85%] ${isMe ? 'bg-[#FF9D2E] text-slate-900 rounded-tr-sm font-medium' : 'bg-[#1D1E20] text-white border border-[#292B2E] rounded-tl-sm'}`}>
+                       <span className="text-[10px] text-slate-500 dark:text-[#A3A5A8] mb-1 font-bold">{msg.sender_name}</span>
+                       <div className={`px-4 py-2.5 rounded-2xl text-sm max-w-[85%] ${isMe ? 'bg-[#FF9D2E] text-slate-900 rounded-tr-sm font-medium' : 'bg-white dark:bg-[#1D1E20] text-slate-900 dark:text-white border border-slate-200 dark:border-[#292B2E] rounded-tl-sm'}`}>
                          {msg.message_type === 'text' && <p>{msg.content}</p>}
                          {msg.message_type === 'image' && <a href={msg.file_url} target="_blank" rel="noreferrer"><img src={msg.file_url} alt="Shared" className="rounded-xl max-h-48 object-cover border border-black/10" /></a>}
                          {msg.message_type === 'file' && <a href={msg.file_url} target="_blank" rel="noreferrer" className="flex items-center gap-2 underline underline-offset-2 break-all"><FileText size={16} className="shrink-0" /> {msg.content}</a>}
@@ -673,14 +667,14 @@ export default function GroupDetails() {
                 <div ref={chatBottomRef} />
               </div>
 
-              <form onSubmit={handleSendMessage} className="p-3 bg-[#18191A] border-t border-[#292B2E] flex items-center gap-2">
-                <input type="text" value={newMessage} onChange={e => setNewMessage(e.target.value)} placeholder="Type as Admin..." className="flex-1 bg-[#1D1E20] border border-transparent focus:border-[#FF9D2E]/50 rounded-full px-4 py-2 text-sm text-white outline-none" />
+              <form onSubmit={handleSendMessage} className="p-3 bg-white dark:bg-[#18191A] border-t border-slate-200 dark:border-[#292B2E] flex items-center gap-2">
+                <input type="text" value={newMessage} onChange={e => setNewMessage(e.target.value)} placeholder="Type as Admin..." className="flex-1 bg-slate-100 dark:bg-[#1D1E20] border border-transparent focus:border-[#FF9D2E]/50 rounded-full px-4 py-2 text-sm outline-none" />
                 <button type="submit" disabled={!newMessage.trim()} className="p-2.5 bg-[#FF9D2E] text-black rounded-full hover:bg-[#FFAA3D] disabled:opacity-50"><Send size={16}/></button>
               </form>
             </div>
           )}
-          <button onClick={() => setIsChatOpen(!isChatOpen)} className="w-16 h-16 bg-[#FF9D2E] hover:bg-[#FFAA3D] text-slate-900 rounded-full flex items-center justify-center shadow-[0_10px_30px_rgba(255,157,46,0.3)] hover:scale-105 transition-transform">
-            {isChatOpen ? <X size={28} strokeWidth={2.5}/> : <MessageCircle size={28} strokeWidth={2.5}/>}
+          <button onClick={() => setIsChatOpen(!isChatOpen)} className="w-14 h-14 md:w-16 md:h-16 bg-[#FF9D2E] hover:bg-[#FFAA3D] text-slate-900 rounded-full flex items-center justify-center shadow-[0_10px_30px_rgba(255,157,46,0.3)] hover:scale-105 transition-transform">
+            {isChatOpen ? <X size={24} strokeWidth={2.5}/> : <MessageCircle size={24} strokeWidth={2.5}/>}
           </button>
         </div>
       )}
