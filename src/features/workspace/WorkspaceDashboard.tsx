@@ -8,8 +8,8 @@ import {
   Trash2, Edit3, FolderOpen, LogOut, CheckCircle2, Plus, DownloadCloud, Sparkles, ShieldCheck,
   Target, TrendingUp, PlayCircle, BellRing, ChevronDown, ChevronUp 
 } from 'lucide-react';
-import ReactQuill from 'react-quill';
-import 'react-quill/dist/quill.snow.css';
+import ReactQuill from 'react-quill-new';
+import 'react-quill-new/dist/quill.snow.css';
 
 import WorkspaceCourseViewer from './WorkspaceCourseViewer';
 import WorkspaceBcsViewer from './WorkspaceBcsViewer';
@@ -28,7 +28,7 @@ interface ChatMessage {
   user_id: string;
   sender_name: string;
   content: string;
-  message_type: 'text' | 'image' | 'file' | 'audio';
+  message_type: 'text' | 'image' | 'file' | 'audio' | 'voice'; // 🟢 'voice' যুক্ত করা হয়েছে
   file_url?: string;
   created_at?: string;
   isOptimistic?: boolean;
@@ -94,6 +94,9 @@ export default function WorkspaceDashboard() {
 
   // 🟢 PROFILE EDIT STATES
   const [showProfileModal, setShowProfileModal] = useState(false);
+  
+  // 🟢 VIEWING NOTE STATE
+  const [viewingNote, setViewingNote] = useState<any>(null);
 
   useEffect(() => {
     const handleBeforeInstallPrompt = (e: Event) => {
@@ -312,13 +315,6 @@ export default function WorkspaceDashboard() {
     if (!error) { handleBack(); fetchGroupContents(selectedGroup.id); }
   };
 
-  const openContent = (item: any) => {
-    setSelectedContent(item);
-    if (item.content_type === 'shared_note' || item.content_type === 'personal_note') {
-      setNoteTitle(item.title); setNoteContent(item.content_data?.text || ''); setIsEditing(false);
-    }
-  };
-
   // 🟢 SMART NAVIGATION (Refresh Proof)
   const handleEnterCourse = (course: any) => {
     setSelectedContent(course);
@@ -501,7 +497,7 @@ export default function WorkspaceDashboard() {
           if (uploadError) return;
           const { data } = workspaceSupabase.storage.from('chat-files').getPublicUrl(fileName);
           await workspaceSupabase.from('group_chats').insert([{
-            group_id: selectedGroup.id, user_id: session.user.id, sender_name: profileName, content: 'Voice Message', message_type: 'audio', file_url: data.publicUrl,
+            group_id: selectedGroup.id, user_id: session.user.id, sender_name: profileName, content: 'Voice Message', message_type: 'voice', file_url: data.publicUrl,
           }]);
         };
         recorder.start();
@@ -541,13 +537,14 @@ export default function WorkspaceDashboard() {
           <button onClick={toggleTheme} className="p-2.5 text-slate-500 dark:text-[#A3A5A8] hover:bg-slate-100 dark:hover:bg-[#1D1E20] rounded-xl transition-colors">
             {theme === 'dark' ? <Sun size={22} /> : <Moon size={22} />}
           </button>
-          <div className="hidden md:flex items-center gap-3 pl-4 border-l border-slate-200 dark:border-[#292B2E]">
-            <div className="text-right">
+          {/* 🟢 Mobile Responsive Profile Button */}
+          <div className="flex items-center gap-2 sm:gap-3 pl-2 sm:pl-4 border-l border-slate-200 dark:border-[#292B2E]">
+            <div className="text-right hidden sm:block">
               <p className="text-sm font-bold leading-none text-slate-900 dark:text-white">{profileName}</p>
               <p className="text-xs text-slate-500 dark:text-[#707277] mt-1">Student</p>
             </div>
-            <button onClick={() => setShowProfileModal(true)} className="w-10 h-10 bg-[#FF9D2E]/10 rounded-full flex items-center justify-center border border-[#FF9D2E]/30 hover:bg-[#FF9D2E]/20 transition-colors">
-              <User size={20} className="text-[#FF9D2E]" />
+            <button onClick={() => setShowProfileModal(true)} className="w-9 h-9 sm:w-10 sm:h-10 bg-[#FF9D2E]/10 rounded-full flex items-center justify-center border border-[#FF9D2E]/30 hover:bg-[#FF9D2E]/20 transition-colors">
+              <User size={18} className="text-[#FF9D2E]" />
             </button>
           </div>
         </div>
@@ -801,22 +798,27 @@ export default function WorkspaceDashboard() {
                 <div className="bg-white dark:bg-[#18191A] border border-slate-200 dark:border-[#292B2E] rounded-3xl p-5 shadow-sm sticky top-24">
                   <div className="flex justify-between items-center mb-4">
                     <h3 className="font-bold flex items-center gap-2 text-slate-900 dark:text-white"><FileText size={18} className="text-[#FF9D2E]"/> Important Notes</h3>
-                    <button onClick={() => { setNoteTitle(''); setNoteContent(''); setShowNoteForm(true); }} className="p-1.5 bg-[#FF9D2E]/10 text-[#FF9D2E] rounded-lg hover:bg-[#FF9D2E]/20 transition-colors"><Plus size={16} /></button>
+                    <button onClick={() => { setNoteTitle(''); setNoteContent(''); setIsEditing(false); setShowNoteForm(true); }} className="p-1.5 bg-[#FF9D2E]/10 text-[#FF9D2E] rounded-lg hover:bg-[#FF9D2E]/20 transition-colors"><Plus size={16} /></button>
                   </div>
                   <div className="space-y-3">
                     {groupNotes.length === 0 ? (
                       <p className="text-sm text-slate-400 dark:text-[#707277] text-center py-4">No notes created yet.</p>
                     ) : (
                       groupNotes.map(note => (
-                        <div key={note.id} className="p-3 bg-slate-50 dark:bg-[#141516] rounded-xl border border-slate-100 dark:border-[#292B2E] hover:border-[#FF9D2E]/50 cursor-pointer group transition-colors flex justify-between items-start">
-                          <div onClick={() => openContent(note)} className="flex-1 pr-2">
+                        <div key={note.id} onClick={() => setViewingNote(note)} className="p-3 bg-slate-50 dark:bg-[#141516] rounded-xl border border-slate-100 dark:border-[#292B2E] hover:border-[#FF9D2E]/50 cursor-pointer group transition-colors flex justify-between items-start">
+                          <div className="flex-1 pr-2">
                             <h4 className="font-bold text-sm text-slate-900 dark:text-white group-hover:text-[#FF9D2E] line-clamp-1">{note.title}</h4>
                             <div className="flex items-center gap-1.5 mt-1 text-[10px] text-slate-500 dark:text-[#A3A5A8]">
-                              <span className="font-semibold">{note.content_data?.authorName || 'Member'}</span><span>•</span><span>{new Date(note.created_at).toLocaleDateString()}</span>
+                              <span className="font-semibold">{note.content_data?.authorName || 'Member'}</span>
+                              <span>•</span>
+                              {/* 🔴 Date Fix */}
+                              <span>{new Date(note.created_at || Date.now()).toLocaleDateString()}</span>
                             </div>
                           </div>
                           {note.content_data?.userId === session?.user?.id && (
-                            <button onClick={(e) => { e.stopPropagation(); openContent(note); setIsEditing(true); }} className="p-1.5 text-slate-400 hover:text-[#FF9D2E] transition-colors shrink-0"><Edit3 size={14} /></button>
+                            <button onClick={(e) => { e.stopPropagation(); setNoteTitle(note.title); setNoteContent(note.content_data?.text || ''); setIsEditing(true); setSelectedContent(note); setShowNoteForm(true); }} className="p-1.5 text-slate-400 hover:text-[#FF9D2E] transition-colors shrink-0">
+                              <Edit3 size={14} />
+                            </button>
                           )}
                         </div>
                       ))
@@ -834,7 +836,7 @@ export default function WorkspaceDashboard() {
           <div className="fixed inset-0 z-[1000] flex items-center justify-center p-4 bg-slate-900/60 dark:bg-[#0D0E0F]/80 backdrop-blur-sm">
             <div className="bg-white dark:bg-[#18191A] p-6 rounded-3xl border border-[#FF9D2E]/30 shadow-2xl w-full max-w-lg animate-fade-in transition-colors">
               <div className="flex justify-between items-center mb-5">
-                <h3 className="text-xl font-bold flex items-center gap-2 text-slate-900 dark:text-white"><FileText size={20} className="text-[#FF9D2E]"/> Create New Note</h3>
+                <h3 className="text-xl font-bold flex items-center gap-2 text-slate-900 dark:text-white"><FileText size={20} className="text-[#FF9D2E]"/> {isEditing ? 'Edit Note' : 'Create New Note'}</h3>
                 <button onClick={() => setShowNoteForm(false)} className="text-slate-400 hover:text-[#FF5B61]"><X size={20}/></button>
               </div>
               
@@ -865,6 +867,26 @@ export default function WorkspaceDashboard() {
                   </button>
                 </div>
               </form>
+            </div>
+          </div>
+        )}
+
+        {/* 🟢 READ NOTE MODAL (Student View) */}
+        {viewingNote && (
+          <div className="fixed inset-0 z-[1100] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fade-in">
+            <div className="bg-white dark:bg-[#18191A] p-6 sm:p-8 rounded-3xl border border-slate-200 dark:border-[#292B2E] shadow-2xl w-full max-w-3xl max-h-[85vh] overflow-y-auto custom-scrollbar relative">
+              <button onClick={() => setViewingNote(null)} className="absolute top-6 right-6 text-slate-400 hover:text-[#FF5B61] bg-slate-100 dark:bg-[#141516] p-2 rounded-full"><X size={20}/></button>
+              
+              <h2 className="text-2xl sm:text-3xl font-extrabold text-slate-900 dark:text-white mb-2">{viewingNote.title}</h2>
+              <p className="text-sm text-slate-500 dark:text-[#A3A5A8] mb-6 border-b border-slate-200 dark:border-[#292B2E] pb-4">
+                Created by <span className="text-[#FF9D2E] font-bold">{viewingNote.content_data?.authorName || 'Member'}</span> on 
+                {/* 🔴 Date Fix */}
+                {new Date(viewingNote.created_at || Date.now()).toLocaleDateString()}
+              </p>
+              
+              <div className="prose dark:prose-invert max-w-none">
+                <div dangerouslySetInnerHTML={{ __html: viewingNote.content_data?.text }} className="text-slate-800 dark:text-[#F5F5F5] leading-relaxed text-base sm:text-lg whitespace-pre-wrap" />
+              </div>
             </div>
           </div>
         )}
@@ -923,21 +945,26 @@ export default function WorkspaceDashboard() {
                     return (
                       <div key={msg.id} className={`flex flex-col ${isOwn ? 'items-end' : 'items-start'}`}>
                         <div className={`max-w-[80%] p-3 rounded-2xl text-sm break-words ${isOwn ? 'bg-[#FF9D2E] text-slate-900 rounded-br-md' : 'bg-white dark:bg-[#1D1E20] text-slate-900 dark:text-white border border-slate-100 dark:border-[#292B2E] rounded-bl-md'}`}>
-                          {/* 🟢 MEDIA RENDERING LOGIC FOR CHAT */}
+                          {/* 🟢 CHAT MESSAGE MEDIA & DATE FIX */}
                           <div className="flex-1 min-w-0">
                             <div className="flex justify-between items-baseline mb-1">
                               {!isOwn && <span className="text-xs font-bold text-slate-800 dark:text-white">{msg.sender_name}</span>}
-                              <span className="text-[10px] text-slate-400 ml-2">{new Date(msg.created_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
+                              {/* 🔴 Date Fix: Added || Date.now() */}
+                              <span className="text-[10px] text-slate-400 ml-2">
+                                {new Date(msg.created_at || Date.now()).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+                              </span>
                             </div>
                             
                             {msg.message_type === 'text' && <p className="text-sm text-slate-700 dark:text-slate-300 break-words">{msg.content}</p>}
                             
+                            {/* 🔴 Tailwind Fix: max-w-50 */}
                             {msg.message_type === 'image' && (
-                              <img src={msg.file_url} alt="shared-img" onClick={() => window.open(msg.file_url, '_blank')} className="max-w-[200px] sm:max-w-[250px] rounded-lg mt-1 cursor-pointer hover:opacity-80 transition-opacity border border-slate-200 dark:border-[#292B2E] shadow-sm" />
+                              <img src={msg.file_url} alt="shared-img" onClick={() => window.open(msg.file_url, '_blank')} className="max-w-50 sm:max-w-[250px] rounded-lg mt-1 cursor-pointer hover:opacity-80 transition-opacity border border-slate-200 dark:border-[#292B2E] shadow-sm" />
                             )}
                             
-                            {msg.message_type === 'audio' && (
-                              <audio src={msg.file_url} controls className="max-w-[200px] h-10 mt-1 rounded-full outline-none" />
+                            {/* 🔴 Tailwind Fix & Audio/Voice support */}
+                            {(msg.message_type === 'audio' || msg.message_type === 'voice') && (
+                              <audio src={msg.file_url} controls className="max-w-50 h-10 mt-1 rounded-full outline-none" />
                             )}
                             
                             {msg.message_type === 'file' && (

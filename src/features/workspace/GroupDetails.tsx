@@ -7,8 +7,8 @@ import {
   X, Trash2, Edit3, Save, Users, UserPlus, Copy, CheckCircle2,
   MessageCircle, Send, Target, TrendingUp, PlayCircle, ChevronDown, ChevronUp 
 } from 'lucide-react';
-import ReactQuill from 'react-quill';
-import 'react-quill/dist/quill.snow.css';
+import ReactQuill from 'react-quill-new';
+import 'react-quill-new/dist/quill.snow.css';
 
 import WorkspaceCourseViewer from './WorkspaceCourseViewer';
 import WorkspaceBcsViewer from './WorkspaceBcsViewer';
@@ -320,7 +320,7 @@ export default function GroupDetails() {
     fetchGroupContents();
   };
 
-  // 🔄 TRUE TWO-WAY SYNC (Group ➡️ Main LMS ➡️ Group)
+  // 🔄 TRUE TWO-WAY SYNC (Error Proof)
   const handleSyncContent = async (item: any) => {
     setSyncingId(item.id);
     try {
@@ -335,27 +335,23 @@ export default function GroupDetails() {
 
         const existingModules = existingData.modules || [];
         const mainOsModuleIds = modulesData?.map(m => m.id) || [];
-        
         let hasNewDataForMain = false;
 
-        // ১. REVERSE SYNC: গ্রুপের নতুন মডিউল Main OS এ পাঠানো
+        // ১. REVERSE SYNC (Group ➡️ Main OS)
         for (const grpMod of existingModules) {
           if (!mainOsModuleIds.includes(grpMod.id)) {
-            await supabase.from('lms_modules').insert([{ id: grpMod.id, course_id: originalId, title: grpMod.title }]);
-            hasNewDataForMain = true;
+            const { error: modErr } = await supabase.from('lms_modules').insert([{ id: grpMod.id, course_id: originalId, title: grpMod.title }]);
+            if (!modErr) hasNewDataForMain = true; else console.error("Module Sync Error:", modErr);
           }
           const mainOsContentIds = contentsData?.map(c => c.id) || [];
           for (const grpContent of (grpMod.contents || [])) {
             if (!mainOsContentIds.includes(grpContent.id)) {
-              await supabase.from('lms_contents').insert([{
-                id: grpContent.id, module_id: grpMod.id, title: grpContent.title, content_type: grpContent.content_type, file_path_or_url: grpContent.file_path_or_url
-              }]);
-              hasNewDataForMain = true;
+              const { error: conErr } = await supabase.from('lms_contents').insert([{ id: grpContent.id, module_id: grpMod.id, title: grpContent.title, content_type: grpContent.content_type, file_path_or_url: grpContent.file_path_or_url }]);
+              if (!conErr) hasNewDataForMain = true; else console.error("Content Sync Error:", conErr);
             }
           }
         }
 
-        // ২. যদি নতুন ডেটা পুশ হয়, তবে Main OS থেকে আবার ফ্রেশ ডেটা আনা
         if (hasNewDataForMain) {
           const freshModules = await supabase.from('lms_modules').select('*').eq('course_id', originalId);
           modulesData = freshModules.data;
@@ -363,11 +359,10 @@ export default function GroupDetails() {
           contentsData = freshContents.data;
         }
 
-        // ৩. FORWARD SYNC: Main OS এর ডেটা দিয়ে গ্রুপ আপডেট করা (টিকমার্ক বাঁচিয়ে)
+        // ২. FORWARD SYNC
         const updatedModules = modulesData?.map(newMod => {
           const oldMod = existingModules.find((m: any) => m.id === newMod.id);
           const newContents = contentsData?.filter(c => c.module_id === newMod.id) || [];
-          
           const mergedContents = newContents.map(newC => {
             const oldC = oldMod?.contents?.find((c: any) => c.id === newC.id);
             return { ...newC, is_completed: oldC ? oldC.is_completed : false };
@@ -378,38 +373,28 @@ export default function GroupDetails() {
         updatedData = { ...courseData, progress_pct: existingData.progress_pct || 0, is_active: existingData.is_active || false, group_targets: existingData.group_targets || [], modules: updatedModules };
       } 
       else if (item.content_type === 'bcs_subject') {
+        // BCS Forward Sync Logic
         const { data: subjectData } = await supabase.from('bcs_subjects').select('*').eq('id', originalId).single();
         const { data: chaptersData } = await supabase.from('bcs_chapters').select('*').eq('subject_id', originalId);
         const { data: resourcesData } = await supabase.from('bcs_resources').select('*').in('chapter_id', chaptersData?.map(c => c.id) || []);
 
         const existingChapters = existingData.chapters || [];
-        
-        // ১. Main OS এর চ্যাপ্টারগুলো সিঙ্ক করা এবং কাস্টম রিসোর্স বাঁচানো
         const updatedChapters = chaptersData?.map(newChap => {
           const oldChap = existingChapters.find((c: any) => c.id === newChap.id);
           const newRes = resourcesData?.filter(r => r.chapter_id === newChap.id) || [];
-          
           const mergedRes = newRes.map(nR => {
             const oldR = oldChap?.resources?.find((r: any) => r.id === nR.id);
             return { ...nR, is_completed: oldR ? oldR.is_completed : false };
           });
-          
-          const customRes = oldChap?.resources?.filter((oldR: any) => !newRes.some((nR: any) => nR.id === oldR.id)) || [];
-          return { ...newChap, resources: [...mergedRes, ...customRes] };
+          return { ...newChap, resources: mergedRes };
         }) || [];
 
-        // ২. ফ্রেন্ডদের তৈরি করা নতুন চ্যাপ্টারগুলো এড করা
-        const mainOsChapterIds = chaptersData?.map(c => c.id) || [];
-        const customChapters = existingChapters.filter((c: any) => !mainOsChapterIds.includes(c.id));
-
-        // ৩. ফাইনাল মার্জ
-        const finalChapters = [...updatedChapters, ...customChapters];
-
-        updatedData = { ...subjectData, progress_pct: existingData.progress_pct || 0, is_active: existingData.is_active || false, group_targets: existingData.group_targets || [], chapters: finalChapters };
+        updatedData = { ...subjectData, progress_pct: existingData.progress_pct || 0, is_active: existingData.is_active || false, group_targets: existingData.group_targets || [], chapters: updatedChapters };
       }
+
       await workspaceAdmin.from('shared_contents').update({ content_data: updatedData }).eq('id', item.id);
       fetchGroupContents();
-    } catch (error) { alert("Sync failed."); }
+    } catch (error) { console.error(error); alert("Sync failed. Check console."); }
     setSyncingId(null);
   };
 
@@ -700,7 +685,12 @@ export default function GroupDetails() {
                 <div key={note.id} onClick={() => setViewingNote(note)} className="p-3.5 bg-[#141516] rounded-xl border border-[#292B2E] hover:border-[#FF9D2E]/50 cursor-pointer transition-colors flex justify-between items-center group">
                   <div className="flex-1 pr-2">
                     <h4 className="font-bold text-sm line-clamp-1 group-hover:text-[#FF9D2E] transition-colors">{note.title}</h4>
-                    <p className="text-[11px] text-[#A3A5A8] mt-1 flex gap-1.5"><span className="font-medium">{note.content_data?.authorName || 'User'}</span><span>•</span><span>{new Date(note.created_at).toLocaleDateString()}</span></p>
+                    <p className="text-[11px] text-[#A3A5A8] mt-1 flex gap-1.5">
+                      <span className="font-medium">{note.content_data?.authorName || 'User'}</span>
+                      <span>•</span>
+                      {/* 🔴 Date Fix */}
+                      <span>{new Date(note.created_at || Date.now()).toLocaleDateString()}</span>
+                    </p>
                   </div>
                   <div className="flex gap-1">
                     <button onClick={(e) => { e.stopPropagation(); setEditingNoteId(note.id); setAdminNoteTitle(note.title); setAdminNoteContent(note.content_data?.text || ''); setShowNoteModal(true); }} className="p-1.5 text-[#707277] hover:text-[#FF9D2E]"><Edit3 size={15}/></button>
@@ -751,7 +741,9 @@ export default function GroupDetails() {
             
             <h2 className="text-3xl font-extrabold text-white mb-2">{viewingNote.title}</h2>
             <p className="text-sm text-[#A3A5A8] mb-6 border-b border-[#292B2E] pb-4">
-              Created by <span className="text-[#FF9D2E] font-bold">{viewingNote.content_data?.authorName || 'Admin'}</span> on {new Date(viewingNote.created_at).toLocaleDateString()}
+              Created by <span className="text-[#FF9D2E] font-bold">{viewingNote.content_data?.authorName || 'Admin'}</span> on 
+              {/* 🔴 Date Fix */}
+              {new Date(viewingNote.created_at || Date.now()).toLocaleDateString()}
             </p>
             
             {/* HTML Note Content */}
@@ -782,12 +774,35 @@ export default function GroupDetails() {
                    const isMe = msg.user_id === adminId;
                    return (
                      <div key={msg.id || idx} className={`flex flex-col ${isMe ? 'items-end' : 'items-start'}`}>
-                       <span className="text-[10px] text-slate-500 dark:text-[#A3A5A8] mb-1 font-bold">{msg.sender_name}</span>
+                       {/* 🟢 CHAT MESSAGE MEDIA & DATE FIX */}
                        <div className={`px-4 py-2.5 rounded-2xl text-sm max-w-[85%] ${isMe ? 'bg-[#FF9D2E] text-slate-900 rounded-tr-sm font-medium' : 'bg-white dark:bg-[#1D1E20] text-slate-900 dark:text-white border border-slate-200 dark:border-[#292B2E] rounded-tl-sm'}`}>
-                         {msg.message_type === 'text' && <p>{msg.content}</p>}
-                         {msg.message_type === 'image' && <a href={msg.file_url} target="_blank" rel="noreferrer"><img src={msg.file_url} alt="Shared" className="rounded-xl max-h-48 object-cover border border-black/10" /></a>}
-                         {msg.message_type === 'file' && <a href={msg.file_url} target="_blank" rel="noreferrer" className="flex items-center gap-2 underline underline-offset-2 break-all"><FileText size={16} className="shrink-0" /> {msg.content}</a>}
-                         {msg.message_type === 'audio' && <audio controls src={msg.file_url} className="w-full h-8"></audio>}
+                         <div className="flex-1 min-w-0">
+                           <div className="flex justify-between items-baseline mb-1">
+                             <span className="text-xs font-bold text-slate-800 dark:text-white">{msg.sender_name}</span>
+                             {/* 🔴 Date Fix: Added || Date.now() */}
+                             <span className="text-[10px] text-slate-400 ml-2">
+                               {new Date(msg.created_at || Date.now()).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+                             </span>
+                           </div>
+                           
+                           {msg.message_type === 'text' && <p className="text-sm text-slate-700 dark:text-slate-300 break-words">{msg.content}</p>}
+                           
+                           {/* 🔴 Tailwind Fix: max-w-50 */}
+                           {msg.message_type === 'image' && (
+                             <img src={msg.file_url} alt="shared-img" onClick={() => window.open(msg.file_url, '_blank')} className="max-w-50 sm:max-w-[250px] rounded-lg mt-1 cursor-pointer hover:opacity-80 transition-opacity border border-slate-200 dark:border-[#292B2E] shadow-sm" />
+                           )}
+                           
+                           {/* 🔴 Tailwind Fix & Audio/Voice support */}
+                           {(msg.message_type === 'audio' || msg.message_type === 'voice') && (
+                             <audio src={msg.file_url} controls className="max-w-50 h-10 mt-1 rounded-full outline-none" />
+                           )}
+                           
+                           {msg.message_type === 'file' && (
+                             <a href={msg.file_url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 mt-1 text-sm font-bold text-[#FF9D2E] hover:underline bg-[#FF9D2E]/10 px-3 py-1.5 rounded-lg">
+                               📎 Download File
+                             </a>
+                           )}
+                         </div>
                        </div>
                      </div>
                    );
