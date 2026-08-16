@@ -92,6 +92,9 @@ export default function WorkspaceDashboard() {
   // --- PWA Install state ---
   const [deferredPrompt, setDeferredPrompt] = useState<any>(window.deferredPrompt || null);
 
+  // 🟢 PROFILE EDIT STATES
+  const [showProfileModal, setShowProfileModal] = useState(false);
+
   useEffect(() => {
     const handleBeforeInstallPrompt = (e: Event) => {
       e.preventDefault();
@@ -212,7 +215,7 @@ export default function WorkspaceDashboard() {
 
     const savedNickname = localStorage.getItem(`nickname_${session.user.id}`);
     if (savedNickname) setProfileName(savedNickname);
-    else setProfileName(session.user?.email?.split('@')[0] || 'Student');
+    else setProfileName(session.user?.user_metadata?.full_name || session.user?.email?.split('@')[0] || 'Student');
 
     await fetchMyGroups();
     const { data: cData } = await workspaceSupabase.from('shared_contents').select('*').order('created_at', { ascending: false }).limit(10);
@@ -234,13 +237,19 @@ export default function WorkspaceDashboard() {
     } else setGroups([]);
   };
 
+  // 🟢 Profile Update Function
   const handleUpdateProfile = async () => {
     if (!profileName.trim()) return;
     setIsUpdatingProfile(true);
-    if (session?.user?.id) {
-      localStorage.setItem(`nickname_${session.user.id}`, profileName);
-      alert("Nickname updated successfully! 🚀");
-    }
+    try {
+      const { error } = await workspaceSupabase.auth.updateUser({ data: { full_name: profileName } });
+      if (error) throw error;
+      if (session?.user?.id) {
+        localStorage.setItem(`nickname_${session.user.id}`, profileName);
+      }
+      alert("Profile updated successfully! 🚀");
+      setShowProfileModal(false);
+    } catch (error) { alert("Failed to update profile."); }
     setIsUpdatingProfile(false);
   };
 
@@ -258,7 +267,7 @@ export default function WorkspaceDashboard() {
 
   const handleBack = () => {
     if (selectedContent) {
-      setSelectedContent(null);
+      handleExitCourse();
       setIsEditing(false);
     } else {
       setSelectedGroup(null);
@@ -309,6 +318,28 @@ export default function WorkspaceDashboard() {
       setNoteTitle(item.title); setNoteContent(item.content_data?.text || ''); setIsEditing(false);
     }
   };
+
+  // 🟢 SMART NAVIGATION (Refresh Proof)
+  const handleEnterCourse = (course: any) => {
+    setSelectedContent(course);
+    sessionStorage.setItem(`opened_course_${selectedGroup.id}`, course.id);
+  };
+
+  const handleExitCourse = () => {
+    setSelectedContent(null);
+    sessionStorage.removeItem(`opened_course_${selectedGroup.id}`);
+  };
+
+  // 🟢 Auto-restore opened course on refresh
+  useEffect(() => {
+    if (selectedGroup) {
+      const savedCourseId = sessionStorage.getItem(`opened_course_${selectedGroup.id}`);
+      if (savedCourseId && groupContents.length > 0 && !selectedContent) {
+        const courseToOpen = groupContents.find(c => c.id === savedCourseId);
+        if (courseToOpen) setSelectedContent(courseToOpen);
+      }
+    }
+  }, [groupContents, selectedGroup]);
 
   // --- ACTIVE COURSE TRACKING LOGIC ---
   const groupCourses = groupContents.filter(c => c.content_type === 'lms_course' || c.content_type === 'bcs_subject');
@@ -481,8 +512,8 @@ export default function WorkspaceDashboard() {
   };
 
   if (loading) return <div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-[#0D0E0F]"><div className="w-12 h-12 border-4 border-[#FF9D2E] border-t-transparent rounded-full animate-spin"></div></div>;
-  if (selectedContent?.content_type === 'lms_course') return <WorkspaceCourseViewer courseData={selectedContent} onBack={handleBack} />;
-  if (selectedContent?.content_type === 'bcs_subject') return <WorkspaceBcsViewer subjectData={selectedContent} onBack={handleBack} />;
+  if (selectedContent?.content_type === 'lms_course') return <WorkspaceCourseViewer courseData={selectedContent} onBack={handleExitCourse} />;
+  if (selectedContent?.content_type === 'bcs_subject') return <WorkspaceBcsViewer subjectData={selectedContent} onBack={handleExitCourse} />;
 
   const currentDate = new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
   const totalCourses = allContents.filter(c => c.content_type.includes('course') || c.content_type.includes('subject')).length;
@@ -515,9 +546,9 @@ export default function WorkspaceDashboard() {
               <p className="text-sm font-bold leading-none text-slate-900 dark:text-white">{profileName}</p>
               <p className="text-xs text-slate-500 dark:text-[#707277] mt-1">Student</p>
             </div>
-            <div className="w-10 h-10 bg-[#FF9D2E]/10 rounded-full flex items-center justify-center border border-[#FF9D2E]/30">
+            <button onClick={() => setShowProfileModal(true)} className="w-10 h-10 bg-[#FF9D2E]/10 rounded-full flex items-center justify-center border border-[#FF9D2E]/30 hover:bg-[#FF9D2E]/20 transition-colors">
               <User size={20} className="text-[#FF9D2E]" />
-            </div>
+            </button>
           </div>
         </div>
       </header>
@@ -637,7 +668,7 @@ export default function WorkspaceDashboard() {
                   const activeModules = isLms ? course.content_data?.modules || [] : course.content_data?.chapters || [];
                   const selectedModForDropdown = activeModules.find((m: any) => m.id === targetModuleId);
                   const activeContentsList = selectedModForDropdown ? (isLms ? selectedModForDropdown.contents || [] : selectedModForDropdown.resources || []) : [];
-                  const isExpanded = expandedCourses[course.id]; // 🟢 চেক করছি কার্ডটি ওপেন নাকি ক্লোজড
+                  const isExpanded = expandedCourses[course.id];
 
                   return (
                     <div key={course.id} className="bg-gradient-to-br from-white to-slate-50 dark:from-[#18191A] dark:to-[#1D1E20] border border-slate-300 dark:border-[#FF9D2E]/50 rounded-3xl p-5 sm:p-6 shadow-xl relative overflow-hidden mb-6 transition-all duration-300">
@@ -654,7 +685,7 @@ export default function WorkspaceDashboard() {
                         </div>
                         
                         <div className="flex flex-wrap sm:flex-nowrap items-center gap-2 w-full sm:w-auto">
-                           <button onClick={() => setSelectedContent(course)} className="flex-1 sm:flex-none bg-slate-900 dark:bg-white text-white dark:text-slate-900 px-4 py-2 rounded-xl font-bold text-sm hover:scale-105 transition-transform flex items-center justify-center gap-2">
+                           <button onClick={() => handleEnterCourse(course)} className="flex-1 sm:flex-none bg-slate-900 dark:bg-white text-white dark:text-slate-900 px-4 py-2 rounded-xl font-bold text-sm hover:scale-105 transition-transform flex items-center justify-center gap-2">
                              Enter <PlayCircle size={16}/>
                            </button>
                            <button onClick={() => handleToggleActiveCourse(course.id)} className="bg-red-500/10 text-red-500 hover:bg-red-500/20 px-3 py-2 rounded-xl font-bold text-xs transition-colors whitespace-nowrap">
@@ -745,7 +776,7 @@ export default function WorkspaceDashboard() {
                     ) : (
                       inactiveCourses.map(item => (
                         <div key={item.id} className="bg-white dark:bg-[#18191A] p-5 rounded-2xl border border-slate-200 dark:border-[#292B2E] hover:border-[#19C784]/60 shadow-sm hover:shadow-xl dark:hover:shadow-[#19C784]/5 transition-all cursor-pointer group flex flex-col justify-between min-h-[150px]">
-                          <div onClick={() => openContent(item)}>
+                          <div onClick={() => handleEnterCourse(item)}>
                             <div className="flex items-start justify-between mb-3">
                               <div className="p-2.5 rounded-xl bg-[#19C784]/10 text-[#19C784]"><BookOpen size={20} /></div>
                               <span className="text-[10px] font-bold text-slate-500 dark:text-[#A3A5A8] bg-slate-50 dark:bg-[#1D1E20] px-3 py-1 rounded-lg border border-slate-100 dark:border-[#292B2E] uppercase">{item.content_type.replace('_', ' ')}</span>
@@ -819,9 +850,10 @@ export default function WorkspaceDashboard() {
                 <div className="border border-slate-200 dark:border-[#292B2E] rounded-xl overflow-hidden bg-white dark:bg-[#141516]">
                   <ReactQuill 
                     theme="snow" 
-                    value={noteContent} 
+                    value={noteContent || ''} 
                     onChange={setNoteContent} 
-                    className="h-32 pb-2 text-slate-900 dark:text-white" 
+                    placeholder="Write your beautiful notes here..."
+                    className="text-slate-900 dark:text-white h-48 border-none"
                   />
                 </div>
                 <div className="flex justify-end gap-3 pt-2">
@@ -837,6 +869,31 @@ export default function WorkspaceDashboard() {
           </div>
         )}
       </main>
+
+      {/* 🟢 PROFILE EDIT MODAL */}
+      {showProfileModal && (
+        <div className="fixed inset-0 z-[1200] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+          <div className="bg-white dark:bg-[#18191A] p-6 rounded-3xl w-full max-w-sm shadow-2xl border border-slate-200 dark:border-[#292B2E]">
+            <div className="flex justify-between items-center mb-5">
+              <h3 className="font-bold text-lg dark:text-white">Edit Profile</h3>
+              <button onClick={() => setShowProfileModal(false)} className="text-slate-400 hover:text-red-500"><X size={20}/></button>
+            </div>
+            <div className="space-y-4">
+              <div>
+                <label className="text-xs font-bold text-slate-500 mb-1 block">Display Name</label>
+                <input type="text" value={profileName} onChange={(e) => setProfileName(e.target.value)} className="w-full bg-slate-50 dark:bg-[#141516] border border-slate-200 dark:border-[#292B2E] rounded-xl px-4 py-3 text-slate-900 dark:text-white outline-none focus:border-[#FF9D2E]" />
+              </div>
+              <div>
+                <label className="text-xs font-bold text-slate-500 mb-1 block">Email (Read Only)</label>
+                <input type="text" value={session?.user?.email} disabled className="w-full bg-slate-100 dark:bg-[#1D1E20] border border-slate-200 dark:border-[#292B2E] rounded-xl px-4 py-3 text-slate-500 opacity-70 cursor-not-allowed" />
+              </div>
+              <button onClick={handleUpdateProfile} disabled={isUpdatingProfile} className="w-full bg-[#FF9D2E] text-slate-900 font-bold py-3 rounded-xl hover:bg-[#FFAA3D] transition-colors mt-2">
+                {isUpdatingProfile ? 'Saving...' : 'Save Changes'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* 💬 FLOATING CHAT WIDGET (Only visible inside Group) */}
       {selectedGroup && (
@@ -865,12 +922,30 @@ export default function WorkspaceDashboard() {
                     const isOwn = msg.user_id === session?.user?.id;
                     return (
                       <div key={msg.id} className={`flex flex-col ${isOwn ? 'items-end' : 'items-start'}`}>
-                        {!isOwn && <span className="text-xs font-bold text-[#FF9D2E] mb-1 ml-1">{msg.sender_name}</span>}
                         <div className={`max-w-[80%] p-3 rounded-2xl text-sm break-words ${isOwn ? 'bg-[#FF9D2E] text-slate-900 rounded-br-md' : 'bg-white dark:bg-[#1D1E20] text-slate-900 dark:text-white border border-slate-100 dark:border-[#292B2E] rounded-bl-md'}`}>
-                          {msg.message_type === 'image' && msg.file_url && <img src={msg.file_url} alt="img" className="rounded-lg mb-1 max-w-full" />}
-                          {msg.message_type === 'audio' && msg.file_url && <audio controls src={msg.file_url} className="w-full h-8"></audio>}
-                          {msg.message_type === 'file' && msg.file_url && <a href={msg.file_url} target="_blank" rel="noreferrer" className="underline">📎 {msg.content}</a>}
-                          {msg.message_type === 'text' && <span>{msg.content}</span>}
+                          {/* 🟢 MEDIA RENDERING LOGIC FOR CHAT */}
+                          <div className="flex-1 min-w-0">
+                            <div className="flex justify-between items-baseline mb-1">
+                              {!isOwn && <span className="text-xs font-bold text-slate-800 dark:text-white">{msg.sender_name}</span>}
+                              <span className="text-[10px] text-slate-400 ml-2">{new Date(msg.created_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
+                            </div>
+                            
+                            {msg.message_type === 'text' && <p className="text-sm text-slate-700 dark:text-slate-300 break-words">{msg.content}</p>}
+                            
+                            {msg.message_type === 'image' && (
+                              <img src={msg.file_url} alt="shared-img" onClick={() => window.open(msg.file_url, '_blank')} className="max-w-[200px] sm:max-w-[250px] rounded-lg mt-1 cursor-pointer hover:opacity-80 transition-opacity border border-slate-200 dark:border-[#292B2E] shadow-sm" />
+                            )}
+                            
+                            {msg.message_type === 'audio' && (
+                              <audio src={msg.file_url} controls className="max-w-[200px] h-10 mt-1 rounded-full outline-none" />
+                            )}
+                            
+                            {msg.message_type === 'file' && (
+                              <a href={msg.file_url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 mt-1 text-sm font-bold text-[#FF9D2E] hover:underline bg-[#FF9D2E]/10 px-3 py-1.5 rounded-lg">
+                                📎 Download File
+                              </a>
+                            )}
+                          </div>
                         </div>
                       </div>
                     );

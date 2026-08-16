@@ -90,6 +90,26 @@ export default function GroupDetails() {
     supabase.auth.getUser().then(({ data }) => { if (data?.user) setAdminId(data.user.id); });
   }, [groupId]);
 
+  // 🟢 SMART NAVIGATION (Refresh Proof)
+  const handleEnterCourse = (course: any) => {
+    setSelectedContent(course);
+    sessionStorage.setItem(`opened_course_${groupId}`, course.id);
+  };
+
+  const handleExitCourse = () => {
+    setSelectedContent(null);
+    sessionStorage.removeItem(`opened_course_${groupId}`);
+  };
+
+  // 🟢 Auto-restore opened course on refresh
+  useEffect(() => {
+    const savedCourseId = sessionStorage.getItem(`opened_course_${groupId}`);
+    if (savedCourseId && contents.length > 0 && !selectedContent) {
+      const courseToOpen = contents.find(c => c.id === savedCourseId);
+      if (courseToOpen) setSelectedContent(courseToOpen);
+    }
+  }, [contents]);
+
   const fetchGroupDetails = async () => {
     const { data: gData } = await workspaceAdmin.from('study_groups').select('*').eq('id', groupId).single();
     if (gData) setGroup(gData);
@@ -296,11 +316,11 @@ export default function GroupDetails() {
   const handleDeleteContent = async (id: string, type: string) => {
     if (!window.confirm(`Delete this ${type === 'shared_note' || type === 'personal_note' ? 'Note' : 'Course'} from the group?`)) return;
     await workspaceAdmin.from('shared_contents').delete().eq('id', id);
-    if (selectedContent?.id === id) setSelectedContent(null);
+    if (selectedContent?.id === id) handleExitCourse();
     fetchGroupContents();
   };
 
-  // --- SMART MERGE SYNC LOGIC ---
+  // 🔄 TRUE TWO-WAY SYNC (Group ➡️ Main LMS ➡️ Group)
   const handleSyncContent = async (item: any) => {
     setSyncingId(item.id);
     try {
@@ -310,12 +330,40 @@ export default function GroupDetails() {
 
       if (item.content_type === 'lms_course') {
         const { data: courseData } = await supabase.from('lms_courses').select('*').eq('id', originalId).single();
-        const { data: modulesData } = await supabase.from('lms_modules').select('*').eq('course_id', originalId);
-        const { data: contentsData } = await supabase.from('lms_contents').select('*').in('module_id', modulesData?.map(m => m.id) || []);
+        let { data: modulesData } = await supabase.from('lms_modules').select('*').eq('course_id', originalId);
+        let { data: contentsData } = await supabase.from('lms_contents').select('*').in('module_id', modulesData?.map(m => m.id) || []);
 
         const existingModules = existingData.modules || [];
+        const mainOsModuleIds = modulesData?.map(m => m.id) || [];
         
-        // ১. Main OS এর মডিউলগুলো সিঙ্ক করা এবং তার ভেতরের ফ্রেন্ডদের কাস্টম রিসোর্স বাঁচিয়ে রাখা
+        let hasNewDataForMain = false;
+
+        // ১. REVERSE SYNC: গ্রুপের নতুন মডিউল Main OS এ পাঠানো
+        for (const grpMod of existingModules) {
+          if (!mainOsModuleIds.includes(grpMod.id)) {
+            await supabase.from('lms_modules').insert([{ id: grpMod.id, course_id: originalId, title: grpMod.title }]);
+            hasNewDataForMain = true;
+          }
+          const mainOsContentIds = contentsData?.map(c => c.id) || [];
+          for (const grpContent of (grpMod.contents || [])) {
+            if (!mainOsContentIds.includes(grpContent.id)) {
+              await supabase.from('lms_contents').insert([{
+                id: grpContent.id, module_id: grpMod.id, title: grpContent.title, content_type: grpContent.content_type, file_path_or_url: grpContent.file_path_or_url
+              }]);
+              hasNewDataForMain = true;
+            }
+          }
+        }
+
+        // ২. যদি নতুন ডেটা পুশ হয়, তবে Main OS থেকে আবার ফ্রেশ ডেটা আনা
+        if (hasNewDataForMain) {
+          const freshModules = await supabase.from('lms_modules').select('*').eq('course_id', originalId);
+          modulesData = freshModules.data;
+          const freshContents = await supabase.from('lms_contents').select('*').in('module_id', modulesData?.map(m => m.id) || []);
+          contentsData = freshContents.data;
+        }
+
+        // ৩. FORWARD SYNC: Main OS এর ডেটা দিয়ে গ্রুপ আপডেট করা (টিকমার্ক বাঁচিয়ে)
         const updatedModules = modulesData?.map(newMod => {
           const oldMod = existingModules.find((m: any) => m.id === newMod.id);
           const newContents = contentsData?.filter(c => c.module_id === newMod.id) || [];
@@ -324,19 +372,10 @@ export default function GroupDetails() {
             const oldC = oldMod?.contents?.find((c: any) => c.id === newC.id);
             return { ...newC, is_completed: oldC ? oldC.is_completed : false };
           });
-          
-          const customContents = oldMod?.contents?.filter((oldC: any) => !newContents.some((newC: any) => newC.id === oldC.id)) || [];
-          return { ...newMod, contents: [...mergedContents, ...customContents] };
+          return { ...newMod, contents: mergedContents };
         }) || [];
 
-        // ২. ফ্রেন্ডদের তৈরি করা সম্পূর্ণ নতুন কাস্টম মডিউলগুলো খুঁজে বের করে এড করা
-        const mainOsModuleIds = modulesData?.map(m => m.id) || [];
-        const customModules = existingModules.filter((m: any) => !mainOsModuleIds.includes(m.id));
-
-        // ৩. ফাইনাল মার্জ (Main OS + Custom Modules)
-        const finalModules = [...updatedModules, ...customModules];
-
-        updatedData = { ...courseData, progress_pct: existingData.progress_pct || 0, is_active: existingData.is_active || false, group_targets: existingData.group_targets || [], modules: finalModules };
+        updatedData = { ...courseData, progress_pct: existingData.progress_pct || 0, is_active: existingData.is_active || false, group_targets: existingData.group_targets || [], modules: updatedModules };
       } 
       else if (item.content_type === 'bcs_subject') {
         const { data: subjectData } = await supabase.from('bcs_subjects').select('*').eq('id', originalId).single();
@@ -416,8 +455,8 @@ export default function GroupDetails() {
 
   const groupNotes = contents.filter(c => c.content_type === 'shared_note' || c.content_type === 'personal_note');
 
-  if (selectedContent?.content_type === 'lms_course') return <WorkspaceCourseViewer courseData={selectedContent} onBack={() => setSelectedContent(null)} readOnly={true} />;
-  if (selectedContent?.content_type === 'bcs_subject') return <WorkspaceBcsViewer subjectData={selectedContent} onBack={() => setSelectedContent(null)} readOnly={true} />;
+  if (selectedContent?.content_type === 'lms_course') return <WorkspaceCourseViewer courseData={selectedContent} onBack={handleExitCourse} readOnly={true} />;
+  if (selectedContent?.content_type === 'bcs_subject') return <WorkspaceBcsViewer subjectData={selectedContent} onBack={handleExitCourse} readOnly={true} />;
   if (!group) return <div className="min-h-screen bg-slate-50 dark:bg-[#0D0E0F] flex items-center justify-center"><div className="w-10 h-10 border-4 border-[#FF9D2E] border-t-transparent rounded-full animate-spin"></div></div>;
 
   return (
@@ -539,7 +578,7 @@ export default function GroupDetails() {
                     </div>
                     
                     <div className="flex flex-wrap sm:flex-nowrap items-center gap-2 w-full sm:w-auto">
-                       <button onClick={() => setSelectedContent(course)} className="flex-1 sm:flex-none bg-white text-slate-900 px-4 py-2 rounded-xl font-bold text-sm hover:bg-gray-200 transition-colors flex items-center justify-center gap-2">
+                       <button onClick={() => handleEnterCourse(course)} className="flex-1 sm:flex-none bg-white text-slate-900 px-4 py-2 rounded-xl font-bold text-sm hover:bg-gray-200 transition-colors flex items-center justify-center gap-2">
                          Enter <PlayCircle size={16}/>
                        </button>
                        <button onClick={() => handleToggleActiveCourse(course.id)} className="bg-red-500/10 text-red-500 hover:bg-red-500/20 px-3 py-2 rounded-xl font-bold text-xs transition-colors whitespace-nowrap">
@@ -622,7 +661,7 @@ export default function GroupDetails() {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {inactiveCourses.map(item => (
                   <div key={item.id} className="bg-white dark:bg-[#18191A] border border-slate-200 dark:border-[#292B2E] hover:border-[#19C784]/60 p-5 rounded-3xl flex flex-col justify-between group transition-all">
-                    <div onClick={() => setSelectedContent(item)} className="cursor-pointer">
+                    <div onClick={() => handleEnterCourse(item)} className="cursor-pointer">
                       <div className="flex justify-between items-start mb-3">
                         <div className="p-2.5 rounded-xl bg-[#19C784]/10 text-[#19C784]"><BookOpen size={20} /></div>
                         <button onClick={(e) => { e.stopPropagation(); handleDeleteContent(item.id, item.content_type); }} className="p-2 text-slate-400 dark:text-[#707277] hover:text-red-500 hover:bg-red-500/10 rounded-lg"><Trash2 size={16}/></button>
@@ -683,7 +722,7 @@ export default function GroupDetails() {
               <div className="bg-[#141516] rounded-xl overflow-hidden border border-[#292B2E] focus-within:border-[#FF9D2E] transition-colors pb-10">
                 <ReactQuill 
                   theme="snow" 
-                  value={adminNoteContent} 
+                  value={adminNoteContent || ''} 
                   onChange={setAdminNoteContent} 
                   placeholder="Write your beautiful notes here (Use Bold, Lists, Links)..."
                   className="text-white h-48 border-none"
