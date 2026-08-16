@@ -51,16 +51,30 @@ export default function GroupDetails() {
   const [targetContentId, setTargetContentId] = useState('all');
   const [targetDate, setTargetDate] = useState('');
 
-  // --- Admin Chat States ---
+  // --- Admin Chat & Notification States ---
   const [isChatOpen, setIsChatOpen] = useState(false);
   const [chatMessages, setChatMessages] = useState<any[]>([]);
   const [newMessage, setNewMessage] = useState('');
   const [chatLoading, setChatLoading] = useState(false);
   const chatBottomRef = useRef<HTMLDivElement | null>(null);
+  
+  // 🔴 Notification State
+  const [unreadCount, setUnreadCount] = useState(0); 
+  
+  // লিসেনারের ভেতরে isChatOpen এর লেটেস্ট ভ্যালু পাওয়ার জন্য Ref
+  const isChatOpenRef = useRef(isChatOpen);
+  useEffect(() => { isChatOpenRef.current = isChatOpen; }, [isChatOpen]);
 
   useEffect(() => {
     if (isChatOpen) chatBottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [chatMessages, isChatOpen]);
+
+  // 🔔 Request Browser Notification Permission
+  useEffect(() => {
+    if ('Notification' in window && Notification.permission === 'default') {
+      Notification.requestPermission();
+    }
+  }, []);
 
   useEffect(() => {
     fetchGroupDetails();
@@ -145,13 +159,11 @@ export default function GroupDetails() {
   const activeCourse = groupCourses.find(c => c.content_data?.is_active);
   const inactiveCourses = groupCourses.filter(c => c.id !== activeCourse?.id);
 
-  // Derive Dropdown Options based on selected Active Course
   const isLms = activeCourse?.content_type === 'lms_course';
   const activeModules = activeCourse ? (isLms ? activeCourse.content_data?.modules || [] : activeCourse.content_data?.chapters || []) : [];
   const selectedModForDropdown = activeModules.find((m: any) => m.id === targetModuleId);
   const activeContentsList = selectedModForDropdown ? (isLms ? selectedModForDropdown.contents || [] : selectedModForDropdown.resources || []) : [];
 
-  // Live Auto-calculated Progress based on Done resources
   const getCalculatedProgress = (course: any) => {
     if (!course?.content_data) return 0;
     let total = 0, completed = 0;
@@ -159,10 +171,7 @@ export default function GroupDetails() {
     const modules = isLMS ? course.content_data.modules : course.content_data.chapters;
     modules?.forEach((m: any) => {
       const items = isLMS ? m.contents : m.resources;
-      items?.forEach((i: any) => {
-        total++;
-        if (i.is_completed) completed++;
-      });
+      items?.forEach((i: any) => { total++; if (i.is_completed) completed++; });
     });
     return total === 0 ? 0 : Math.round((completed / total) * 100);
   };
@@ -178,7 +187,6 @@ export default function GroupDetails() {
       return c;
     });
     setContents(updatedContents);
-
     const previouslyActive = contents.find(c => c.content_data?.is_active && c.id !== courseId);
     if (previouslyActive) await workspaceAdmin.from('shared_contents').update({ content_data: { ...previouslyActive.content_data, is_active: false } }).eq('id', previouslyActive.id);
     await workspaceAdmin.from('shared_contents').update({ content_data: { ...contents.find(c=>c.id===courseId)?.content_data, is_active: true } }).eq('id', courseId);
@@ -187,56 +195,29 @@ export default function GroupDetails() {
   const handleAddTarget = async () => {
     if (!targetModuleId || !targetDate || !activeCourse) return;
     setIsSavingTarget(true);
-
-    let targetTitle = '';
-    if (targetContentId === 'all') {
-      targetTitle = `Full: ${selectedModForDropdown.title}`;
-    } else {
-      const selectedCon = activeContentsList.find((c: any) => c.id === targetContentId);
-      targetTitle = selectedCon.title;
-    }
-
-    const newTarget = {
-      id: `tgt-${Date.now()}`,
-      moduleId: targetModuleId,
-      contentId: targetContentId,
-      title: targetTitle,
-      parentTitle: selectedModForDropdown.title,
-      dueDate: targetDate,
-      isCompleted: false
-    };
-
+    let targetTitle = targetContentId === 'all' ? `Full: ${selectedModForDropdown.title}` : activeContentsList.find((c: any) => c.id === targetContentId).title;
+    const newTarget = { id: `tgt-${Date.now()}`, moduleId: targetModuleId, contentId: targetContentId, title: targetTitle, parentTitle: selectedModForDropdown.title, dueDate: targetDate, isCompleted: false };
     const existingTargets = activeCourse.content_data.group_targets || [];
     const updatedData = { ...activeCourse.content_data, group_targets: [...existingTargets, newTarget] };
-
     setContents(prev => prev.map(c => c.id === activeCourse.id ? { ...c, content_data: updatedData } : c));
     await workspaceAdmin.from('shared_contents').update({ content_data: updatedData }).eq('id', activeCourse.id);
-    
     setTargetModuleId(''); setTargetContentId('all'); setTargetDate(''); setIsSavingTarget(false);
   };
 
   const handleToggleTarget = async (target: any) => {
     if (!activeCourse) return;
     const newStatus = !target.isCompleted;
-    
     const updatedData = JSON.parse(JSON.stringify(activeCourse.content_data));
     const targetIndex = updatedData.group_targets.findIndex((t: any) => t.id === target.id);
     if (targetIndex > -1) updatedData.group_targets[targetIndex].isCompleted = newStatus;
-
     const modulesList = isLms ? updatedData.modules : updatedData.chapters;
     const modIndex = modulesList.findIndex((m: any) => m.id === target.moduleId);
     if (modIndex > -1) {
       const contentsList = isLms ? modulesList[modIndex].contents : modulesList[modIndex].resources;
-      if (target.contentId === 'all') {
-        contentsList.forEach((c: any) => c.is_completed = newStatus);
-      } else {
-        const conIndex = contentsList.findIndex((c: any) => c.id === target.contentId);
-        if (conIndex > -1) contentsList[conIndex].is_completed = newStatus;
-      }
+      if (target.contentId === 'all') contentsList.forEach((c: any) => c.is_completed = newStatus);
+      else { const conIndex = contentsList.findIndex((c: any) => c.id === target.contentId); if (conIndex > -1) contentsList[conIndex].is_completed = newStatus; }
     }
-
     updatedData.progress_pct = getCalculatedProgress({ content_type: activeCourse.content_type, content_data: updatedData });
-
     setContents(prev => prev.map(c => c.id === activeCourse.id ? { ...c, content_data: updatedData } : c));
     await workspaceAdmin.from('shared_contents').update({ content_data: updatedData }).eq('id', activeCourse.id);
   };
@@ -247,23 +228,43 @@ export default function GroupDetails() {
     await workspaceAdmin.from('shared_contents').update({ content_data: updatedData }).eq('id', activeCourse.id);
   };
 
-  // --- Admin Chat Logic ---
+  // --- Admin Chat & Notifications Logic ---
   useEffect(() => {
-    if (groupId && isChatOpen) {
-      fetchChatMessages();
-      const chatSubscription = workspaceAdmin.channel(`admin_chat_channel_${groupId}`)
-        .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'group_chats', filter: `group_id=eq.${groupId}` }, 
-          (payload: any) => {
-            const newMsg = payload.new;
-            setChatMessages((prev) => {
-              if (prev.some((msg) => msg.id === newMsg.id)) return prev;
-              return [...prev, newMsg];
-            });
+    if (!groupId) return;
+    
+    fetchChatMessages();
+    
+    const chatSubscription = workspaceAdmin.channel(`admin_chat_channel_${groupId}`)
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'group_chats', filter: `group_id=eq.${groupId}` }, 
+        (payload: any) => {
+          const newMsg = payload.new;
+          setChatMessages((prev) => {
+            if (prev.some((msg) => msg.id === newMsg.id)) return prev;
+            return [...prev, newMsg];
+          });
+
+          // 🔴 Notification & Badge Logic
+          if (newMsg.user_id !== adminId) { // Ignore own message
+            if (isChatOpenRef.current) {
+              localStorage.setItem(`admin_chat_read_${groupId}`, new Date().toISOString());
+            } else {
+              setUnreadCount(prev => prev + 1); // Increase badge count
+              
+              if ('Notification' in window && Notification.permission === 'granted') {
+                const notifBody = newMsg.message_type === 'text' ? newMsg.content : 'Sent an attachment 📎';
+                new Notification(`New message from ${newMsg.sender_name}`, { 
+                  body: notifBody,
+                  icon: '/icons/logo.png',
+                  badge: '/icons/logo.png'
+                });
+              }
+            }
           }
-        ).subscribe();
-      return () => { workspaceAdmin.removeChannel(chatSubscription); };
-    }
-  }, [groupId, isChatOpen]);
+        }
+      ).subscribe();
+      
+    return () => { workspaceAdmin.removeChannel(chatSubscription); };
+  }, [groupId, adminId]);
 
   const fetchChatMessages = async () => {
     setChatLoading(true);
@@ -272,11 +273,22 @@ export default function GroupDetails() {
     setChatLoading(false);
   };
 
+  // 🔔 Smart Toggle Chat
+  const toggleChat = () => {
+    const newState = !isChatOpen;
+    setIsChatOpen(newState);
+    if (newState) {
+      setUnreadCount(0); // Clear badge
+      localStorage.setItem(`admin_chat_read_${groupId}`, new Date().toISOString());
+    }
+  };
+
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newMessage.trim() || !groupId) return;
     const messageText = newMessage;
     setNewMessage(''); 
+    localStorage.setItem(`admin_chat_read_${groupId}`, new Date().toISOString());
     await workspaceAdmin.from('group_chats').insert([{
       group_id: groupId, user_id: adminId, sender_name: 'Faravi (Admin)', content: messageText, message_type: 'text',
     }]);
@@ -301,15 +313,11 @@ export default function GroupDetails() {
         const { data: courseData } = await supabase.from('lms_courses').select('*').eq('id', originalId).single();
         const { data: modulesData } = await supabase.from('lms_modules').select('*').eq('course_id', originalId);
         const { data: contentsData } = await supabase.from('lms_contents').select('*').in('module_id', modulesData?.map(m => m.id) || []);
-
         const existingModules = existingData.modules || [];
         const updatedModules = modulesData?.map(newMod => {
           const oldMod = existingModules.find((m: any) => m.id === newMod.id);
           const newContents = contentsData?.filter(c => c.module_id === newMod.id) || [];
-          const mergedContents = newContents.map(newC => {
-            const oldC = oldMod?.contents?.find((c: any) => c.id === newC.id);
-            return { ...newC, is_completed: oldC ? oldC.is_completed : false };
-          });
+          const mergedContents = newContents.map(newC => { const oldC = oldMod?.contents?.find((c: any) => c.id === newC.id); return { ...newC, is_completed: oldC ? oldC.is_completed : false }; });
           const customContents = oldMod?.contents?.filter((oldC: any) => !newContents.some((newC: any) => newC.id === oldC.id)) || [];
           return { ...newMod, contents: [...mergedContents, ...customContents] };
         });
@@ -319,15 +327,11 @@ export default function GroupDetails() {
         const { data: subjectData } = await supabase.from('bcs_subjects').select('*').eq('id', originalId).single();
         const { data: chaptersData } = await supabase.from('bcs_chapters').select('*').eq('subject_id', originalId);
         const { data: resourcesData } = await supabase.from('bcs_resources').select('*').in('chapter_id', chaptersData?.map(c => c.id) || []);
-
         const existingChapters = existingData.chapters || [];
         const updatedChapters = chaptersData?.map(newChap => {
           const oldChap = existingChapters.find((c: any) => c.id === newChap.id);
           const newRes = resourcesData?.filter(r => r.chapter_id === newChap.id) || [];
-          const mergedRes = newRes.map(nR => {
-            const oldR = oldChap?.resources?.find((r: any) => r.id === nR.id);
-            return { ...nR, is_completed: oldR ? oldR.is_completed : false };
-          });
+          const mergedRes = newRes.map(nR => { const oldR = oldChap?.resources?.find((r: any) => r.id === nR.id); return { ...nR, is_completed: oldR ? oldR.is_completed : false }; });
           const customRes = oldChap?.resources?.filter((oldR: any) => !newRes.some((nR: any) => nR.id === oldR.id)) || [];
           return { ...newChap, resources: [...mergedRes, ...customRes] };
         });
@@ -643,7 +647,7 @@ export default function GroupDetails() {
                   <h3 className="font-bold flex items-center gap-2 text-slate-900 dark:text-white"><MessageCircle size={18} className="text-[#FF9D2E]" /> Group Chat (Admin)</h3>
                   <p className="text-xs text-slate-500 dark:text-[#707277]">{group.name}</p>
                 </div>
-                <button onClick={() => setIsChatOpen(false)} className="text-slate-400 dark:text-[#707277] hover:text-[#FF5B61]"><X size={20} /></button>
+                <button onClick={toggleChat} className="text-slate-400 dark:text-[#707277] hover:text-[#FF5B61]"><X size={20} /></button>
               </div>
               
               <div className="flex-1 p-4 overflow-y-auto bg-slate-100 dark:bg-[#0D0E0F] flex flex-col gap-4">
@@ -673,8 +677,15 @@ export default function GroupDetails() {
               </form>
             </div>
           )}
-          <button onClick={() => setIsChatOpen(!isChatOpen)} className="w-14 h-14 md:w-16 md:h-16 bg-[#FF9D2E] hover:bg-[#FFAA3D] text-slate-900 rounded-full flex items-center justify-center shadow-[0_10px_30px_rgba(255,157,46,0.3)] hover:scale-105 transition-transform">
+          <button onClick={toggleChat} className="w-14 h-14 md:w-16 md:h-16 bg-[#FF9D2E] hover:bg-[#FFAA3D] text-slate-900 rounded-full flex items-center justify-center shadow-[0_10px_30px_rgba(255,157,46,0.3)] hover:scale-105 transition-transform relative">
             {isChatOpen ? <X size={24} strokeWidth={2.5}/> : <MessageCircle size={24} strokeWidth={2.5}/>}
+            
+            {/* 🔴 RED UNREAD BADGE FOR CHAT BUTTON */}
+            {!isChatOpen && unreadCount > 0 && (
+              <span className="absolute top-0 right-0 -translate-y-1 translate-x-1 bg-[#FF5B61] text-white text-[11px] font-black w-6 h-6 flex items-center justify-center rounded-full border-2 border-[#141516] animate-pulse shadow-lg">
+                {unreadCount > 9 ? '9+' : unreadCount}
+              </span>
+            )}
           </button>
         </div>
       )}

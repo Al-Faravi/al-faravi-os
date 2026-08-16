@@ -6,7 +6,7 @@ import {
   Sun, Moon, LayoutDashboard, Users, User, BookOpen, Clock, FileText, 
   ChevronRight, MessageCircle, X, Send, Paperclip, Mic, Square, ArrowLeft, 
   Trash2, Edit3, FolderOpen, LogOut, CheckCircle2, Plus, DownloadCloud, Sparkles, ShieldCheck,
-  Target, TrendingUp, PlayCircle
+  Target, TrendingUp, PlayCircle, BellRing
 } from 'lucide-react';
 
 import WorkspaceCourseViewer from './WorkspaceCourseViewer';
@@ -74,6 +74,9 @@ export default function WorkspaceDashboard() {
   const [isRecording, setIsRecording] = useState(false);
   const [mediaRecorder, setMediaRecorder] = useState<MediaRecorder | null>(null);
 
+  // 🔴 UNREAD MESSAGES & NOTIFICATIONS STATE
+  const [unreadCounts, setUnreadCounts] = useState<Record<string, number>>({});
+
   const chatBottomRef = useRef<HTMLDivElement | null>(null);
   const randomQuote = useMemo(() => DAILY_QUOTES[Math.floor(Math.random() * DAILY_QUOTES.length)], []);
 
@@ -101,6 +104,13 @@ export default function WorkspaceDashboard() {
       }
     }
   };
+
+  // --- Push Notification Permission ---
+  useEffect(() => {
+    if ('Notification' in window && Notification.permission === 'default') {
+      Notification.requestPermission();
+    }
+  }, []);
 
   // --- Effects ---
   useEffect(() => {
@@ -134,6 +144,40 @@ export default function WorkspaceDashboard() {
     const interval = setInterval(updatePresence, 60000); 
     return () => clearInterval(interval);
   }, []);
+
+  // 🔔 GLOBAL CHAT LISTENER (Listens to all groups for notifications)
+  useEffect(() => {
+    if (groups.length === 0 || !session?.user) return;
+    
+    const channel = workspaceSupabase.channel('global_chat_notifications')
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'group_chats' }, (payload: any) => {
+        const newMsg = payload.new;
+        if (newMsg.user_id === session.user.id) return; // Ignore own messages
+
+        const group = groups.find(g => g.id === newMsg.group_id);
+        if (!group) return;
+
+        // If that group's chatbox is already open, don't increase count (Auto Read)
+        if (isChatOpen && selectedGroup?.id === newMsg.group_id) {
+          localStorage.setItem(`chat_read_${newMsg.group_id}`, new Date().toISOString());
+        } else {
+          // Increase badge number
+          setUnreadCounts(prev => ({ ...prev, [newMsg.group_id]: (prev[newMsg.group_id] || 0) + 1 }));
+          
+          // Send push notification
+          if ('Notification' in window && Notification.permission === 'granted') {
+             const notifBody = newMsg.message_type === 'text' ? newMsg.content : 'Sent an attachment 📎';
+             new Notification(`New message in ${group.name}`, { 
+               body: `${newMsg.sender_name}: ${notifBody}`,
+               icon: '/icons/logo.png', 
+               badge: '/icons/logo.png'
+             });
+          }
+        }
+      }).subscribe();
+      
+    return () => { workspaceSupabase.removeChannel(channel); };
+  }, [groups, isChatOpen, selectedGroup, session]);
 
   // --- Core Functions ---
   const initTheme = () => {
@@ -199,7 +243,7 @@ export default function WorkspaceDashboard() {
   const handleGroupClick = (group: any) => {
     setSelectedGroup(group);
     setShowNoteForm(false);
-    sessionStorage.setItem('workspace_current_group', group.id); // Save for refresh
+    sessionStorage.setItem('workspace_current_group', group.id);
     fetchGroupContents(group.id);
   };
 
@@ -211,7 +255,7 @@ export default function WorkspaceDashboard() {
       setSelectedGroup(null);
       setGroupContents([]);
       setIsChatOpen(false);
-      sessionStorage.removeItem('workspace_current_group'); // Clear on back
+      sessionStorage.removeItem('workspace_current_group');
     }
   };
 
@@ -354,6 +398,19 @@ export default function WorkspaceDashboard() {
     setChatLoading(false);
   };
 
+  // --- Chat Toggle & Clear Badge ---
+  const toggleChat = () => {
+    const newState = !isChatOpen;
+    setIsChatOpen(newState);
+    
+    if (selectedGroup) {
+      localStorage.setItem(`chat_read_${selectedGroup.id}`, new Date().toISOString());
+      if (newState) {
+        setUnreadCounts(prev => ({ ...prev, [selectedGroup.id]: 0 }));
+      }
+    }
+  };
+
   const handleSendMessage = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     if (!newMessage.trim() || !selectedGroup || !session?.user) return;
@@ -362,6 +419,7 @@ export default function WorkspaceDashboard() {
     const tempId = `temp-${Date.now()}`;
     const optimisticMsg: ChatMessage = { id: tempId, group_id: selectedGroup.id, user_id: session.user.id, sender_name: profileName, content: messageText, message_type: 'text', isOptimistic: true };
     setChatMessages((prev) => [...prev, optimisticMsg]);
+    localStorage.setItem(`chat_read_${selectedGroup.id}`, new Date().toISOString());
 
     const { error } = await workspaceSupabase.from('group_chats').insert([{
       group_id: selectedGroup.id, user_id: session.user.id, sender_name: profileName, content: messageText, message_type: 'text',
@@ -530,7 +588,13 @@ export default function WorkspaceDashboard() {
               ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
                   {groups.map(group => (
-                    <div key={group.id} onClick={() => handleGroupClick(group)} className="bg-white dark:bg-[#18191A] border border-slate-200 dark:border-[#292B2E] hover:border-[#FF9D2E] dark:hover:border-[#FF9D2E] p-6 rounded-3xl cursor-pointer transition-all duration-300 group hover:-translate-y-1.5 hover:shadow-xl dark:hover:shadow-[#FF9D2E]/5">
+                    <div key={group.id} onClick={() => handleGroupClick(group)} className="relative bg-white dark:bg-[#18191A] border border-slate-200 dark:border-[#292B2E] hover:border-[#FF9D2E] dark:hover:border-[#FF9D2E] p-6 rounded-3xl cursor-pointer transition-all duration-300 group hover:-translate-y-1.5 hover:shadow-xl dark:hover:shadow-[#FF9D2E]/5">
+                      {/* 🔴 RED UNREAD BADGE FOR FOLDER */}
+                      {unreadCounts[group.id] > 0 && (
+                        <div className="absolute -top-2 -right-2 bg-[#FF5B61] text-white text-xs font-black w-7 h-7 flex items-center justify-center rounded-full border-2 border-white dark:border-[#18191A] animate-bounce shadow-[0_0_15px_rgba(255,91,97,0.5)] z-10">
+                          {unreadCounts[group.id] > 9 ? '9+' : unreadCounts[group.id]}
+                        </div>
+                      )}
                       <div className="flex items-center gap-4 mb-5">
                         <div className="w-14 h-14 bg-slate-50 dark:bg-[#1D1E20] border border-slate-200 dark:border-[#292B2E] rounded-2xl flex items-center justify-center text-[#FF9D2E] group-hover:bg-[#FF9D2E] group-hover:text-white dark:group-hover:text-[#0D0E0F] transition-colors"><FolderOpen size={28} /></div>
                         <h4 className="text-xl font-bold leading-tight text-slate-900 dark:text-white group-hover:text-[#FF9D2E] transition-colors">{group.name}</h4>
@@ -771,59 +835,51 @@ export default function WorkspaceDashboard() {
 
         {/* --- PROFILE TAB --- */}
         {activeTab === 'profile' && (
-          <div className="animate-fade-in flex flex-col items-center mt-6 w-full max-w-sm md:max-w-md mx-auto px-4 sm:px-0">
+          <div className="animate-fade-in flex flex-col items-center mt-6 max-w-md mx-auto">
             <div className="w-full flex justify-start mb-6">
-              <button onClick={() => setActiveTab('dashboard')} className="flex items-center gap-2 text-slate-500 dark:text-[#A3A5A8] hover:text-[#FF9D2E] dark:hover:text-[#FF9D2E] transition-colors font-bold bg-white dark:bg-[#18191A] px-4 py-2.5 rounded-xl border border-slate-200 dark:border-[#292B2E] shadow-sm hover:shadow-md">
-                <ArrowLeft size={18} /> Back to Dashboard
-              </button>
+              <button onClick={() => setActiveTab('dashboard')} className="flex items-center gap-2 text-slate-500 dark:text-[#A3A5A8] hover:text-[#FF9D2E] dark:hover:text-[#FF9D2E] transition-colors font-bold bg-white dark:bg-[#18191A] px-4 py-2.5 rounded-xl border border-slate-200 dark:border-[#292B2E] shadow-sm hover:shadow-md"><ArrowLeft size={18} /> Back to Dashboard</button>
             </div>
-            
-            <div className="w-24 h-24 bg-[#FF9D2E]/10 rounded-full flex items-center justify-center mb-6 border border-[#FF9D2E]/30 shadow-lg shadow-[#FF9D2E]/10 shrink-0">
+            <div className="w-24 h-24 bg-[#FF9D2E]/10 rounded-full flex items-center justify-center mb-6 border border-[#FF9D2E]/30 shadow-lg shadow-[#FF9D2E]/10">
               <User className="w-12 h-12 text-[#FF9D2E]" />
             </div>
-            
-            <div className="w-full bg-white dark:bg-[#18191A] p-5 sm:p-6 rounded-3xl border border-slate-200 dark:border-[#292B2E] shadow-sm space-y-4 text-center">
-              <h3 className="font-bold text-base sm:text-lg text-slate-500 dark:text-[#A3A5A8]">Your Nickname</h3>
-              <div className="flex flex-col sm:flex-row gap-3">
-                <input type="text" value={profileName} onChange={(e) => setProfileName(e.target.value)} className="flex-1 w-full bg-slate-50 dark:bg-[#141516] border border-slate-200 dark:border-[#292B2E] focus:border-[#FF9D2E] rounded-xl p-3 outline-none text-center font-bold text-slate-900 dark:text-white transition-all" />
-                <button onClick={handleUpdateProfile} disabled={isUpdatingProfile} className="bg-[#19C784] w-full sm:w-auto justify-center text-white px-5 py-3 sm:py-0 rounded-xl font-bold hover:bg-emerald-600 transition-colors flex items-center gap-2 disabled:opacity-50">
-                  <CheckCircle2 size={20} /> Save
-                </button>
+            <div className="w-full bg-white dark:bg-[#18191A] p-6 rounded-3xl border border-slate-200 dark:border-[#292B2E] shadow-sm space-y-4 text-center">
+              <h3 className="font-bold text-lg text-slate-500 dark:text-[#A3A5A8]">Your Nickname</h3>
+              <div className="flex gap-2">
+                <input type="text" value={profileName} onChange={(e) => setProfileName(e.target.value)} className="flex-1 bg-slate-50 dark:bg-[#141516] border border-slate-200 dark:border-[#292B2E] focus:border-[#FF9D2E] rounded-xl p-3 outline-none text-center font-bold text-slate-900 dark:text-white transition-all" />
+                <button onClick={handleUpdateProfile} disabled={isUpdatingProfile} className="bg-[#19C784] text-white px-5 rounded-xl font-bold hover:bg-emerald-600 transition-colors flex items-center gap-2 disabled:opacity-50"><CheckCircle2 size={20} /> Save</button>
               </div>
               <p className="text-xs text-slate-400 dark:text-[#707277]">This name will appear in group chats and notes.</p>
             </div>
 
-            <div className="w-full grid grid-cols-2 gap-4 mt-5">
+            <div className="w-full grid grid-cols-2 gap-4 mt-4">
               <div className="bg-white dark:bg-[#18191A] p-4 rounded-3xl border border-slate-200 dark:border-[#292B2E] text-center shadow-sm">
-                <div className="mx-auto w-8 h-8 bg-blue-50 dark:bg-blue-500/10 rounded-full flex items-center justify-center mb-2"><Users size={16} className="text-blue-500" /></div>
-                <h4 className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white">{groups.length}</h4>
+                <div className="mx-auto w-8 h-8 bg-blue-50 dark:bg-blue-500/10 rounded-full flex items-center justify-center mb-2">
+                  <Users size={16} className="text-blue-500" />
+                </div>
+                <h4 className="text-xl font-black text-slate-900 dark:text-white">{groups.length}</h4>
                 <p className="text-[10px] uppercase font-bold text-slate-500 dark:text-[#707277]">Study Groups</p>
               </div>
               
               <div className="bg-white dark:bg-[#18191A] p-4 rounded-3xl border border-slate-200 dark:border-[#292B2E] text-center shadow-sm">
-                <div className="mx-auto w-8 h-8 bg-[#FF9D2E]/10 rounded-full flex items-center justify-center mb-2"><FileText size={16} className="text-[#FF9D2E]" /></div>
-                <h4 className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white">{allContents.filter(c => c.content_data?.userId === session?.user?.id).length}</h4>
+                <div className="mx-auto w-8 h-8 bg-[#FF9D2E]/10 rounded-full flex items-center justify-center mb-2">
+                  <FileText size={16} className="text-[#FF9D2E]" />
+                </div>
+                <h4 className="text-xl font-black text-slate-900 dark:text-white">{allContents.filter(c => c.content_data?.userId === session?.user?.id).length}</h4>
                 <p className="text-[10px] uppercase font-bold text-slate-500 dark:text-[#707277]">Notes Created</p>
               </div>
             </div>
 
-            <div className="w-full mt-5 bg-gradient-to-r from-[#FF9D2E]/10 to-[#E83FCB]/10 p-5 rounded-3xl border border-[#FF9D2E]/20 flex flex-col sm:flex-row items-center gap-4 text-center sm:text-left">
-              <div className="w-14 h-14 bg-white dark:bg-[#141516] rounded-2xl flex items-center justify-center shadow-sm border border-white/50 dark:border-[#292B2E] p-1.5 shrink-0 overflow-hidden">
-                <img src="/icons/logo.png" alt="Al_Faravi-os" className="w-full h-full object-contain" />
+            <div className="w-full mt-4 bg-gradient-to-r from-[#FF9D2E]/10 to-[#E83FCB]/10 p-5 rounded-3xl border border-[#FF9D2E]/20 flex items-center gap-4">
+              <div className="w-12 h-12 bg-white dark:bg-[#141516] rounded-2xl flex items-center justify-center shadow-sm border border-white/50 dark:border-[#292B2E]">
+                <ShieldCheck size={24} className="text-[#FF9D2E]" />
               </div>
               <div>
-                <h4 className="font-bold text-slate-900 dark:text-white text-base">Verified Student</h4>
-                <p className="text-xs text-slate-600 dark:text-[#A3A5A8] mt-0.5">Member of Al_Faravi-os</p>
+                <h4 className="font-bold text-slate-900 dark:text-white text-sm">Verified Student</h4>
+                <p className="text-xs text-slate-600 dark:text-[#A3A5A8]">Member of Al_Faravi-os</p>
               </div>
             </div>
 
-            {deferredPrompt && (
-              <button onClick={handleInstallPWA} className="mt-6 w-full flex items-center justify-center gap-3 p-4 bg-gradient-to-r from-[#FF9D2E] to-[#FFAA3D] rounded-2xl text-[#0D0E0F] font-extrabold shadow-[0_0_20px_rgba(255,157,46,0.2)] hover:shadow-[0_0_30px_rgba(255,157,46,0.4)] transition-all transform hover:-translate-y-1">
-                <DownloadCloud className="w-5 h-5" /> Install App
-              </button>
-            )}
-
-            <button onClick={handleLogout} className="mt-6 sm:mt-8 w-full flex items-center justify-center gap-3 p-4 bg-white dark:bg-[#18191A] border border-[#FF5B61]/20 rounded-2xl text-[#FF5B61] font-bold hover:bg-[#FF5B61]/10 transition-colors">
+            <button onClick={handleLogout} className="mt-8 w-full flex items-center justify-center gap-3 p-4 bg-white dark:bg-[#18191A] border border-[#FF5B61]/20 rounded-2xl text-[#FF5B61] font-bold hover:bg-[#FF5B61]/10 transition-colors">
               <LogOut className="w-5 h-5" /> Log Out
             </button>
           </div>
@@ -837,7 +893,7 @@ export default function WorkspaceDashboard() {
             <div className="w-[90vw] md:w-[380px] h-[500px] max-h-[80vh] bg-white dark:bg-[#141516] border border-slate-200 dark:border-[#292B2E] shadow-2xl rounded-3xl mb-4 flex flex-col overflow-hidden animate-fade-in origin-bottom-right transition-colors">
               <div className="bg-slate-50 dark:bg-[#18191A] p-4 border-b border-slate-200 dark:border-[#292B2E] flex justify-between items-center transition-colors">
                 <div><h3 className="font-bold flex items-center gap-2 text-slate-900 dark:text-white"><MessageCircle size={18} className="text-[#FF9D2E]" /> Group Chat</h3><p className="text-xs text-slate-500 dark:text-[#707277]">{selectedGroup.name}</p></div>
-                <button onClick={() => setIsChatOpen(false)} className="text-slate-400 hover:text-[#FF5B61] transition-colors p-1"><X size={20} /></button>
+                <button onClick={toggleChat} className="text-slate-400 hover:text-[#FF5B61] transition-colors p-1"><X size={20} /></button>
               </div>
 
               <div className="flex-1 p-4 overflow-y-auto bg-slate-100 dark:bg-[#0D0E0F] flex flex-col gap-4 scroll-smooth transition-colors">
@@ -885,13 +941,18 @@ export default function WorkspaceDashboard() {
               </form>
             </div>
           )}
-          <button onClick={() => setIsChatOpen(!isChatOpen)} className="w-16 h-16 bg-[#FF9D2E] hover:bg-[#FFAA3D] text-slate-900 rounded-full flex items-center justify-center shadow-[0_10px_30px_rgba(255,157,46,0.3)] transition-transform hover:scale-105 active:scale-95 relative">
+          <button onClick={toggleChat} className="w-16 h-16 bg-[#FF9D2E] hover:bg-[#FFAA3D] text-slate-900 rounded-full flex items-center justify-center shadow-[0_10px_30px_rgba(255,157,46,0.3)] transition-transform hover:scale-105 active:scale-95 relative">
+            {/* 🔴 RED UNREAD BADGE FOR CHAT BUTTON */}
+            {!isChatOpen && selectedGroup && unreadCounts[selectedGroup.id] > 0 && (
+              <span className="absolute top-0 right-0 -translate-y-1 translate-x-1 bg-[#FF5B61] text-white text-[11px] font-black w-6 h-6 flex items-center justify-center rounded-full border-2 border-white dark:border-[#18191A] animate-pulse shadow-lg">
+                {unreadCounts[selectedGroup.id] > 9 ? '9+' : unreadCounts[selectedGroup.id]}
+              </span>
+            )}
             {isChatOpen ? <X size={28} strokeWidth={2.5} /> : <MessageCircle size={28} strokeWidth={2.5} />}
           </button>
         </div>
       )}
 
-      {/* MOBILE NAV */}
       <nav className="md:hidden fixed bottom-0 w-full bg-white/90 dark:bg-[#141516]/90 backdrop-blur-xl border-t border-slate-200 dark:border-[#292B2E] pb-safe z-40">
         <div className="flex justify-around items-center h-16">
           <button onClick={() => { setActiveTab('dashboard'); handleBack(); }} className={`flex flex-col items-center justify-center w-full space-y-1 ${activeTab === 'dashboard' ? 'text-[#FF9D2E]' : 'text-slate-400 dark:text-[#707277]'}`}><LayoutDashboard size={22} /> <span className="text-[10px] font-bold">Home</span></button>
@@ -900,9 +961,7 @@ export default function WorkspaceDashboard() {
       </nav>
 
       <style>{`
-        @keyframes shimmer { 100% { transform: translateX(100%); } }
-        .custom-scrollbar::-webkit-scrollbar { width: 4px; }
-        .custom-scrollbar::-webkit-scrollbar-thumb { background: #292B2E; border-radius: 4px; }
+        .pb-safe { padding-bottom: env(safe-area-inset-bottom, 20px); }
         .hide-scrollbar::-webkit-scrollbar { display: none; }
         .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
         .animate-fade-in { animation: fadeIn 0.3s ease-out; }
