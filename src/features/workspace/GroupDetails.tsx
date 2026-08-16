@@ -300,6 +300,7 @@ export default function GroupDetails() {
     fetchGroupContents();
   };
 
+  // --- SMART MERGE SYNC LOGIC ---
   const handleSyncContent = async (item: any) => {
     setSyncingId(item.id);
     try {
@@ -311,29 +312,61 @@ export default function GroupDetails() {
         const { data: courseData } = await supabase.from('lms_courses').select('*').eq('id', originalId).single();
         const { data: modulesData } = await supabase.from('lms_modules').select('*').eq('course_id', originalId);
         const { data: contentsData } = await supabase.from('lms_contents').select('*').in('module_id', modulesData?.map(m => m.id) || []);
+
         const existingModules = existingData.modules || [];
+        
+        // ১. Main OS এর মডিউলগুলো সিঙ্ক করা এবং তার ভেতরের ফ্রেন্ডদের কাস্টম রিসোর্স বাঁচিয়ে রাখা
         const updatedModules = modulesData?.map(newMod => {
           const oldMod = existingModules.find((m: any) => m.id === newMod.id);
           const newContents = contentsData?.filter(c => c.module_id === newMod.id) || [];
-          const mergedContents = newContents.map(newC => { const oldC = oldMod?.contents?.find((c: any) => c.id === newC.id); return { ...newC, is_completed: oldC ? oldC.is_completed : false }; });
+          
+          const mergedContents = newContents.map(newC => {
+            const oldC = oldMod?.contents?.find((c: any) => c.id === newC.id);
+            return { ...newC, is_completed: oldC ? oldC.is_completed : false };
+          });
+          
           const customContents = oldMod?.contents?.filter((oldC: any) => !newContents.some((newC: any) => newC.id === oldC.id)) || [];
           return { ...newMod, contents: [...mergedContents, ...customContents] };
-        });
-        updatedData = { ...courseData, progress_pct: existingData.progress_pct || 0, is_active: existingData.is_active || false, group_targets: existingData.group_targets || [], modules: updatedModules };
+        }) || [];
+
+        // ২. ফ্রেন্ডদের তৈরি করা সম্পূর্ণ নতুন কাস্টম মডিউলগুলো খুঁজে বের করে এড করা
+        const mainOsModuleIds = modulesData?.map(m => m.id) || [];
+        const customModules = existingModules.filter((m: any) => !mainOsModuleIds.includes(m.id));
+
+        // ৩. ফাইনাল মার্জ (Main OS + Custom Modules)
+        const finalModules = [...updatedModules, ...customModules];
+
+        updatedData = { ...courseData, progress_pct: existingData.progress_pct || 0, is_active: existingData.is_active || false, group_targets: existingData.group_targets || [], modules: finalModules };
       } 
       else if (item.content_type === 'bcs_subject') {
         const { data: subjectData } = await supabase.from('bcs_subjects').select('*').eq('id', originalId).single();
         const { data: chaptersData } = await supabase.from('bcs_chapters').select('*').eq('subject_id', originalId);
         const { data: resourcesData } = await supabase.from('bcs_resources').select('*').in('chapter_id', chaptersData?.map(c => c.id) || []);
+
         const existingChapters = existingData.chapters || [];
+        
+        // ১. Main OS এর চ্যাপ্টারগুলো সিঙ্ক করা এবং কাস্টম রিসোর্স বাঁচানো
         const updatedChapters = chaptersData?.map(newChap => {
           const oldChap = existingChapters.find((c: any) => c.id === newChap.id);
           const newRes = resourcesData?.filter(r => r.chapter_id === newChap.id) || [];
-          const mergedRes = newRes.map(nR => { const oldR = oldChap?.resources?.find((r: any) => r.id === nR.id); return { ...nR, is_completed: oldR ? oldR.is_completed : false }; });
+          
+          const mergedRes = newRes.map(nR => {
+            const oldR = oldChap?.resources?.find((r: any) => r.id === nR.id);
+            return { ...nR, is_completed: oldR ? oldR.is_completed : false };
+          });
+          
           const customRes = oldChap?.resources?.filter((oldR: any) => !newRes.some((nR: any) => nR.id === oldR.id)) || [];
           return { ...newChap, resources: [...mergedRes, ...customRes] };
-        });
-        updatedData = { ...subjectData, progress_pct: existingData.progress_pct || 0, is_active: existingData.is_active || false, group_targets: existingData.group_targets || [], chapters: updatedChapters };
+        }) || [];
+
+        // ২. ফ্রেন্ডদের তৈরি করা নতুন চ্যাপ্টারগুলো এড করা
+        const mainOsChapterIds = chaptersData?.map(c => c.id) || [];
+        const customChapters = existingChapters.filter((c: any) => !mainOsChapterIds.includes(c.id));
+
+        // ৩. ফাইনাল মার্জ
+        const finalChapters = [...updatedChapters, ...customChapters];
+
+        updatedData = { ...subjectData, progress_pct: existingData.progress_pct || 0, is_active: existingData.is_active || false, group_targets: existingData.group_targets || [], chapters: finalChapters };
       }
       await workspaceAdmin.from('shared_contents').update({ content_data: updatedData }).eq('id', item.id);
       fetchGroupContents();
@@ -715,38 +748,42 @@ export default function GroupDetails() {
                          {msg.message_type === 'text' && <p>{msg.content}</p>}
                          {msg.message_type === 'image' && <a href={msg.file_url} target="_blank" rel="noreferrer"><img src={msg.file_url} alt="Shared" className="rounded-xl max-h-48 object-cover border border-black/10" /></a>}
                          {msg.message_type === 'file' && <a href={msg.file_url} target="_blank" rel="noreferrer" className="flex items-center gap-2 underline underline-offset-2 break-all"><FileText size={16} className="shrink-0" /> {msg.content}</a>}
-                         {msg.message_type === 'audio' && <audio controls src={msg.file_url} className="w-48 h-8 rounded-full" />}
+                         {msg.message_type === 'audio' && <audio controls src={msg.file_url} className="w-full h-8"></audio>}
                        </div>
                      </div>
                    );
-                 })
-                }
-                <div ref={chatBottomRef} />
+                 })}
+                <div ref={chatBottomRef}></div>
               </div>
 
-              <form onSubmit={handleSendMessage} className="p-3 bg-white dark:bg-[#18191A] border-t border-slate-200 dark:border-[#292B2E] flex items-center gap-2">
-                <input type="text" value={newMessage} onChange={e => setNewMessage(e.target.value)} placeholder="Type as Admin..." className="flex-1 bg-slate-100 dark:bg-[#1D1E20] border border-transparent focus:border-[#FF9D2E]/50 rounded-full px-4 py-2 text-sm outline-none" />
-                <button type="submit" disabled={!newMessage.trim()} className="p-2.5 bg-[#FF9D2E] text-black rounded-full hover:bg-[#FFAA3D] disabled:opacity-50"><Send size={16}/></button>
+              <form onSubmit={handleSendMessage} className="p-3 bg-white dark:bg-[#18191A] border-t border-slate-200 dark:border-[#292B2E] flex gap-2 items-center">
+                <input
+                  type="text"
+                  value={newMessage}
+                  onChange={(e) => setNewMessage(e.target.value)}
+                  placeholder="Type as Admin..."
+                  className="flex-1 bg-slate-100 dark:bg-[#141516] border border-slate-200 dark:border-[#292B2E] rounded-xl px-4 py-2.5 text-sm text-slate-900 dark:text-white outline-none focus:border-[#FF9D2E]"
+                />
+                <button type="submit" disabled={!newMessage.trim()} className="bg-[#FF9D2E] text-slate-900 p-2.5 rounded-xl hover:bg-[#FFAA3D] transition-colors disabled:opacity-50">
+                  <Send size={18} />
+                </button>
               </form>
             </div>
           )}
-          <button onClick={toggleChat} className="w-14 h-14 md:w-16 md:h-16 bg-[#FF9D2E] hover:bg-[#FFAA3D] text-slate-900 rounded-full flex items-center justify-center shadow-[0_10px_30px_rgba(255,157,46,0.3)] hover:scale-105 transition-transform relative">
-            {isChatOpen ? <X size={24} strokeWidth={2.5}/> : <MessageCircle size={24} strokeWidth={2.5}/>}
-            
-            {/* 🔴 RED UNREAD BADGE FOR CHAT BUTTON */}
+          
+          <button 
+            onClick={toggleChat} 
+            className="relative w-14 h-14 bg-[#FF9D2E] hover:bg-[#FFAA3D] text-slate-900 rounded-full flex items-center justify-center shadow-2xl transition-transform hover:scale-105 active:scale-95"
+          >
+            {isChatOpen ? <X size={24} /> : <MessageCircle size={24} />}
             {!isChatOpen && unreadCount > 0 && (
-              <span className="absolute top-0 right-0 -translate-y-1 translate-x-1 bg-[#FF5B61] text-white text-[11px] font-black w-6 h-6 flex items-center justify-center rounded-full border-2 border-[#141516] animate-pulse shadow-lg">
+              <span className="absolute top-0 right-0 -translate-y-1 translate-x-1 bg-[#FF5B61] text-white text-[10px] font-black w-5 h-5 flex items-center justify-center rounded-full border-2 border-[#141516] animate-pulse">
                 {unreadCount > 9 ? '9+' : unreadCount}
               </span>
             )}
           </button>
         </div>
       )}
-
-      <style>{`
-        .animate-fade-in { animation: fadeIn 0.3s ease-out; }
-        @keyframes fadeIn { from { opacity: 0; transform: scale(0.95); } to { opacity: 1; transform: scale(1); } }
-      `}</style>
     </div>
   );
 }

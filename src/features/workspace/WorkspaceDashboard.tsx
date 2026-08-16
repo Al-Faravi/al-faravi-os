@@ -74,7 +74,7 @@ export default function WorkspaceDashboard() {
     setExpandedCourses(prev => ({ ...prev, [courseId]: !prev[courseId] }));
   };
 
-  // Chat States
+  // --- CHAT STATES ---
   const [isChatOpen, setIsChatOpen] = useState(false);
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [newMessage, setNewMessage] = useState('');
@@ -806,194 +806,115 @@ export default function WorkspaceDashboard() {
                 <h3 className="text-xl font-bold flex items-center gap-2 text-slate-900 dark:text-white"><FileText size={20} className="text-[#FF9D2E]"/> Create New Note</h3>
                 <button onClick={() => setShowNoteForm(false)} className="text-slate-400 hover:text-[#FF5B61]"><X size={20}/></button>
               </div>
-              <form onSubmit={handleAddNote} className="space-y-4">
-                <input type="text" placeholder="Note Title..." value={noteTitle} onChange={(e) => setNoteTitle(e.target.value)} className="w-full bg-slate-50 dark:bg-[#141516] border border-slate-200 dark:border-[#292B2E] focus:border-[#FF9D2E] rounded-xl p-4 outline-none font-bold text-slate-900 dark:text-white transition-all" required />
-                <div className="bg-slate-50 dark:bg-[#141516] rounded-xl overflow-hidden border border-slate-200 dark:border-[#292B2E] focus-within:border-[#FF9D2E] transition-colors pb-10">
+              
+              <form onSubmit={isEditing ? handleUpdateNote : handleAddNote} className="space-y-4">
+                <input 
+                  type="text" 
+                  required 
+                  value={noteTitle} 
+                  onChange={(e) => setNoteTitle(e.target.value)} 
+                  placeholder="Note Title" 
+                  className="w-full bg-slate-50 dark:bg-[#141516] border border-slate-200 dark:border-[#292B2E] rounded-xl px-4 py-3 text-slate-900 dark:text-white outline-none focus:border-[#FF9D2E] font-bold"
+                />
+                <div className="border border-slate-200 dark:border-[#292B2E] rounded-xl overflow-hidden bg-white dark:bg-[#141516]">
                   <ReactQuill 
                     theme="snow" 
                     value={noteContent} 
                     onChange={setNoteContent} 
-                    placeholder="Write your beautiful notes here (Use Bold, Lists, Links)..."
-                    className="text-slate-900 dark:text-white h-48 border-none"
-                    modules={{
-                      toolbar: [
-                        [{ 'header': [1, 2, 3, false] }],
-                        ['bold', 'italic', 'underline', 'strike', 'blockquote'],
-                        [{'list': 'ordered'}, {'list': 'bullet'}],
-                        ['link', 'code-block'],
-                        ['clean']
-                      ],
-                    }}
+                    className="h-32 pb-2 text-slate-900 dark:text-white" 
                   />
                 </div>
                 <div className="flex justify-end gap-3 pt-2">
-                  <button type="button" onClick={() => setShowNoteForm(false)} className="px-5 py-2.5 rounded-xl font-bold text-slate-500 hover:bg-slate-100 dark:hover:bg-[#1D1E20] transition-colors">Cancel</button>
-                  <button type="submit" className="bg-[#FF9D2E] text-slate-900 px-6 py-2.5 rounded-xl font-extrabold hover:bg-[#FFAA3D] transition-colors">Publish Note</button>
+                  <button type="button" onClick={() => setShowNoteForm(false)} className="px-5 py-2.5 text-slate-600 dark:text-[#A3A5A8] hover:bg-slate-100 dark:hover:bg-[#1D1E20] rounded-xl font-bold transition-colors">
+                    Cancel
+                  </button>
+                  <button type="submit" className="px-6 py-2.5 bg-[#FF9D2E] text-slate-900 rounded-xl font-bold hover:bg-[#FFAA3D] transition-colors flex items-center gap-2">
+                    {isEditing ? <><Edit3 size={16}/> Update</> : <><Plus size={16}/> Add Note</>}
+                  </button>
                 </div>
               </form>
             </div>
           </div>
         )}
-
-        {/* View / Edit Note Full Screen Mode */}
-        {(selectedContent?.content_type === 'shared_note' || selectedContent?.content_type === 'personal_note') && (
-          <div className="animate-fade-in">
-            {!isEditing ? (
-              <div className="bg-white dark:bg-[#18191A] p-8 rounded-3xl border border-slate-200 dark:border-[#292B2E] shadow-sm transition-colors">
-                <div className="flex justify-between items-start mb-6">
-                  <div>
-                    <h2 className="text-2xl font-black text-slate-900 dark:text-white">{selectedContent.title}</h2>
-                    <p className="text-sm text-slate-500 dark:text-[#A3A5A8] mt-1">Created by {selectedContent.content_data?.authorName || 'User'}</p>
-                  </div>
-                  <div className="flex gap-2">
-                    {selectedContent.content_data?.userId === session?.user?.id && (
-                      <button onClick={() => setIsEditing(true)} className="p-2 text-slate-400 dark:text-[#707277] hover:text-[#FF9D2E] bg-slate-100 dark:bg-[#1D1E20] rounded-xl"><Edit3 size={18} /></button>
-                    )}
-                    <button onClick={() => handleDeleteNote(selectedContent.id)} className="p-2 text-slate-400 dark:text-[#707277] hover:text-red-500 bg-slate-100 dark:bg-[#1D1E20] rounded-xl"><Trash2 size={18} /></button>
-                  </div>
-                </div>
-                <div dangerouslySetInnerHTML={{ __html: selectedContent.content_data?.text }} className="text-slate-700 dark:text-slate-300 leading-relaxed text-lg whitespace-pre-wrap" />
-              </div>
-            ) : (
-              <div className="bg-white dark:bg-[#18191A] p-8 rounded-3xl border border-[#FF9D2E]/30 shadow-2xl transition-colors">
-                <h3 className="text-xl font-bold mb-5 flex items-center gap-2 text-slate-900 dark:text-white"><Edit3 size={20} className="text-[#FF9D2E]"/> Edit Note</h3>
-                <form onSubmit={handleUpdateNote} className="space-y-4">
-                  <input type="text" value={noteTitle} onChange={(e) => setNoteTitle(e.target.value)} className="w-full bg-slate-50 dark:bg-[#141516] border border-slate-200 dark:border-[#292B2E] focus:border-[#FF9D2E] rounded-xl p-4 outline-none font-bold text-slate-900 dark:text-white transition-all" required />
-                  <div className="bg-slate-50 dark:bg-[#141516] rounded-xl overflow-hidden border border-slate-200 dark:border-[#292B2E] focus-within:border-[#FF9D2E] transition-colors pb-10">
-                    <ReactQuill 
-                      theme="snow" 
-                      value={noteContent} 
-                      onChange={setNoteContent} 
-                      placeholder="Write your beautiful notes here (Use Bold, Lists, Links)..."
-                      className="text-slate-900 dark:text-white h-48 border-none"
-                      modules={{
-                        toolbar: [
-                          [{ 'header': [1, 2, 3, false] }],
-                          ['bold', 'italic', 'underline', 'strike', 'blockquote'],
-                          [{'list': 'ordered'}, {'list': 'bullet'}],
-                          ['link', 'code-block'],
-                          ['clean']
-                        ],
-                      }}
-                    />
-                  </div>
-                  <div className="flex justify-end gap-3 pt-2">
-                    <button type="button" onClick={() => setIsEditing(false)} className="px-5 py-2.5 rounded-xl font-bold text-slate-500 hover:bg-slate-100 dark:hover:bg-[#1D1E20] transition-colors">Cancel</button>
-                    <button type="submit" className="bg-[#FF9D2E] text-slate-900 px-6 py-2.5 rounded-xl font-extrabold hover:bg-[#FFAA3D] transition-colors">Update Note</button>
-                  </div>
-                </form>
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* PROFILE TAB */}
-        {activeTab === 'profile' && (
-          <div className="animate-fade-in max-w-lg mx-auto space-y-6 mt-8">
-            <div className="bg-white dark:bg-[#18191A] p-8 rounded-3xl border border-slate-200 dark:border-[#292B2E] shadow-sm transition-colors">
-              <div className="flex flex-col items-center mb-6">
-                <div className="w-24 h-24 bg-[#FF9D2E]/10 rounded-full flex items-center justify-center border-4 border-[#FF9D2E]/30 mb-4">
-                  <User size={48} className="text-[#FF9D2E]" />
-                </div>
-                <h2 className="text-2xl font-black text-slate-900 dark:text-white">{profileName}</h2>
-                <p className="text-slate-500 dark:text-[#A3A5A8] text-sm mt-1">{session?.user?.email}</p>
-              </div>
-              <div className="space-y-4">
-                <div>
-                  <label className="text-sm font-bold text-slate-600 dark:text-[#A3A5A8] mb-2 block">Display Name</label>
-                  <input type="text" value={profileName} onChange={(e) => setProfileName(e.target.value)} className="w-full bg-slate-50 dark:bg-[#141516] border border-slate-200 dark:border-[#292B2E] focus:border-[#FF9D2E] rounded-xl p-3 outline-none text-sm text-slate-900 dark:text-white" />
-                </div>
-                <button onClick={handleUpdateProfile} disabled={isUpdatingProfile} className="w-full bg-[#FF9D2E] text-slate-900 py-3 rounded-xl font-extrabold hover:bg-[#FFAA3D] transition-colors disabled:opacity-50 flex items-center justify-center gap-2">
-                  {isUpdatingProfile ? <div className="w-4 h-4 border-2 border-slate-900 border-t-transparent rounded-full animate-spin"></div> : <CheckCircle2 size={18}/>} Save Profile
-                </button>
-              </div>
-            </div>
-            <div className="bg-white dark:bg-[#18191A] p-8 rounded-3xl border border-slate-200 dark:border-[#292B2E] shadow-sm transition-colors space-y-3">
-              <h3 className="font-bold text-lg text-slate-900 dark:text-white mb-4 flex items-center gap-2"><ShieldCheck size={20} className="text-[#19C784]" /> Actions</h3>
-              {deferredPrompt && (
-                <button onClick={handleInstallPWA} className="w-full flex items-center justify-center gap-2 py-3 bg-blue-50 dark:bg-[#668CFF]/10 text-[#668CFF] rounded-xl font-bold hover:bg-blue-100 dark:hover:bg-[#668CFF]/20 transition-colors border border-blue-100 dark:border-[#668CFF]/20">
-                  <DownloadCloud size={18} /> Install App (PWA)
-                </button>
-              )}
-              <button onClick={handleLogout} className="w-full flex items-center justify-center gap-2 py-3 bg-red-50 dark:bg-red-500/10 text-red-500 rounded-xl font-bold hover:bg-red-100 dark:hover:bg-red-500/20 transition-colors border border-red-100 dark:border-red-500/20">
-                <LogOut size={18} /> Logout
-              </button>
-            </div>
-          </div>
-        )}
       </main>
 
-      {/* BOTTOM NAVIGATION */}
-      <nav className="fixed bottom-0 left-0 right-0 bg-white/80 dark:bg-[#141516]/80 backdrop-blur-xl border-t border-slate-200 dark:border-[#292B2E] z-50 px-6 py-3 flex justify-around items-center">
-        <button onClick={() => { setActiveTab('dashboard'); setSelectedGroup(null); }} className={`flex flex-col items-center gap-1 transition-colors ${activeTab === 'dashboard' ? 'text-[#FF9D2E]' : 'text-slate-400 dark:text-[#707277]'}`}>
-          <LayoutDashboard size={22} />
-          <span className="text-[10px] font-bold">Home</span>
-        </button>
-        <button onClick={toggleChat} className={`relative flex flex-col items-center gap-1 transition-colors text-slate-400 dark:text-[#707277] ${isChatOpen ? '!text-[#FF9D2E]' : ''}`}>
-          <MessageCircle size={22} />
-          <span className="text-[10px] font-bold">Chat</span>
-          {selectedGroup && unreadCounts[selectedGroup.id] > 0 && !isChatOpen && (
-            <span className="absolute -top-1 right-1/4 bg-[#FF5B61] text-white text-[9px] font-black w-4 h-4 flex items-center justify-center rounded-full border border-white dark:border-[#141516]">{unreadCounts[selectedGroup.id]}</span>
-          )}
-        </button>
-        <button onClick={() => setActiveTab('profile')} className={`flex flex-col items-center gap-1 transition-colors ${activeTab === 'profile' ? 'text-[#FF9D2E]' : 'text-slate-400 dark:text-[#707277]'}`}>
-          <User size={22} />
-          <span className="text-[10px] font-bold">Profile</span>
-        </button>
-      </nav>
+      {/* 💬 FLOATING CHAT WIDGET (Only visible inside Group) */}
+      {selectedGroup && (
+        <div className="fixed bottom-6 right-6 lg:bottom-10 lg:right-10 z-[100]">
+          
+          {/* CHAT BOX */}
+          {isChatOpen && (
+            <div className="absolute bottom-20 right-0 w-[340px] sm:w-[400px] bg-white dark:bg-[#18191A] border border-slate-200 dark:border-[#292B2E] rounded-3xl shadow-2xl overflow-hidden flex flex-col h-[500px] max-h-[70vh] animate-fade-in">
+              {/* Header */}
+              <div className="p-4 bg-[#FF9D2E] text-slate-900 flex justify-between items-center shrink-0">
+                <div>
+                  <h3 className="font-black text-lg">Group Chat</h3>
+                  <p className="text-xs font-bold opacity-80">Real-time collaboration</p>
+                </div>
+                <button onClick={() => setIsChatOpen(false)} className="bg-slate-900/10 hover:bg-slate-900/20 p-2 rounded-full transition-colors"><X size={20}/></button>
+              </div>
+              
+              {/* Messages Area */}
+              <div className="flex-1 p-4 overflow-y-auto bg-slate-50 dark:bg-[#141516] flex flex-col gap-3 custom-scrollbar">
+                {chatLoading ? (
+                  <p className="text-center text-slate-400 dark:text-[#707277] text-sm italic my-auto">Loading messages...</p>
+                ) : chatMessages.length === 0 ? (
+                  <p className="text-center text-slate-400 dark:text-[#707277] text-sm italic my-auto">No messages yet. Start the conversation!</p>
+                ) : (
+                  chatMessages.map(msg => {
+                    const isOwn = msg.user_id === session?.user?.id;
+                    return (
+                      <div key={msg.id} className={`flex flex-col ${isOwn ? 'items-end' : 'items-start'}`}>
+                        {!isOwn && <span className="text-xs font-bold text-[#FF9D2E] mb-1 ml-1">{msg.sender_name}</span>}
+                        <div className={`max-w-[80%] p-3 rounded-2xl text-sm break-words ${isOwn ? 'bg-[#FF9D2E] text-slate-900 rounded-br-md' : 'bg-white dark:bg-[#1D1E20] text-slate-900 dark:text-white border border-slate-100 dark:border-[#292B2E] rounded-bl-md'}`}>
+                          {msg.message_type === 'image' && msg.file_url && <img src={msg.file_url} alt="img" className="rounded-lg mb-1 max-w-full" />}
+                          {msg.message_type === 'audio' && msg.file_url && <audio controls src={msg.file_url} className="w-full h-8"></audio>}
+                          {msg.message_type === 'file' && msg.file_url && <a href={msg.file_url} target="_blank" rel="noreferrer" className="underline">📎 {msg.content}</a>}
+                          {msg.message_type === 'text' && <span>{msg.content}</span>}
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
+                <div ref={chatBottomRef}></div>
+              </div>
 
-      {/* CHAT MODAL */}
-      {selectedGroup && isChatOpen && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 dark:bg-[#0D0E0F]/80 backdrop-blur-sm animate-fade-in">
-          <div className="bg-white dark:bg-[#18191A] w-full max-w-lg h-[80vh] rounded-3xl border border-slate-200 dark:border-[#292B2E] shadow-2xl flex flex-col overflow-hidden relative">
-            <div className="bg-slate-50 dark:bg-[#141516] p-4 border-b border-slate-200 dark:border-[#292B2E] flex justify-between items-center">
-              <h3 className="font-bold flex items-center gap-2 text-slate-900 dark:text-white"><MessageCircle size={18} className="text-[#FF9D2E]" /> {selectedGroup.name} Chat</h3>
-              <button onClick={toggleChat} className="text-slate-400 dark:text-[#707277] hover:text-[#FF5B61]"><X size={20} /></button>
+              {/* Input Area */}
+              <div className="p-3 bg-white dark:bg-[#18191A] border-t border-slate-200 dark:border-[#292B2E] shrink-0">
+                <form onSubmit={handleSendMessage} className="flex items-center gap-2">
+                  <label className="p-2 text-slate-400 hover:text-[#FF9D2E] transition-colors cursor-pointer">
+                    <Paperclip size={20}/>
+                    <input type="file" onChange={handleFileUpload} className="hidden" />
+                  </label>
+                  <button type="button" onClick={toggleRecording} className={`p-2 transition-colors ${isRecording ? 'text-red-500 animate-pulse' : 'text-slate-400 hover:text-[#FF9D2E]'}`}>
+                    {isRecording ? <Square size={20}/> : <Mic size={20}/>}
+                  </button>
+                  <input 
+                    type="text" 
+                    value={newMessage} 
+                    onChange={(e) => setNewMessage(e.target.value)} 
+                    placeholder="Type a message..." 
+                    className="flex-1 bg-slate-100 dark:bg-[#141516] border border-slate-200 dark:border-[#292B2E] rounded-xl px-4 py-2.5 text-sm text-slate-900 dark:text-white outline-none focus:border-[#FF9D2E]" 
+                  />
+                  <button type="submit" className="p-2.5 bg-[#FF9D2E] text-slate-900 rounded-xl hover:bg-[#FFAA3D] transition-colors"><Send size={18}/></button>
+                </form>
+              </div>
             </div>
-            <div className="flex-1 p-4 overflow-y-auto bg-slate-100 dark:bg-[#0D0E0F] flex flex-col gap-4">
-              {chatLoading ? <div className="flex-1 flex justify-center items-center"><div className="w-6 h-6 border-2 border-[#FF9D2E] border-t-transparent rounded-full animate-spin"></div></div> :
-               chatMessages.length === 0 ? <p className="text-center text-slate-500 dark:text-[#707277] mt-10">No messages yet. Say hi! 👋</p> :
-               chatMessages.map((msg, idx) => {
-                 const isMe = msg.user_id === session?.user?.id;
-                 return (
-                   <div key={msg.id || idx} className={`flex flex-col ${isMe ? 'items-end' : 'items-start'}`}>
-                     <span className="text-[10px] text-slate-500 dark:text-[#A3A5A8] mb-1 font-bold">{msg.sender_name}</span>
-                     <div className={`px-4 py-2.5 rounded-2xl text-sm max-w-[85%] ${isMe ? 'bg-[#FF9D2E] text-slate-900 rounded-tr-sm font-medium' : 'bg-white dark:bg-[#1D1E20] text-slate-900 dark:text-white border border-slate-200 dark:border-[#292B2E] rounded-tl-sm'}`}>
-                       {msg.message_type === 'text' && <p>{msg.content}</p>}
-                       {msg.message_type === 'image' && <a href={msg.file_url} target="_blank" rel="noreferrer"><img src={msg.file_url} alt="Shared" className="rounded-xl max-h-48 object-cover border border-black/10" /></a>}
-                       {msg.message_type === 'file' && <a href={msg.file_url} target="_blank" rel="noreferrer" className="flex items-center gap-2 underline underline-offset-2 break-all"><FileText size={16} className="shrink-0" /> {msg.content}</a>}
-                       {msg.message_type === 'audio' && <audio controls src={msg.file_url} className="w-48 h-8 rounded-full" />}
-                     </div>
-                   </div>
-                 );
-               })
-              }
-              <div ref={chatBottomRef} />
-            </div>
-            <div className="p-3 bg-white dark:bg-[#18191A] border-t border-slate-200 dark:border-[#292B2E] flex items-center gap-2">
-              <label className="p-2 text-slate-400 dark:text-[#707277] hover:text-[#FF9D2E] cursor-pointer"><Paperclip size={18} /><input type="file" onChange={handleFileUpload} className="hidden" /></label>
-              <button onClick={toggleRecording} className={`p-2 rounded-full transition-colors ${isRecording ? 'bg-red-500 text-white animate-pulse' : 'text-slate-400 dark:text-[#707277] hover:text-red-500'}`}>{isRecording ? <Square size={18} /> : <Mic size={18} />}</button>
-              <input type="text" value={newMessage} onChange={e => setNewMessage(e.target.value)} placeholder="Type a message..." className="flex-1 bg-slate-100 dark:bg-[#1D1E20] border border-transparent focus:border-[#FF9D2E]/50 rounded-full px-4 py-2 text-sm outline-none text-slate-900 dark:text-white" />
-              <button onClick={handleSendMessage} disabled={!newMessage.trim()} className="p-2.5 bg-[#FF9D2E] text-slate-900 rounded-full hover:bg-[#FFAA3D] disabled:opacity-50"><Send size={16}/></button>
-            </div>
-          </div>
+          )}
+
+          {/* CHAT TOGGLE BUTTON */}
+          <button onClick={toggleChat} className="w-16 h-16 bg-[#FF9D2E] hover:bg-[#FFAA3D] text-slate-900 rounded-full flex items-center justify-center shadow-[0_10px_30px_rgba(255,157,46,0.3)] hover:scale-105 transition-transform relative">
+            {isChatOpen ? <X size={28} strokeWidth={2.5}/> : <MessageCircle size={28} strokeWidth={2.5}/>}
+            
+            {/* Red Unread Badge */}
+            {!isChatOpen && unreadCounts[selectedGroup.id] > 0 && (
+              <span className="absolute top-0 right-0 -translate-y-1 translate-x-1 bg-[#FF5B61] text-white text-[11px] font-black w-6 h-6 flex items-center justify-center rounded-full border-2 border-[#141516] animate-pulse shadow-lg">
+                {unreadCounts[selectedGroup.id] > 9 ? '9+' : unreadCounts[selectedGroup.id]}
+              </span>
+            )}
+          </button>
         </div>
       )}
-
-      <style>{`
-        .animate-fade-in { animation: fadeIn 0.3s ease-out; }
-        @keyframes fadeIn { from { opacity: 0; transform: scale(0.95); } to { opacity: 1; transform: scale(1); } }
-        .animate-slide-in-right { animation: slideInRight 0.3s ease-out; }
-        @keyframes slideInRight { from { opacity: 0; transform: translateX(30px); } to { opacity: 1; transform: translateX(0); } }
-        @keyframes shimmer { 0% { background-position: -20px 0; } 100% { background-position: 20px 0; } }
-        
-        /* 🎨 React Quill Dark Mode Fix */
-        .ql-toolbar.ql-snow { border: none !important; border-bottom: 1px solid #292B2E !important; }
-        .ql-container.ql-snow { border: none !important; }
-        .dark .ql-snow .ql-stroke { stroke: #A3A5A8; }
-        .dark .ql-snow .ql-fill { fill: #A3A5A8; }
-        .dark .ql-snow .ql-picker { color: #A3A5A8; }
-      `}</style>
     </div>
   );
 }
