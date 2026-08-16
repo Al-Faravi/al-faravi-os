@@ -5,7 +5,8 @@ import { useNavigate } from 'react-router-dom';
 import { 
   Sun, Moon, LayoutDashboard, Users, User, BookOpen, Clock, FileText, 
   ChevronRight, MessageCircle, X, Send, Paperclip, Mic, Square, ArrowLeft, 
-  Trash2, Edit3, FolderOpen, LogOut, CheckCircle2, Plus, DownloadCloud, Sparkles, ShieldCheck
+  Trash2, Edit3, FolderOpen, LogOut, CheckCircle2, Plus, DownloadCloud, Sparkles, ShieldCheck,
+  Target, TrendingUp, PlayCircle
 } from 'lucide-react';
 
 import WorkspaceCourseViewer from './WorkspaceCourseViewer';
@@ -31,11 +32,8 @@ interface ChatMessage {
   isOptimistic?: boolean;
 }
 
-// Extend Window interface to hold the prompt globally
 declare global {
-  interface Window {
-    deferredPrompt: any;
-  }
+  interface Window { deferredPrompt: any; }
 }
 
 export default function WorkspaceDashboard() {
@@ -61,6 +59,11 @@ export default function WorkspaceDashboard() {
   const [noteContent, setNoteContent] = useState('');
   const [isEditing, setIsEditing] = useState(false);
 
+  // --- Active Course States ---
+  const [activeTargetText, setActiveTargetText] = useState('');
+  const [activeProgress, setActiveProgress] = useState(0);
+  const [isSavingTarget, setIsSavingTarget] = useState(false);
+
   // Chat States
   const [isChatOpen, setIsChatOpen] = useState(false);
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
@@ -71,26 +74,19 @@ export default function WorkspaceDashboard() {
   const [mediaRecorder, setMediaRecorder] = useState<MediaRecorder | null>(null);
 
   const chatBottomRef = useRef<HTMLDivElement | null>(null);
-
   const randomQuote = useMemo(() => DAILY_QUOTES[Math.floor(Math.random() * DAILY_QUOTES.length)], []);
 
-  // --- PWA Install State (Updated) ---
+  // --- PWA Install State ---
   const [deferredPrompt, setDeferredPrompt] = useState<any>(window.deferredPrompt || null);
 
   useEffect(() => {
     const handleBeforeInstallPrompt = (e: Event) => {
       e.preventDefault();
-      window.deferredPrompt = e; // Save globally
+      window.deferredPrompt = e;
       setDeferredPrompt(e);
     };
-
     window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
-    
-    // Check if it was caught earlier
-    if (window.deferredPrompt) {
-      setDeferredPrompt(window.deferredPrompt);
-    }
-
+    if (window.deferredPrompt) setDeferredPrompt(window.deferredPrompt);
     return () => window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
   }, []);
 
@@ -100,7 +96,7 @@ export default function WorkspaceDashboard() {
       const { outcome } = await deferredPrompt.userChoice;
       if (outcome === 'accepted') {
         setDeferredPrompt(null);
-        window.deferredPrompt = null; // Clear globally
+        window.deferredPrompt = null;
       }
     }
   };
@@ -115,15 +111,11 @@ export default function WorkspaceDashboard() {
     initTheme();
   }, []);
 
-  // Live Active Heartbeat
   useEffect(() => {
     const updatePresence = async () => {
       const { data: { user } } = await workspaceSupabase.auth.getUser();
       if (user?.email) {
-        await workspaceSupabase
-          .from('group_members')
-          .update({ last_active: new Date().toISOString() })
-          .eq('email', user.email);
+        await workspaceSupabase.from('group_members').update({ last_active: new Date().toISOString() }).eq('email', user.email);
       }
     };
     updatePresence(); 
@@ -150,10 +142,7 @@ export default function WorkspaceDashboard() {
   const checkAuthAndFetchData = async () => {
     setLoading(true);
     const { data: { session } } = await workspaceSupabase.auth.getSession();
-    if (!session) {
-      setLoading(false);
-      return navigate('/workspace/login');
-    }
+    if (!session) { setLoading(false); return navigate('/workspace/login'); }
     setSession(session);
 
     const savedNickname = localStorage.getItem(`nickname_${session.user.id}`);
@@ -161,10 +150,8 @@ export default function WorkspaceDashboard() {
     else setProfileName(session.user?.email?.split('@')[0] || 'Student');
 
     await fetchMyGroups();
-
     const { data: cData } = await workspaceSupabase.from('shared_contents').select('*').order('created_at', { ascending: false }).limit(10);
     if (cData) setAllContents(cData);
-
     setLoading(false);
   };
 
@@ -172,28 +159,14 @@ export default function WorkspaceDashboard() {
     const { data: { user } } = await workspaceSupabase.auth.getUser();
     if (!user?.email) return;
 
-    const { data: memberData, error: memberError } = await workspaceSupabase
-      .from('group_members')
-      .select('group_id')
-      .ilike('email', user.email);
-
-    if (memberError) {
-      console.error("Error fetching members:", memberError);
-      return;
-    }
-
+    const { data: memberData } = await workspaceSupabase.from('group_members').select('group_id').ilike('email', user.email);
     if (memberData && memberData.length > 0) {
       const groupIds = memberData.map(m => m.group_id).filter(id => id !== null);
       if (groupIds.length > 0) {
-        const { data: groupsData, error: groupsError } = await workspaceSupabase.from('study_groups').select('*').in('id', groupIds);
-        if (groupsError) console.error("Error fetching groups:", groupsError);
+        const { data: groupsData } = await workspaceSupabase.from('study_groups').select('*').in('id', groupIds);
         setGroups(groupsData || []);
-      } else {
-        setGroups([]);
-      }
-    } else {
-      setGroups([]);
-    }
+      } else setGroups([]);
+    } else setGroups([]);
   };
 
   const handleUpdateProfile = async () => {
@@ -207,8 +180,7 @@ export default function WorkspaceDashboard() {
   };
 
   const fetchGroupContents = async (groupId: string) => {
-    const { data, error } = await workspaceSupabase.from('shared_contents').select('*').eq('group_id', groupId).order('created_at', { ascending: false });
-    if (error) console.error("Error fetching contents:", error);
+    const { data } = await workspaceSupabase.from('shared_contents').select('*').eq('group_id', groupId).order('created_at', { ascending: false });
     if (data) setGroupContents(data);
   };
 
@@ -234,7 +206,7 @@ export default function WorkspaceDashboard() {
     navigate('/workspace/login');
   };
 
-  // --- CRUD Notes ---
+  // --- CRUD Notes & Content ---
   const handleAddNote = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!noteTitle || !noteContent || !selectedGroup) return;
@@ -271,12 +243,58 @@ export default function WorkspaceDashboard() {
     }
   };
 
+  // --- ACTIVE COURSE TRACKING LOGIC ---
+  const handleSetActiveCourse = async (courseId: string) => {
+    // Deactivate all others, activate this one
+    const updatedContents = groupContents.map(c => {
+      if (c.content_type.includes('course') || c.content_type.includes('subject')) {
+        if (c.id === courseId) {
+          return { ...c, content_data: { ...c.content_data, is_active: true } };
+        } else if (c.content_data?.is_active) {
+          return { ...c, content_data: { ...c.content_data, is_active: false } };
+        }
+      }
+      return c;
+    });
+    setGroupContents(updatedContents); // Optimistic UI update
+
+    // Update in DB (Only for the activated one for performance, or both if needed)
+    const previouslyActive = groupContents.find(c => c.content_data?.is_active && c.id !== courseId);
+    if (previouslyActive) {
+      await workspaceSupabase.from('shared_contents').update({ content_data: { ...previouslyActive.content_data, is_active: false } }).eq('id', previouslyActive.id);
+    }
+    await workspaceSupabase.from('shared_contents').update({ 
+      content_data: { ...groupContents.find(c=>c.id===courseId)?.content_data, is_active: true } 
+    }).eq('id', courseId);
+  };
+
+  const handleSaveActiveCourseData = async (courseId: string) => {
+    setIsSavingTarget(true);
+    const targetCourse = groupContents.find(c => c.id === courseId);
+    if (targetCourse) {
+      const newData = { ...targetCourse.content_data, today_target: activeTargetText, progress_pct: activeProgress };
+      const { error } = await workspaceSupabase.from('shared_contents').update({ content_data: newData }).eq('id', courseId);
+      if (!error) {
+        setGroupContents(prev => prev.map(c => c.id === courseId ? { ...c, content_data: newData } : c));
+      }
+    }
+    setTimeout(() => setIsSavingTarget(false), 500); // Visual feedback
+  };
+
+  // Initialize states when active course changes
+  const activeCourse = groupContents.find(c => c.content_data?.is_active && (c.content_type === 'lms_course' || c.content_type === 'bcs_subject'));
+  useEffect(() => {
+    if (activeCourse) {
+      setActiveTargetText(activeCourse.content_data?.today_target || '');
+      setActiveProgress(activeCourse.content_data?.progress_pct || 0);
+    }
+  }, [activeCourse?.id]);
+
   // --- Chat Logic ---
   useEffect(() => {
     if (selectedGroup && isChatOpen) {
       fetchChatMessages(selectedGroup.id);
-      const chatSubscription = workspaceSupabase
-        .channel(`chat_channel_${selectedGroup.id}`)
+      const chatSubscription = workspaceSupabase.channel(`chat_channel_${selectedGroup.id}`)
         .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'group_chats', filter: `group_id=eq.${selectedGroup.id}` }, 
           (payload: any) => {
             const newMsg = payload.new as ChatMessage;
@@ -287,26 +305,22 @@ export default function WorkspaceDashboard() {
             });
           }
         ).subscribe();
-
       return () => { workspaceSupabase.removeChannel(chatSubscription); };
     }
   }, [selectedGroup, isChatOpen]);
 
   const fetchChatMessages = async (groupId: string) => {
     setChatLoading(true);
-    const { data, error } = await workspaceSupabase.from('group_chats').select('*').eq('group_id', groupId).order('created_at', { ascending: true });
-    if (error) console.error("Chat Fetch Error:", error);
-    if (!error && data) setChatMessages(data as ChatMessage[]);
+    const { data } = await workspaceSupabase.from('group_chats').select('*').eq('group_id', groupId).order('created_at', { ascending: true });
+    if (data) setChatMessages(data as ChatMessage[]);
     setChatLoading(false);
   };
 
   const handleSendMessage = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     if (!newMessage.trim() || !selectedGroup || !session?.user) return;
-
     const messageText = newMessage;
     setNewMessage(''); 
-
     const tempId = `temp-${Date.now()}`;
     const optimisticMsg: ChatMessage = { id: tempId, group_id: selectedGroup.id, user_id: session.user.id, sender_name: profileName, content: messageText, message_type: 'text', isOptimistic: true };
     setChatMessages((prev) => [...prev, optimisticMsg]);
@@ -314,23 +328,16 @@ export default function WorkspaceDashboard() {
     const { error } = await workspaceSupabase.from('group_chats').insert([{
       group_id: selectedGroup.id, user_id: session.user.id, sender_name: profileName, content: messageText, message_type: 'text',
     }]);
-    
-    if (error) {
-      console.error("Failed to send msg:", error);
-      setChatMessages((prev) => prev.filter((m) => m.id !== tempId));
-    }
+    if (error) setChatMessages((prev) => prev.filter((m) => m.id !== tempId));
   };
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file || !selectedGroup || !session?.user) return;
-
     const type = file.type.startsWith('image/') ? 'image' : 'file';
     const fileName = `${session.user.id}-${Date.now()}-${file.name.replace(/[^a-zA-Z0-9.]/g, '')}`;
-    
     const { error: uploadError } = await workspaceSupabase.storage.from('chat-files').upload(fileName, file);
-    if (uploadError) { alert('Upload failed: ' + uploadError.message); return; }
-
+    if (uploadError) return alert('Upload failed: ' + uploadError.message);
     const { data } = workspaceSupabase.storage.from('chat-files').getPublicUrl(fileName);
     await workspaceSupabase.from('group_chats').insert([{
       group_id: selectedGroup.id, user_id: session.user.id, sender_name: profileName, content: file.name, message_type: type, file_url: data.publicUrl,
@@ -349,18 +356,14 @@ export default function WorkspaceDashboard() {
         const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
         const recorder = new MediaRecorder(stream);
         const audioChunks: Blob[] = [];
-
         recorder.ondataavailable = (event) => { if (event.data.size > 0) audioChunks.push(event.data); };
         recorder.onstop = async () => {
           stream.getTracks().forEach((track) => track.stop());
           if (audioChunks.length === 0 || !selectedGroup || !session?.user) return;
-
           const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
           const fileName = `audio-${session.user.id}-${Date.now()}.webm`;
-          
           const { error: uploadError } = await workspaceSupabase.storage.from('chat-files').upload(fileName, audioBlob);
           if (uploadError) return;
-
           const { data } = workspaceSupabase.storage.from('chat-files').getPublicUrl(fileName);
           await workspaceSupabase.from('group_chats').insert([{
             group_id: selectedGroup.id, user_id: session.user.id, sender_name: profileName, content: 'Voice Message', message_type: 'audio', file_url: data.publicUrl,
@@ -373,13 +376,7 @@ export default function WorkspaceDashboard() {
     }
   };
 
-  // --- Render Handlers ---
-  if (loading) return (
-    <div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-[#0D0E0F]">
-      <div className="w-12 h-12 border-4 border-[#FF9D2E] border-t-transparent rounded-full animate-spin"></div>
-    </div>
-  );
-
+  if (loading) return <div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-[#0D0E0F]"><div className="w-12 h-12 border-4 border-[#FF9D2E] border-t-transparent rounded-full animate-spin"></div></div>;
   if (selectedContent?.content_type === 'lms_course') return <WorkspaceCourseViewer courseData={selectedContent} onBack={handleBack} />;
   if (selectedContent?.content_type === 'bcs_subject') return <WorkspaceBcsViewer subjectData={selectedContent} onBack={handleBack} />;
 
@@ -387,6 +384,7 @@ export default function WorkspaceDashboard() {
   const totalCourses = allContents.filter(c => c.content_type.includes('course') || c.content_type.includes('subject')).length;
   
   const groupCourses = groupContents.filter(c => c.content_type === 'lms_course' || c.content_type === 'bcs_subject');
+  const inactiveCourses = groupCourses.filter(c => c.id !== activeCourse?.id);
   const groupNotes = groupContents.filter(c => c.content_type === 'shared_note' || c.content_type === 'personal_note');
 
   return (
@@ -400,7 +398,6 @@ export default function WorkspaceDashboard() {
               <ArrowLeft size={20} />
             </button>
           ) : (
-            // Updated Header Logo (Replaced Sparkles with custom logo)
             <div className="w-10 h-10 bg-[#141516] rounded-xl flex items-center justify-center shadow-lg shadow-[#FF9D2E]/20 border border-[#292B2E] overflow-hidden p-1">
               <img src="/icons/logo.png" alt="Logo" className="w-full h-full object-contain" />
             </div>
@@ -521,32 +518,107 @@ export default function WorkspaceDashboard() {
             <div className="flex justify-between items-end mb-6 border-b border-slate-200 dark:border-[#292B2E] pb-4">
               <h2 className="text-2xl font-black text-slate-900 dark:text-white">{selectedGroup.name} - Workspace</h2>
             </div>
+            
             <div className="flex flex-col lg:flex-row gap-6 items-start">
               
-              <div className="flex-1 w-full">
-                <h3 className="text-lg font-bold mb-4 text-slate-800 dark:text-[#F5F5F5] flex items-center gap-2"><BookOpen size={18} className="text-[#19C784]" /> Assigned Courses</h3>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  {groupCourses.length === 0 ? (
-                    <div className="col-span-full py-12 text-center bg-white dark:bg-[#18191A] rounded-3xl border border-dashed border-slate-300 dark:border-[#292B2E] transition-colors">
-                      <FolderOpen size={40} className="mx-auto text-slate-300 dark:text-[#292B2E] mb-3" />
-                      <p className="text-slate-500 dark:text-[#A3A5A8] font-medium">No courses uploaded yet.</p>
-                    </div>
-                  ) : (
-                    groupCourses.map(item => (
-                      <div key={item.id} onClick={() => openContent(item)} className="bg-white dark:bg-[#18191A] p-5 rounded-2xl border border-slate-200 dark:border-[#292B2E] hover:border-[#19C784]/60 shadow-sm hover:shadow-xl dark:hover:shadow-[#19C784]/5 transition-all cursor-pointer group flex flex-col justify-between min-h-[140px]">
+              <div className="flex-1 w-full space-y-8">
+                
+                {/* --- ACTIVE COURSE TRACKER --- */}
+                {activeCourse && (
+                  <div className="bg-gradient-to-br from-white to-orange-50 dark:from-[#18191A] dark:to-[#1D1E20] border-2 border-[#FF9D2E] rounded-3xl p-6 shadow-[0_0_20px_rgba(255,157,46,0.15)] relative overflow-hidden group">
+                    <div className="absolute top-0 right-0 w-32 h-32 bg-[#FF9D2E]/10 rounded-full blur-2xl -translate-y-1/2 translate-x-1/3"></div>
+                    
+                    <div className="flex justify-between items-start mb-4 relative z-10">
+                      <div className="flex items-center gap-3">
+                        <div className="p-3 bg-[#FF9D2E] text-slate-900 rounded-xl shadow-md"><Target size={24} /></div>
                         <div>
-                          <div className="flex items-start justify-between mb-3">
-                            <div className="p-2.5 rounded-xl bg-[#19C784]/10 text-[#19C784]"><BookOpen size={20} /></div>
-                            <span className="text-[10px] font-bold text-slate-500 dark:text-[#A3A5A8] bg-slate-50 dark:bg-[#1D1E20] px-3 py-1 rounded-lg border border-slate-100 dark:border-[#292B2E] uppercase">{item.content_type.replace('_', ' ')}</span>
-                          </div>
-                          <h3 className="font-bold text-base leading-snug line-clamp-2 text-slate-900 dark:text-white group-hover:text-[#19C784] transition-colors">{item.title}</h3>
+                          <span className="text-[10px] uppercase font-bold text-[#FF9D2E] tracking-wider bg-[#FF9D2E]/10 px-2 py-1 rounded-md mb-1 inline-block">Running Currently</span>
+                          <h3 className="text-xl font-bold text-slate-900 dark:text-white leading-tight">{activeCourse.title}</h3>
                         </div>
                       </div>
-                    ))
-                  )}
+                      <button onClick={() => openContent(activeCourse)} className="hidden sm:flex items-center gap-2 bg-slate-900 dark:bg-white text-white dark:text-slate-900 px-4 py-2 rounded-xl font-bold text-sm hover:scale-105 transition-transform">
+                        Enter <PlayCircle size={16} />
+                      </button>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 relative z-10">
+                      {/* Live Progress Bar */}
+                      <div className="bg-white dark:bg-[#141516] p-4 rounded-2xl border border-slate-200 dark:border-[#292B2E]">
+                        <div className="flex justify-between items-center mb-2">
+                          <label className="text-sm font-bold flex items-center gap-2 text-slate-700 dark:text-[#A3A5A8]"><TrendingUp size={16} className="text-[#19C784]" /> Live Progress</label>
+                          <span className="font-black text-[#19C784] text-lg">{activeProgress}%</span>
+                        </div>
+                        <input 
+                          type="range" min="0" max="100" 
+                          value={activeProgress} 
+                          onChange={(e) => setActiveProgress(Number(e.target.value))}
+                          onMouseUp={() => handleSaveActiveCourseData(activeCourse.id)}
+                          onTouchEnd={() => handleSaveActiveCourseData(activeCourse.id)}
+                          className="w-full h-2 bg-slate-200 dark:bg-[#292B2E] rounded-lg appearance-none cursor-pointer accent-[#19C784]"
+                        />
+                      </div>
+
+                      {/* Today's Target */}
+                      <div className="bg-white dark:bg-[#141516] p-4 rounded-2xl border border-slate-200 dark:border-[#292B2E] flex flex-col justify-between">
+                        <label className="text-sm font-bold flex items-center gap-2 text-slate-700 dark:text-[#A3A5A8] mb-2"><CheckCircle2 size={16} className="text-[#668CFF]" /> Today's Target</label>
+                        <div className="flex gap-2">
+                          <input 
+                            type="text" 
+                            placeholder="e.g., Module 4 - Variables" 
+                            value={activeTargetText}
+                            onChange={(e) => setActiveTargetText(e.target.value)}
+                            className="flex-1 bg-slate-50 dark:bg-[#1D1E20] border border-slate-200 dark:border-[#292B2E] focus:border-[#668CFF] rounded-xl px-3 py-2 text-sm text-slate-900 dark:text-white outline-none"
+                          />
+                          <button 
+                            onClick={() => handleSaveActiveCourseData(activeCourse.id)}
+                            disabled={isSavingTarget}
+                            className="bg-[#668CFF] text-white px-4 rounded-xl font-bold text-sm hover:bg-blue-600 transition-colors disabled:opacity-50"
+                          >
+                            {isSavingTarget ? 'Saved!' : 'Save'}
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                    
+                    <button onClick={() => openContent(activeCourse)} className="sm:hidden w-full mt-4 flex items-center justify-center gap-2 bg-slate-900 dark:bg-white text-white dark:text-slate-900 px-4 py-3 rounded-xl font-bold transition-transform">
+                      Enter Course <PlayCircle size={18} />
+                    </button>
+                  </div>
+                )}
+
+                {/* --- OTHER ASSIGNED COURSES --- */}
+                <div>
+                  <h3 className="text-lg font-bold mb-4 text-slate-800 dark:text-[#F5F5F5] flex items-center gap-2"><BookOpen size={18} className="text-[#19C784]" /> All Assigned Courses</h3>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    {groupCourses.length === 0 ? (
+                      <div className="col-span-full py-12 text-center bg-white dark:bg-[#18191A] rounded-3xl border border-dashed border-slate-300 dark:border-[#292B2E] transition-colors">
+                        <FolderOpen size={40} className="mx-auto text-slate-300 dark:text-[#292B2E] mb-3" />
+                        <p className="text-slate-500 dark:text-[#A3A5A8] font-medium">No courses uploaded yet.</p>
+                      </div>
+                    ) : (
+                      inactiveCourses.map(item => (
+                        <div key={item.id} className="bg-white dark:bg-[#18191A] p-5 rounded-2xl border border-slate-200 dark:border-[#292B2E] hover:border-[#19C784]/60 shadow-sm hover:shadow-xl dark:hover:shadow-[#19C784]/5 transition-all cursor-pointer group flex flex-col justify-between min-h-[150px]">
+                          <div onClick={() => openContent(item)}>
+                            <div className="flex items-start justify-between mb-3">
+                              <div className="p-2.5 rounded-xl bg-[#19C784]/10 text-[#19C784]"><BookOpen size={20} /></div>
+                              <span className="text-[10px] font-bold text-slate-500 dark:text-[#A3A5A8] bg-slate-50 dark:bg-[#1D1E20] px-3 py-1 rounded-lg border border-slate-100 dark:border-[#292B2E] uppercase">{item.content_type.replace('_', ' ')}</span>
+                            </div>
+                            <h3 className="font-bold text-base leading-snug line-clamp-2 text-slate-900 dark:text-white group-hover:text-[#19C784] transition-colors mb-4">{item.title}</h3>
+                          </div>
+                          <button 
+                            onClick={(e) => { e.stopPropagation(); handleSetActiveCourse(item.id); }}
+                            className="w-full py-2 bg-slate-100 dark:bg-[#1D1E20] text-slate-600 dark:text-[#A3A5A8] hover:bg-[#FF9D2E] hover:text-slate-900 rounded-lg text-xs font-bold transition-colors border border-slate-200 dark:border-transparent flex items-center justify-center gap-1.5"
+                          >
+                            <Target size={14} /> Set as Active Focus
+                          </button>
+                        </div>
+                      ))
+                    )}
+                  </div>
                 </div>
               </div>
 
+              {/* --- GROUP NOTES (RIGHT SIDEBAR) --- */}
               <div className="w-full lg:w-80 shrink-0">
                 <div className="bg-white dark:bg-[#18191A] border border-slate-200 dark:border-[#292B2E] rounded-3xl p-5 shadow-sm sticky top-24">
                   <div className="flex justify-between items-center mb-4">
@@ -649,14 +721,11 @@ export default function WorkspaceDashboard() {
           </div>
         )}
 
-        {/* --- PROFILE TAB (Fully Responsive Update) --- */}
+        {/* --- PROFILE TAB --- */}
         {activeTab === 'profile' && (
           <div className="animate-fade-in flex flex-col items-center mt-6 w-full max-w-sm md:max-w-md mx-auto px-4 sm:px-0">
             <div className="w-full flex justify-start mb-6">
-              <button 
-                onClick={() => setActiveTab('dashboard')} 
-                className="flex items-center gap-2 text-slate-500 dark:text-[#A3A5A8] hover:text-[#FF9D2E] dark:hover:text-[#FF9D2E] transition-colors font-bold bg-white dark:bg-[#18191A] px-4 py-2.5 rounded-xl border border-slate-200 dark:border-[#292B2E] shadow-sm hover:shadow-md"
-              >
+              <button onClick={() => setActiveTab('dashboard')} className="flex items-center gap-2 text-slate-500 dark:text-[#A3A5A8] hover:text-[#FF9D2E] dark:hover:text-[#FF9D2E] transition-colors font-bold bg-white dark:bg-[#18191A] px-4 py-2.5 rounded-xl border border-slate-200 dark:border-[#292B2E] shadow-sm hover:shadow-md">
                 <ArrowLeft size={18} /> Back to Dashboard
               </button>
             </div>
@@ -668,46 +737,31 @@ export default function WorkspaceDashboard() {
             <div className="w-full bg-white dark:bg-[#18191A] p-5 sm:p-6 rounded-3xl border border-slate-200 dark:border-[#292B2E] shadow-sm space-y-4 text-center">
               <h3 className="font-bold text-base sm:text-lg text-slate-500 dark:text-[#A3A5A8]">Your Nickname</h3>
               <div className="flex flex-col sm:flex-row gap-3">
-                <input 
-                  type="text" 
-                  value={profileName} 
-                  onChange={(e) => setProfileName(e.target.value)} 
-                  className="flex-1 w-full bg-slate-50 dark:bg-[#141516] border border-slate-200 dark:border-[#292B2E] focus:border-[#FF9D2E] rounded-xl p-3 outline-none text-center font-bold text-slate-900 dark:text-white transition-all" 
-                />
-                <button 
-                  onClick={handleUpdateProfile} 
-                  disabled={isUpdatingProfile}
-                  className="bg-[#19C784] w-full sm:w-auto justify-center text-white px-5 py-3 sm:py-0 rounded-xl font-bold hover:bg-emerald-600 transition-colors flex items-center gap-2 disabled:opacity-50"
-                >
+                <input type="text" value={profileName} onChange={(e) => setProfileName(e.target.value)} className="flex-1 w-full bg-slate-50 dark:bg-[#141516] border border-slate-200 dark:border-[#292B2E] focus:border-[#FF9D2E] rounded-xl p-3 outline-none text-center font-bold text-slate-900 dark:text-white transition-all" />
+                <button onClick={handleUpdateProfile} disabled={isUpdatingProfile} className="bg-[#19C784] w-full sm:w-auto justify-center text-white px-5 py-3 sm:py-0 rounded-xl font-bold hover:bg-emerald-600 transition-colors flex items-center gap-2 disabled:opacity-50">
                   <CheckCircle2 size={20} /> Save
                 </button>
               </div>
               <p className="text-xs text-slate-400 dark:text-[#707277]">This name will appear in group chats and notes.</p>
             </div>
 
-            {/* Profile Stats Section */}
             <div className="w-full grid grid-cols-2 gap-4 mt-5">
               <div className="bg-white dark:bg-[#18191A] p-4 rounded-3xl border border-slate-200 dark:border-[#292B2E] text-center shadow-sm">
-                <div className="mx-auto w-8 h-8 bg-blue-50 dark:bg-blue-500/10 rounded-full flex items-center justify-center mb-2">
-                  <Users size={16} className="text-blue-500" />
-                </div>
+                <div className="mx-auto w-8 h-8 bg-blue-50 dark:bg-blue-500/10 rounded-full flex items-center justify-center mb-2"><Users size={16} className="text-blue-500" /></div>
                 <h4 className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white">{groups.length}</h4>
                 <p className="text-[10px] uppercase font-bold text-slate-500 dark:text-[#707277]">Study Groups</p>
               </div>
               
               <div className="bg-white dark:bg-[#18191A] p-4 rounded-3xl border border-slate-200 dark:border-[#292B2E] text-center shadow-sm">
-                <div className="mx-auto w-8 h-8 bg-[#FF9D2E]/10 rounded-full flex items-center justify-center mb-2">
-                  <FileText size={16} className="text-[#FF9D2E]" />
-                </div>
+                <div className="mx-auto w-8 h-8 bg-[#FF9D2E]/10 rounded-full flex items-center justify-center mb-2"><FileText size={16} className="text-[#FF9D2E]" /></div>
                 <h4 className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white">{allContents.filter(c => c.content_data?.userId === session?.user?.id).length}</h4>
                 <p className="text-[10px] uppercase font-bold text-slate-500 dark:text-[#707277]">Notes Created</p>
               </div>
             </div>
 
-            {/* Verified Student Section (Updated with Custom Logo) */}
             <div className="w-full mt-5 bg-gradient-to-r from-[#FF9D2E]/10 to-[#E83FCB]/10 p-5 rounded-3xl border border-[#FF9D2E]/20 flex flex-col sm:flex-row items-center gap-4 text-center sm:text-left">
               <div className="w-14 h-14 bg-white dark:bg-[#141516] rounded-2xl flex items-center justify-center shadow-sm border border-white/50 dark:border-[#292B2E] p-1.5 shrink-0 overflow-hidden">
-                <img src="/icons/alfaravi logo.png" alt="Al_Faravi-os" className="w-full h-full object-contain" />
+                <img src="/icons/logo.png" alt="Al_Faravi-os" className="w-full h-full object-contain" />
               </div>
               <div>
                 <h4 className="font-bold text-slate-900 dark:text-white text-base">Verified Student</h4>
@@ -715,20 +769,13 @@ export default function WorkspaceDashboard() {
               </div>
             </div>
 
-            {/* PWA Install Button */}
             {deferredPrompt && (
-              <button 
-                onClick={handleInstallPWA} 
-                className="mt-6 w-full flex items-center justify-center gap-3 p-4 bg-gradient-to-r from-[#FF9D2E] to-[#FFAA3D] rounded-2xl text-[#0D0E0F] font-extrabold shadow-[0_0_20px_rgba(255,157,46,0.2)] hover:shadow-[0_0_30px_rgba(255,157,46,0.4)] transition-all transform hover:-translate-y-1"
-              >
+              <button onClick={handleInstallPWA} className="mt-6 w-full flex items-center justify-center gap-3 p-4 bg-gradient-to-r from-[#FF9D2E] to-[#FFAA3D] rounded-2xl text-[#0D0E0F] font-extrabold shadow-[0_0_20px_rgba(255,157,46,0.2)] hover:shadow-[0_0_30px_rgba(255,157,46,0.4)] transition-all transform hover:-translate-y-1">
                 <DownloadCloud className="w-5 h-5" /> Install App
               </button>
             )}
 
-            <button 
-              onClick={handleLogout} 
-              className="mt-6 sm:mt-8 w-full flex items-center justify-center gap-3 p-4 bg-white dark:bg-[#18191A] border border-[#FF5B61]/20 rounded-2xl text-[#FF5B61] font-bold hover:bg-[#FF5B61]/10 transition-colors"
-            >
+            <button onClick={handleLogout} className="mt-6 sm:mt-8 w-full flex items-center justify-center gap-3 p-4 bg-white dark:bg-[#18191A] border border-[#FF5B61]/20 rounded-2xl text-[#FF5B61] font-bold hover:bg-[#FF5B61]/10 transition-colors">
               <LogOut className="w-5 h-5" /> Log Out
             </button>
           </div>

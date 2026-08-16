@@ -5,7 +5,7 @@ import { supabase, workspaceAdmin, workspaceSupabase } from '../../lib/supabase'
 import { 
   ArrowLeft, Download, RefreshCw, FileText, BookOpen, Plus, 
   X, Trash2, Edit3, Save, Users, UserPlus, Copy, CheckCircle2,
-  MessageCircle, Send
+  MessageCircle, Send, Target, TrendingUp, PlayCircle
 } from 'lucide-react';
 
 import WorkspaceCourseViewer from './WorkspaceCourseViewer';
@@ -45,6 +45,11 @@ export default function GroupDetails() {
   const [isAssigning, setIsAssigning] = useState(false);
   const [copiedId, setCopiedId] = useState<string | null>(null);
 
+  // --- Active Course States ---
+  const [activeTargetText, setActiveTargetText] = useState('');
+  const [activeProgress, setActiveProgress] = useState(0);
+  const [isSavingTarget, setIsSavingTarget] = useState(false);
+
   // --- Admin Chat States ---
   const [isChatOpen, setIsChatOpen] = useState(false);
   const [chatMessages, setChatMessages] = useState<any[]>([]);
@@ -60,7 +65,6 @@ export default function GroupDetails() {
     fetchGroupDetails();
     fetchMainOsData();
     fetchAllFriends();
-    // Admin ID fetch from Main OS
     supabase.auth.getUser().then(({ data }) => { if (data?.user) setAdminId(data.user.id); });
   }, [groupId]);
 
@@ -84,7 +88,6 @@ export default function GroupDetails() {
   const fetchAllFriends = async () => {
     const { data } = await workspaceAdmin.from('group_members').select('friend_name, email, password_plain').order('created_at', { ascending: false });
     if (data) {
-      // Deduplicate emails with lowercase to avoid case issues
       const uniqueFriends = Array.from(new Map(data.filter(item => item.email).map(item => [item.email.toLowerCase(), item])).values());
       setAllFriends(uniqueFriends);
     }
@@ -101,48 +104,26 @@ export default function GroupDetails() {
   const handleAssignFriend = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsAssigning(true);
-
     try {
       if (assignMode === 'existing') {
         if (!selectedFriendEmail) return;
         const targetEmail = selectedFriendEmail.toLowerCase().trim();
         const friendToAssign = allFriends.find(f => f.email.toLowerCase() === targetEmail);
-        
         const isAlreadyInGroup = groupMembers.some(m => m.email.toLowerCase() === targetEmail);
-        if (isAlreadyInGroup) {
-          alert("This friend is already in the group!");
-          setIsAssigning(false);
-          return;
-        }
-
-        await workspaceAdmin.from('group_members').insert([{
-          group_id: groupId,
-          friend_name: friendToAssign.friend_name,
-          email: targetEmail,
-          password_plain: friendToAssign.password_plain
-        }]);
+        if (isAlreadyInGroup) { alert("This friend is already in the group!"); setIsAssigning(false); return; }
+        await workspaceAdmin.from('group_members').insert([{ group_id: groupId, friend_name: friendToAssign.friend_name, email: targetEmail, password_plain: friendToAssign.password_plain }]);
         setSelectedFriendEmail('');
-
       } else {
         if (!fName || !fEmail || !fPassword) return;
         const cleanEmail = fEmail.toLowerCase().trim();
-        
         const { error: authError } = await workspaceSupabase.auth.signUp({ email: cleanEmail, password: fPassword });
         if (authError && !authError.message.includes('already registered')) throw authError;
-
-        await workspaceAdmin.from('group_members').insert([{
-          group_id: groupId, friend_name: fName, email: cleanEmail, password_plain: fPassword
-        }]);
+        await workspaceAdmin.from('group_members').insert([{ group_id: groupId, friend_name: fName, email: cleanEmail, password_plain: fPassword }]);
         setFName(''); setFEmail(''); setFPassword('');
       }
-
-      fetchGroupMembers();
-      fetchAllFriends(); 
-    } catch (error: any) {
-      alert(error.message);
-    } finally {
-      setIsAssigning(false);
-    }
+      fetchGroupMembers(); fetchAllFriends(); 
+    } catch (error: any) { alert(error.message); } 
+    finally { setIsAssigning(false); }
   };
 
   const handleCopyCredentials = (member: any) => {
@@ -159,12 +140,55 @@ export default function GroupDetails() {
     fetchGroupMembers();
   };
 
-  // --- Admin Chat Logic (Realtime) ---
+  // --- Active Course Logic (Admin Side) ---
+  const groupCourses = contents.filter(c => c.content_type === 'lms_course' || c.content_type === 'bcs_subject');
+  const activeCourse = groupCourses.find(c => c.content_data?.is_active);
+  const inactiveCourses = groupCourses.filter(c => c.id !== activeCourse?.id);
+
+  useEffect(() => {
+    if (activeCourse) {
+      setActiveTargetText(activeCourse.content_data?.today_target || '');
+      setActiveProgress(activeCourse.content_data?.progress_pct || 0);
+    }
+  }, [activeCourse?.id]);
+
+  const handleSetActiveCourse = async (courseId: string) => {
+    const updatedContents = contents.map(c => {
+      if (c.content_type.includes('course') || c.content_type.includes('subject')) {
+        if (c.id === courseId) return { ...c, content_data: { ...c.content_data, is_active: true } };
+        else if (c.content_data?.is_active) return { ...c, content_data: { ...c.content_data, is_active: false } };
+      }
+      return c;
+    });
+    setContents(updatedContents);
+
+    const previouslyActive = contents.find(c => c.content_data?.is_active && c.id !== courseId);
+    if (previouslyActive) {
+      await workspaceAdmin.from('shared_contents').update({ content_data: { ...previouslyActive.content_data, is_active: false } }).eq('id', previouslyActive.id);
+    }
+    await workspaceAdmin.from('shared_contents').update({ 
+      content_data: { ...contents.find(c=>c.id===courseId)?.content_data, is_active: true } 
+    }).eq('id', courseId);
+  };
+
+  const handleSaveActiveCourseData = async (courseId: string) => {
+    setIsSavingTarget(true);
+    const targetCourse = contents.find(c => c.id === courseId);
+    if (targetCourse) {
+      const newData = { ...targetCourse.content_data, today_target: activeTargetText, progress_pct: activeProgress };
+      const { error } = await workspaceAdmin.from('shared_contents').update({ content_data: newData }).eq('id', courseId);
+      if (!error) {
+        setContents(prev => prev.map(c => c.id === courseId ? { ...c, content_data: newData } : c));
+      }
+    }
+    setTimeout(() => setIsSavingTarget(false), 500);
+  };
+
+  // --- Admin Chat Logic ---
   useEffect(() => {
     if (groupId && isChatOpen) {
       fetchChatMessages();
-      const chatSubscription = workspaceAdmin
-        .channel(`admin_chat_channel_${groupId}`)
+      const chatSubscription = workspaceAdmin.channel(`admin_chat_channel_${groupId}`)
         .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'group_chats', filter: `group_id=eq.${groupId}` }, 
           (payload: any) => {
             const newMsg = payload.new;
@@ -174,7 +198,6 @@ export default function GroupDetails() {
             });
           }
         ).subscribe();
-
       return () => { workspaceAdmin.removeChannel(chatSubscription); };
     }
   }, [groupId, isChatOpen]);
@@ -189,17 +212,10 @@ export default function GroupDetails() {
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newMessage.trim() || !groupId) return;
-
     const messageText = newMessage;
     setNewMessage(''); 
-
-    // Admin sends message
     await workspaceAdmin.from('group_chats').insert([{
-      group_id: groupId, 
-      user_id: adminId, 
-      sender_name: 'Faravi (Admin)', // <--- Admin Tag
-      content: messageText, 
-      message_type: 'text',
+      group_id: groupId, user_id: adminId, sender_name: 'Faravi (Admin)', content: messageText, message_type: 'text',
     }]);
   };
 
@@ -234,7 +250,7 @@ export default function GroupDetails() {
           const customContents = oldMod?.contents?.filter((oldC: any) => !newContents.some((newC: any) => newC.id === oldC.id)) || [];
           return { ...newMod, contents: [...mergedContents, ...customContents] };
         });
-        updatedData = { ...courseData, progress_pct: existingData.progress_pct || 0, modules: updatedModules };
+        updatedData = { ...courseData, progress_pct: existingData.progress_pct || 0, is_active: existingData.is_active || false, today_target: existingData.today_target || '', modules: updatedModules };
       } 
       else if (item.content_type === 'bcs_subject') {
         const { data: subjectData } = await supabase.from('bcs_subjects').select('*').eq('id', originalId).single();
@@ -252,7 +268,7 @@ export default function GroupDetails() {
           const customRes = oldChap?.resources?.filter((oldR: any) => !newRes.some((nR: any) => nR.id === oldR.id)) || [];
           return { ...newChap, resources: [...mergedRes, ...customRes] };
         });
-        updatedData = { ...subjectData, progress_pct: existingData.progress_pct || 0, chapters: updatedChapters };
+        updatedData = { ...subjectData, progress_pct: existingData.progress_pct || 0, is_active: existingData.is_active || false, today_target: existingData.today_target || '', chapters: updatedChapters };
       }
       await workspaceAdmin.from('shared_contents').update({ content_data: updatedData }).eq('id', item.id);
       fetchGroupContents();
@@ -300,7 +316,6 @@ export default function GroupDetails() {
     } catch (err) {} setLoading(false);
   };
 
-  const groupCourses = contents.filter(c => c.content_type === 'lms_course' || c.content_type === 'bcs_subject');
   const groupNotes = contents.filter(c => c.content_type === 'shared_note' || c.content_type === 'personal_note');
 
   if (selectedContent?.content_type === 'lms_course') return <WorkspaceCourseViewer courseData={selectedContent} onBack={() => setSelectedContent(null)} readOnly={true} />;
@@ -398,27 +413,104 @@ export default function GroupDetails() {
         </div>
 
         <div className="flex flex-col lg:flex-row gap-6 items-start mt-8">
-          <div className="flex-1 w-full">
-            <h2 className="text-xl font-bold mb-4 flex items-center gap-2"><BookOpen className="text-[#19C784]" size={20}/> Courses inside Group</h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {groupCourses.map(item => (
-                <div key={item.id} onClick={() => setSelectedContent(item)} className="bg-[#18191A] border border-[#292B2E] hover:border-[#19C784]/60 p-5 rounded-3xl flex flex-col justify-between cursor-pointer group hover:-translate-y-1 hover:shadow-xl">
-                  <div>
-                    <div className="flex justify-between items-start mb-3">
-                      <div className="p-2.5 rounded-xl bg-[#19C784]/10 text-[#19C784]"><BookOpen size={20} /></div>
-                      <button onClick={(e) => { e.stopPropagation(); handleDeleteContent(item.id, item.content_type); }} className="p-2 text-[#707277] hover:text-red-500 hover:bg-red-500/10 rounded-lg"><Trash2 size={16}/></button>
+          
+          {/* --- MAIN COURSES AREA --- */}
+          <div className="flex-1 w-full space-y-8">
+            
+            {/* ACTIVE COURSE HIGHLIGHT (Admin View & Control) */}
+            {activeCourse && (
+              <div className="bg-[#1D1E20] border-2 border-[#FF9D2E] rounded-3xl p-6 shadow-[0_0_20px_rgba(255,157,46,0.15)] relative overflow-hidden group">
+                <div className="absolute top-0 right-0 w-32 h-32 bg-[#FF9D2E]/10 rounded-full blur-2xl -translate-y-1/2 translate-x-1/3"></div>
+                
+                <div className="flex justify-between items-start mb-4 relative z-10">
+                  <div className="flex items-center gap-3">
+                    <div className="p-3 bg-[#FF9D2E] text-slate-900 rounded-xl shadow-md"><Target size={24} /></div>
+                    <div>
+                      <span className="text-[10px] uppercase font-bold text-[#FF9D2E] tracking-wider bg-[#FF9D2E]/10 px-2 py-1 rounded-md mb-1 inline-block">Active Group Focus</span>
+                      <h3 className="text-xl font-bold text-white leading-tight">{activeCourse.title}</h3>
                     </div>
-                    <h3 className="font-bold text-lg leading-snug mb-4 group-hover:text-[#19C784] transition-colors">{item.title}</h3>
                   </div>
-                  <div className="pt-3 border-t border-[#292B2E] flex justify-between items-center text-xs">
-                    <span className="text-[#A3A5A8] font-medium group-hover:text-white">Click to Enter Lesson →</span>
-                    <button onClick={(e) => { e.stopPropagation(); handleSyncContent(item); }} disabled={syncingId === item.id} className="p-1.5 text-[#707277] hover:text-[#FF9D2E] rounded-md"><RefreshCw size={14} className={syncingId === item.id ? 'animate-spin text-[#FF9D2E]' : ''} /></button>
+                  <button onClick={() => setSelectedContent(activeCourse)} className="hidden sm:flex items-center gap-2 bg-white text-slate-900 px-4 py-2 rounded-xl font-bold text-sm hover:scale-105 transition-transform">
+                    Enter <PlayCircle size={16} />
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 relative z-10">
+                  {/* Live Progress Bar (Admin Edit) */}
+                  <div className="bg-[#141516] p-4 rounded-2xl border border-[#292B2E]">
+                    <div className="flex justify-between items-center mb-2">
+                      <label className="text-sm font-bold flex items-center gap-2 text-[#A3A5A8]"><TrendingUp size={16} className="text-[#19C784]" /> Group Progress</label>
+                      <span className="font-black text-[#19C784] text-lg">{activeProgress}%</span>
+                    </div>
+                    <input 
+                      type="range" min="0" max="100" 
+                      value={activeProgress} 
+                      onChange={(e) => setActiveProgress(Number(e.target.value))}
+                      onMouseUp={() => handleSaveActiveCourseData(activeCourse.id)}
+                      onTouchEnd={() => handleSaveActiveCourseData(activeCourse.id)}
+                      className="w-full h-2 bg-[#292B2E] rounded-lg appearance-none cursor-pointer accent-[#19C784]"
+                    />
+                  </div>
+
+                  {/* Today's Target (Admin Edit) */}
+                  <div className="bg-[#141516] p-4 rounded-2xl border border-[#292B2E] flex flex-col justify-between">
+                    <label className="text-sm font-bold flex items-center gap-2 text-[#A3A5A8] mb-2"><CheckCircle2 size={16} className="text-[#668CFF]" /> Target assigned by Admin/Group</label>
+                    <div className="flex gap-2">
+                      <input 
+                        type="text" 
+                        placeholder="Set a target for the group..." 
+                        value={activeTargetText}
+                        onChange={(e) => setActiveTargetText(e.target.value)}
+                        className="flex-1 bg-[#1D1E20] border border-[#292B2E] focus:border-[#668CFF] rounded-xl px-3 py-2 text-sm text-white outline-none"
+                      />
+                      <button 
+                        onClick={() => handleSaveActiveCourseData(activeCourse.id)}
+                        disabled={isSavingTarget}
+                        className="bg-[#668CFF] text-white px-4 rounded-xl font-bold text-sm hover:bg-blue-600 transition-colors disabled:opacity-50"
+                      >
+                        {isSavingTarget ? 'Saved!' : 'Save'}
+                      </button>
+                    </div>
                   </div>
                 </div>
-              ))}
+              </div>
+            )}
+
+            {/* OTHER COURSES */}
+            <div>
+              <h2 className="text-xl font-bold mb-4 flex items-center gap-2"><BookOpen className="text-[#19C784]" size={20}/> Group Courses Hub</h2>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {inactiveCourses.map(item => (
+                  <div key={item.id} className="bg-[#18191A] border border-[#292B2E] hover:border-[#19C784]/60 p-5 rounded-3xl flex flex-col justify-between group transition-all">
+                    <div onClick={() => setSelectedContent(item)} className="cursor-pointer">
+                      <div className="flex justify-between items-start mb-3">
+                        <div className="p-2.5 rounded-xl bg-[#19C784]/10 text-[#19C784]"><BookOpen size={20} /></div>
+                        <button onClick={(e) => { e.stopPropagation(); handleDeleteContent(item.id, item.content_type); }} className="p-2 text-[#707277] hover:text-red-500 hover:bg-red-500/10 rounded-lg"><Trash2 size={16}/></button>
+                      </div>
+                      <h3 className="font-bold text-lg leading-snug mb-4 group-hover:text-[#19C784] transition-colors">{item.title}</h3>
+                    </div>
+                    <div className="pt-3 border-t border-[#292B2E] flex flex-col gap-2">
+                      <div className="flex justify-between items-center text-xs">
+                        <span className="text-[#A3A5A8] font-medium">Synced Content</span>
+                        <button onClick={(e) => { e.stopPropagation(); handleSyncContent(item); }} disabled={syncingId === item.id} className="p-1.5 text-[#707277] hover:text-[#FF9D2E] rounded-md"><RefreshCw size={14} className={syncingId === item.id ? 'animate-spin text-[#FF9D2E]' : ''} /></button>
+                      </div>
+                      <button 
+                        onClick={(e) => { e.stopPropagation(); handleSetActiveCourse(item.id); }}
+                        className="w-full py-2 bg-[#141516] text-[#A3A5A8] hover:bg-[#FF9D2E] hover:text-slate-900 rounded-lg text-xs font-bold transition-colors flex items-center justify-center gap-1.5"
+                      >
+                        <Target size={14} /> Force Set as Active Focus
+                      </button>
+                    </div>
+                  </div>
+                ))}
+                {inactiveCourses.length === 0 && !activeCourse && (
+                  <p className="text-[#707277] py-8 text-center col-span-full">No courses added yet. Push a course to get started.</p>
+                )}
+              </div>
             </div>
           </div>
 
+          {/* --- RIGHT SIDEBAR (NOTES) --- */}
           <div className="w-full lg:w-[340px] shrink-0 bg-[#18191A] border border-[#292B2E] rounded-3xl p-5 shadow-sm">
             <div className="flex justify-between items-center mb-4">
               <h3 className="font-bold flex items-center gap-2"><FileText size={18} className="text-[#FF9D2E]"/> Group Notes</h3>
