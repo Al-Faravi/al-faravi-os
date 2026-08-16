@@ -58,10 +58,8 @@ export default function GroupDetails() {
   const [chatLoading, setChatLoading] = useState(false);
   const chatBottomRef = useRef<HTMLDivElement | null>(null);
   
-  // 🔴 Notification State
   const [unreadCount, setUnreadCount] = useState(0); 
   
-  // লিসেনারের ভেতরে isChatOpen এর লেটেস্ট ভ্যালু পাওয়ার জন্য Ref
   const isChatOpenRef = useRef(isChatOpen);
   useEffect(() => { isChatOpenRef.current = isChatOpen; }, [isChatOpen]);
 
@@ -69,7 +67,6 @@ export default function GroupDetails() {
     if (isChatOpen) chatBottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [chatMessages, isChatOpen]);
 
-  // 🔔 Request Browser Notification Permission
   useEffect(() => {
     if ('Notification' in window && Notification.permission === 'default') {
       Notification.requestPermission();
@@ -156,13 +153,10 @@ export default function GroupDetails() {
 
   // --- Active Course & Live To-Do Logic ---
   const groupCourses = contents.filter(c => c.content_type === 'lms_course' || c.content_type === 'bcs_subject');
-  const activeCourse = groupCourses.find(c => c.content_data?.is_active);
-  const inactiveCourses = groupCourses.filter(c => c.id !== activeCourse?.id);
-
-  const isLms = activeCourse?.content_type === 'lms_course';
-  const activeModules = activeCourse ? (isLms ? activeCourse.content_data?.modules || [] : activeCourse.content_data?.chapters || []) : [];
-  const selectedModForDropdown = activeModules.find((m: any) => m.id === targetModuleId);
-  const activeContentsList = selectedModForDropdown ? (isLms ? selectedModForDropdown.contents || [] : selectedModForDropdown.resources || []) : [];
+  
+  // 🔴 এখন একটি নয়, বরং যেগুলোর is_active: true আছে, সবগুলোর লিস্ট নিচ্ছি
+  const activeCourses = groupCourses.filter(c => c.content_data?.is_active);
+  const inactiveCourses = groupCourses.filter(c => !c.content_data?.is_active);
 
   const getCalculatedProgress = (course: any) => {
     if (!course?.content_data) return 0;
@@ -176,38 +170,41 @@ export default function GroupDetails() {
     return total === 0 ? 0 : Math.round((completed / total) * 100);
   };
 
-  const calculatedProgress = getCalculatedProgress(activeCourse);
+  // --- TOGGLE ACTIVE COURSE LOGIC ---
+  const handleToggleActiveCourse = async (courseId: string) => {
+    const targetCourse = contents.find(c => c.id === courseId);
+    if (!targetCourse) return;
 
-  const handleSetActiveCourse = async (courseId: string) => {
-    const updatedContents = contents.map(c => {
-      if (c.content_type.includes('course') || c.content_type.includes('subject')) {
-        if (c.id === courseId) return { ...c, content_data: { ...c.content_data, is_active: true } };
-        else if (c.content_data?.is_active) return { ...c, content_data: { ...c.content_data, is_active: false } };
-      }
-      return c;
-    });
-    setContents(updatedContents);
-    const previouslyActive = contents.find(c => c.content_data?.is_active && c.id !== courseId);
-    if (previouslyActive) await workspaceAdmin.from('shared_contents').update({ content_data: { ...previouslyActive.content_data, is_active: false } }).eq('id', previouslyActive.id);
-    await workspaceAdmin.from('shared_contents').update({ content_data: { ...contents.find(c=>c.id===courseId)?.content_data, is_active: true } }).eq('id', courseId);
+    const currentStatus = targetCourse.content_data?.is_active || false;
+    const newStatus = !currentStatus;
+    const updatedData = { ...targetCourse.content_data, is_active: newStatus };
+
+    setContents(prev => prev.map(c => c.id === courseId ? { ...c, content_data: updatedData } : c));
+    await workspaceAdmin.from('shared_contents').update({ content_data: updatedData }).eq('id', courseId);
   };
 
-  const handleAddTarget = async () => {
-    if (!targetModuleId || !targetDate || !activeCourse) return;
+  const handleAddTarget = async (course: any) => {
+    const isLms = course.content_type === 'lms_course';
+    const activeModules = isLms ? course.content_data?.modules || [] : course.content_data?.chapters || [];
+    const selectedModForDropdown = activeModules.find((m: any) => m.id === targetModuleId);
+    const activeContentsList = selectedModForDropdown ? (isLms ? selectedModForDropdown.contents || [] : selectedModForDropdown.resources || []) : [];
+
+    if (!targetModuleId || !targetDate || !course) return;
     setIsSavingTarget(true);
     let targetTitle = targetContentId === 'all' ? `Full: ${selectedModForDropdown.title}` : activeContentsList.find((c: any) => c.id === targetContentId).title;
     const newTarget = { id: `tgt-${Date.now()}`, moduleId: targetModuleId, contentId: targetContentId, title: targetTitle, parentTitle: selectedModForDropdown.title, dueDate: targetDate, isCompleted: false };
-    const existingTargets = activeCourse.content_data.group_targets || [];
-    const updatedData = { ...activeCourse.content_data, group_targets: [...existingTargets, newTarget] };
-    setContents(prev => prev.map(c => c.id === activeCourse.id ? { ...c, content_data: updatedData } : c));
-    await workspaceAdmin.from('shared_contents').update({ content_data: updatedData }).eq('id', activeCourse.id);
+    const existingTargets = course.content_data.group_targets || [];
+    const updatedData = { ...course.content_data, group_targets: [...existingTargets, newTarget] };
+    setContents(prev => prev.map(c => c.id === course.id ? { ...c, content_data: updatedData } : c));
+    await workspaceAdmin.from('shared_contents').update({ content_data: updatedData }).eq('id', course.id);
     setTargetModuleId(''); setTargetContentId('all'); setTargetDate(''); setIsSavingTarget(false);
   };
 
-  const handleToggleTarget = async (target: any) => {
-    if (!activeCourse) return;
+  const handleToggleTarget = async (target: any, course: any) => {
+    if (!course) return;
+    const isLms = course.content_type === 'lms_course';
     const newStatus = !target.isCompleted;
-    const updatedData = JSON.parse(JSON.stringify(activeCourse.content_data));
+    const updatedData = JSON.parse(JSON.stringify(course.content_data));
     const targetIndex = updatedData.group_targets.findIndex((t: any) => t.id === target.id);
     if (targetIndex > -1) updatedData.group_targets[targetIndex].isCompleted = newStatus;
     const modulesList = isLms ? updatedData.modules : updatedData.chapters;
@@ -217,21 +214,20 @@ export default function GroupDetails() {
       if (target.contentId === 'all') contentsList.forEach((c: any) => c.is_completed = newStatus);
       else { const conIndex = contentsList.findIndex((c: any) => c.id === target.contentId); if (conIndex > -1) contentsList[conIndex].is_completed = newStatus; }
     }
-    updatedData.progress_pct = getCalculatedProgress({ content_type: activeCourse.content_type, content_data: updatedData });
-    setContents(prev => prev.map(c => c.id === activeCourse.id ? { ...c, content_data: updatedData } : c));
-    await workspaceAdmin.from('shared_contents').update({ content_data: updatedData }).eq('id', activeCourse.id);
+    updatedData.progress_pct = getCalculatedProgress({ content_type: course.content_type, content_data: updatedData });
+    setContents(prev => prev.map(c => c.id === course.id ? { ...c, content_data: updatedData } : c));
+    await workspaceAdmin.from('shared_contents').update({ content_data: updatedData }).eq('id', course.id);
   };
 
-  const handleDeleteTarget = async (targetId: string) => {
-    const updatedData = { ...activeCourse.content_data, group_targets: activeCourse.content_data.group_targets.filter((t:any) => t.id !== targetId) };
-    setContents(prev => prev.map(c => c.id === activeCourse.id ? { ...c, content_data: updatedData } : c));
-    await workspaceAdmin.from('shared_contents').update({ content_data: updatedData }).eq('id', activeCourse.id);
+  const handleDeleteTarget = async (targetId: string, course: any) => {
+    const updatedData = { ...course.content_data, group_targets: course.content_data.group_targets.filter((t:any) => t.id !== targetId) };
+    setContents(prev => prev.map(c => c.id === course.id ? { ...c, content_data: updatedData } : c));
+    await workspaceAdmin.from('shared_contents').update({ content_data: updatedData }).eq('id', course.id);
   };
 
   // --- Admin Chat & Notifications Logic ---
   useEffect(() => {
     if (!groupId) return;
-    
     fetchChatMessages();
     
     const chatSubscription = workspaceAdmin.channel(`admin_chat_channel_${groupId}`)
@@ -243,20 +239,14 @@ export default function GroupDetails() {
             return [...prev, newMsg];
           });
 
-          // 🔴 Notification & Badge Logic
-          if (newMsg.user_id !== adminId) { // Ignore own message
+          if (newMsg.user_id !== adminId) {
             if (isChatOpenRef.current) {
               localStorage.setItem(`admin_chat_read_${groupId}`, new Date().toISOString());
             } else {
-              setUnreadCount(prev => prev + 1); // Increase badge count
-              
+              setUnreadCount(prev => prev + 1);
               if ('Notification' in window && Notification.permission === 'granted') {
                 const notifBody = newMsg.message_type === 'text' ? newMsg.content : 'Sent an attachment 📎';
-                new Notification(`New message from ${newMsg.sender_name}`, { 
-                  body: notifBody,
-                  icon: '/icons/logo.png',
-                  badge: '/icons/logo.png'
-                });
+                new Notification(`New message from ${newMsg.sender_name}`, { body: notifBody, icon: '/icons/logo.png', badge: '/icons/logo.png' });
               }
             }
           }
@@ -273,12 +263,11 @@ export default function GroupDetails() {
     setChatLoading(false);
   };
 
-  // 🔔 Smart Toggle Chat
   const toggleChat = () => {
     const newState = !isChatOpen;
     setIsChatOpen(newState);
     if (newState) {
-      setUnreadCount(0); // Clear badge
+      setUnreadCount(0);
       localStorage.setItem(`admin_chat_read_${groupId}`, new Date().toISOString());
     }
   };
@@ -363,7 +352,7 @@ export default function GroupDetails() {
       const { data: modulesData } = await supabase.from('lms_modules').select('*').eq('course_id', selectedLms).order('created_at');
       const moduleIds = modulesData?.map(m => m.id) || [];
       const { data: contentsData } = await supabase.from('lms_contents').select('*').in('module_id', moduleIds).order('created_at');
-      const fullCourse = { ...courseData, modules: modulesData?.map(mod => ({ ...mod, contents: contentsData?.filter(c => c.module_id === mod.id) || [] })) };
+      const fullCourse = { ...courseData, modules: modulesData?.map(mod => ({ ...mod, contents: contentsData?.filter(cF => cF.module_id === mod.id) || [] })) };
       await workspaceAdmin.from('shared_contents').insert([{ group_id: groupId, title: courseData.title, content_type: 'lms_course', content_data: fullCourse }]);
       setSelectedLms(''); fetchGroupContents();
     } catch (err) {} setLoading(false);
@@ -427,7 +416,7 @@ export default function GroupDetails() {
 
           <div className="bg-white dark:bg-[#18191A] p-5 md:p-6 rounded-3xl border border-slate-200 dark:border-[#292B2E] shadow-sm">
             <h2 className="text-lg md:text-xl font-bold mb-5 flex items-center gap-2"><UserPlus className="text-[#668CFF]" size={20} /> Assign Friend</h2>
-            <div className="flex gap-2 mb-4 bg-slate-100 dark:bg-[#141516] p-1 rounded-xl border border-slate-200 dark:border-[#292B2E]">
+            <div className="flex gap-2 mb-4 bg-slate-100 dark:bg-[#141516] p-1 rounded-xl border border-s0ate-200 dark:border-[#292B2E]">
               <button onClick={() => setAssignMode('existing')} className={`flex-1 py-1.5 text-xs md:text-sm font-bold rounded-lg transition-colors ${assignMode === 'existing' ? 'bg-white dark:bg-[#292B2E] text-slate-900 dark:text-white shadow-sm' : 'text-slate-500 dark:text-[#707277]'}`}>Existing Friend</button>
               <button onClick={() => setAssignMode('new')} className={`flex-1 py-1.5 text-xs md:text-sm font-bold rounded-lg transition-colors ${assignMode === 'new' ? 'bg-white dark:bg-[#292B2E] text-slate-900 dark:text-white shadow-sm' : 'text-slate-500 dark:text-[#707277]'}`}>Create New</button>
             </div>
@@ -484,87 +473,101 @@ export default function GroupDetails() {
           {/* --- MAIN COURSES AREA --- */}
           <div className="flex-1 w-full space-y-8">
             
-            {/* ACTIVE COURSE HIGHLIGHT & TO-DO */}
-            {activeCourse && (
-              <div className="bg-white dark:bg-[#1D1E20] border-2 border-[#FF9D2E] rounded-3xl p-5 md:p-6 shadow-[0_0_20px_rgba(255,157,46,0.15)] relative overflow-hidden group">
-                <div className="absolute top-0 right-0 w-32 h-32 bg-[#FF9D2E]/10 rounded-full blur-2xl -translate-y-1/2 translate-x-1/3"></div>
-                
-                <div className="flex flex-col sm:flex-row justify-between items-start mb-6 relative z-10 gap-4">
-                  <div className="flex items-center gap-3">
-                    <div className="p-3 bg-[#FF9D2E] text-slate-900 rounded-xl shadow-md shrink-0"><Target size={24} /></div>
-                    <div>
-                      <span className="text-[10px] uppercase font-bold text-[#FF9D2E] tracking-wider bg-[#FF9D2E]/10 px-2 py-1 rounded-md mb-1 inline-block">Active Group Focus</span>
-                      <h3 className="text-lg md:text-xl font-bold text-slate-900 dark:text-white leading-tight">{activeCourse.title}</h3>
-                    </div>
-                  </div>
-                  <button onClick={() => setSelectedContent(activeCourse)} className="w-full sm:w-auto flex items-center justify-center gap-2 bg-white dark:bg-slate-800 text-slate-900 dark:text-white px-4 py-2 rounded-xl font-bold text-sm hover:scale-105 transition-transform border border-slate-200 dark:border-slate-700">
-                    Enter Course <PlayCircle size={16} />
-                  </button>
-                </div>
+            {/* 🚀 PREMIUM ACTIVE COURSES UI (Multiple Active Support) */}
+            {activeCourses.map(course => {
+              const calculatedProgress = getCalculatedProgress(course);
+              const isLms = course.content_type === 'lms_course';
+              const activeModules = isLms ? course.content_data?.modules || [] : course.content_data?.chapters || [];
+              const selectedModForDropdown = activeModules.find((m: any) => m.id === targetModuleId);
+              const activeContentsList = selectedModForDropdown ? (isLms ? selectedModForDropdown.contents || [] : selectedModForDropdown.resources || []) : [];
 
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 md:gap-6 relative z-10">
+              return (
+                <div key={course.id} className="bg-white dark:bg-[#1D1E20] border-2 border-[#FF9D2E] rounded-3xl p-5 md:p-6 shadow-[0_0_20px_rgba(255,157,46,0.15)] relative overflow-hidden mb-8">
+                  <div className="absolute top-0 right-0 w-32 h-32 bg-[#FF9D2E]/10 rounded-full blur-2xl -translate-y-1/2 translate-x-1/3"></div>
                   
-                  {/* Live Progress Bar */}
-                  <div className="bg-slate-100 dark:bg-[#141516] p-5 rounded-2xl border border-slate-200 dark:border-[#292B2E] flex flex-col justify-center">
-                    <div className="flex justify-between items-center mb-4">
-                      <label className="text-xs md:text-sm font-bold flex items-center gap-2 text-slate-500 dark:text-[#A3A5A8]"><TrendingUp size={16} className="text-[#19C784]" /> Live Group Progress</label>
-                      <span className="font-black text-[#19C784] text-2xl">{calculatedProgress}%</span>
+                  <div className="flex flex-col sm:flex-row justify-between items-start mb-6 relative z-10 gap-4">
+                    <div className="flex items-center gap-3">
+                      <div className="p-3 bg-[#FF9D2E] text-slate-900 rounded-xl shadow-md shrink-0"><Target size={24} /></div>
+                      <div>
+                        <span className="text-[10px] uppercase font-bold text-[#FF9D2E] tracking-wider bg-[#FF9D2E]/10 px-2 py-1 rounded-md mb-1 inline-block">Active Group Focus</span>
+                        <h3 className="text-lg md:text-xl font-bold text-slate-900 dark:text-white leading-tight">{course.title}</h3>
+                      </div>
                     </div>
-                    <div className="w-full h-3 bg-slate-200 dark:bg-[#292B2E] rounded-full overflow-hidden">
-                      <div className="h-full bg-[#19C784] rounded-full transition-all duration-500 ease-out" style={{ width: `${calculatedProgress}%` }}></div>
+                    <div className="flex flex-col gap-2 w-full sm:w-auto">
+                      <button onClick={() => setSelectedContent(course)} className="flex items-center justify-center gap-2 bg-white dark:bg-slate-800 text-slate-900 dark:text-white px-4 py-2 rounded-xl font-bold text-sm hover:scale-105 transition-transform border border-slate-200 dark:border-slate-700">
+                        Enter Course <PlayCircle size={16} />
+                      </button>
+                      {/* 🔴 Inactive করার বাটন */}
+                      <button onClick={() => handleToggleActiveCourse(course.id)} className="bg-red-500/10 text-red-500 hover:bg-red-500/20 px-4 py-1.5 rounded-xl font-bold text-xs transition-colors flex items-center justify-center">
+                        Remove Active Status
+                      </button>
                     </div>
-                    <p className="text-[10px] md:text-xs text-slate-400 dark:text-[#707277] mt-3 text-center">Calculated automatically as targets are marked Done.</p>
                   </div>
 
-                  {/* To-Do / Target Assignment Builder */}
-                  <div className="bg-slate-100 dark:bg-[#141516] p-5 rounded-2xl border border-slate-200 dark:border-[#292B2E] flex flex-col gap-4">
-                    <h4 className="text-xs md:text-sm font-bold flex items-center gap-2 text-slate-500 dark:text-[#A3A5A8] border-b border-slate-200 dark:border-[#292B2E] pb-3">
-                      <CheckCircle2 size={16} className="text-[#668CFF]" /> Target assigned by Admin/Group
-                    </h4>
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 md:gap-6 relative z-10">
                     
-                    {/* Add Target UI */}
-                    <div className="flex flex-col gap-3">
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                        <select value={targetModuleId} onChange={(e) => { setTargetModuleId(e.target.value); setTargetContentId('all'); }} className="bg-white dark:bg-[#1D1E20] border border-slate-200 dark:border-[#292B2E] rounded-xl px-3 py-2 text-sm outline-none">
-                          <option value="">-- Select Module/Chapter --</option>
-                          {activeModules.map((m: any) => <option key={m.id} value={m.id}>{m.title}</option>)}
-                        </select>
-                        <select value={targetContentId} disabled={!targetModuleId} onChange={(e) => setTargetContentId(e.target.value)} className="bg-white dark:bg-[#1D1E20] border border-slate-200 dark:border-[#292B2E] rounded-xl px-3 py-2 text-sm outline-none disabled:opacity-50">
-                          <option value="all">📚 Entire Module (All Resources)</option>
-                          {activeContentsList.map((c: any) => <option key={c.id} value={c.id}>📄 {c.title}</option>)}
-                        </select>
+                    {/* Live Progress Bar */}
+                    <div className="bg-slate-100 dark:bg-[#141516] p-5 rounded-2xl border border-slate-200 dark:border-[#292B2E] flex flex-col justify-center">
+                      <div className="flex justify-between items-center mb-4">
+                        <label className="text-xs md:text-sm font-bold flex items-center gap-2 text-slate-500 dark:text-[#A3A5A8]"><TrendingUp size={16} className="text-[#19C784]" /> Live Group Progress</label>
+                        <span className="font-black text-[#19C784] text-2xl">{calculatedProgress}%</span>
                       </div>
-                      <div className="flex flex-col sm:flex-row gap-3">
-                        <input type="date" value={targetDate} onChange={(e) => setTargetDate(e.target.value)} className="flex-1 bg-white dark:bg-[#1D1E20] border border-slate-200 dark:border-[#292B2E] rounded-xl px-3 py-2 text-sm outline-none [color-scheme:dark]" />
-                        <button onClick={handleAddTarget} disabled={!targetModuleId || !targetDate || isSavingTarget} className="bg-[#668CFF] text-white px-5 rounded-xl font-bold text-sm hover:bg-blue-600 transition-colors disabled:opacity-50 flex items-center justify-center gap-2 py-2">
-                          <Plus size={16} /> Add Target
-                        </button>
+                      <div className="w-full h-3 bg-slate-200 dark:bg-[#292B2E] rounded-full overflow-hidden">
+                        <div className="h-full bg-[#19C784] rounded-full transition-all duration-500 ease-out" style={{ width: `${calculatedProgress}%` }}></div>
                       </div>
+                      <p className="text-[10px] md:text-xs text-slate-400 dark:text-[#707277] mt-3 text-center">Calculated automatically as targets are marked Done.</p>
                     </div>
 
-                    {/* Active Targets List */}
-                    <div className="space-y-2 mt-2 max-h-60 overflow-y-auto pr-1">
-                      {activeCourse.content_data?.group_targets?.map((target: any) => (
-                        <div key={target.id} className={`flex items-center justify-between p-3 rounded-xl border ${target.isCompleted ? 'bg-[#19C784]/10 border-[#19C784]/30' : 'bg-white dark:bg-[#1D1E20] border-slate-200 dark:border-[#292B2E]'}`}>
-                          <label className="flex items-center gap-3 cursor-pointer flex-1 min-w-0">
-                            <input type="checkbox" checked={target.isCompleted} onChange={() => handleToggleTarget(target)} className="w-4 h-4 accent-[#19C784] rounded-md cursor-pointer shrink-0" />
-                            <div className="flex flex-col min-w-0">
-                              <span className={`text-xs md:text-sm font-bold truncate ${target.isCompleted ? 'text-[#19C784] line-through' : 'text-slate-900 dark:text-white'}`}>{target.title}</span>
-                              <span className="text-[10px] text-slate-500 dark:text-[#A3A5A8] truncate">{target.parentTitle} • By {new Date(target.dueDate).toLocaleDateString()}</span>
-                            </div>
-                          </label>
-                          <button onClick={() => handleDeleteTarget(target.id)} className="text-slate-400 dark:text-[#707277] hover:text-red-500 p-1.5 shrink-0"><Trash2 size={14} /></button>
+                    {/* To-Do / Target Assignment Builder */}
+                    <div className="bg-slate-100 dark:bg-[#141516] p-5 rounded-2xl border border-slate-200 dark:border-[#292B2E] flex flex-col gap-4">
+                      <h4 className="text-xs md:text-sm font-bold flex items-center gap-2 text-slate-500 dark:text-[#A3A5A8] border-b border-slate-200 dark:border-[#292B2E] pb-3">
+                        <CheckCircle2 size={16} className="text-[#668CFF]" /> Target assigned by Admin/Group
+                      </h4>
+                      
+                      {/* Add Target UI */}
+                      <div className="flex flex-col gap-3">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                          <select value={targetModuleId} onChange={(e) => { setTargetModuleId(e.target.value); setTargetContentId('all'); }} className="bg-white dark:bg-[#1D1E20] border border-slate-200 dark:border-[#292B2E] rounded-xl px-3 py-2 text-sm outline-none">
+                            <option value="">-- Select Module/Chapter --</option>
+                            {activeModules.map((m: any) => <option key={m.id} value={m.id}>{m.title}</option>)}
+                          </select>
+                          <select value={targetContentId} disabled={!targetModuleId} onChange={(e) => setTargetContentId(e.target.value)} className="bg-white dark:bg-[#1D1E20] border border-slate-200 dark:border-[#292B2E] rounded-xl px-3 py-2 text-sm outline-none disabled:opacity-50">
+                            <option value="all">📚 Entire Module (All Resources)</option>
+                            {activeContentsList.map((c: any) => <option key={c.id} value={c.id}>📄 {c.title}</option>)}
+                          </select>
                         </div>
-                      ))}
-                      {(!activeCourse.content_data?.group_targets || activeCourse.content_data.group_targets.length === 0) && (
-                        <p className="text-xs text-slate-400 dark:text-[#707277] text-center italic py-2">No active targets set.</p>
-                      )}
-                    </div>
-                  </div>
+                        <div className="flex flex-col sm:flex-row gap-3">
+                          <input type="date" value={targetDate} onChange={(e) => setTargetDate(e.target.value)} className="flex-1 bg-white dark:bg-[#1D1E20] border border-slate-200 dark:border-[#292B2E] rounded-xl px-3 py-2 text-sm outline-none [color-scheme:dark]" />
+                          <button onClick={() => handleAddTarget(course)} disabled={!targetModuleId || !targetDate || isSavingTarget} className="bg-[#668CFF] text-white px-5 rounded-xl font-bold text-sm hover:bg-blue-600 transition-colors disabled:opacity-50 flex items-center justify-center gap-2 py-2">
+                            <Plus size={16} /> Add Target
+                          </button>
+                        </div>
+                      </div>
 
+                      {/* Active Targets List */}
+                      <div className="space-y-2 mt-2 max-h-60 overflow-y-auto pr-1">
+                        {course.content_data?.group_targets?.map((target: any) => (
+                          <div key={target.id} className={`flex items-center justify-between p-3 rounded-xl border ${target.isCompleted ? 'bg-[#19C784]/10 border-[#19C784]/30' : 'bg-white dark:bg-[#1D1E20] border-slate-200 dark:border-[#292B2E]'}`}>
+                            <label className="flex items-center gap-3 cursor-pointer flex-1 min-w-0">
+                              <input type="checkbox" checked={target.isCompleted} onChange={() => handleToggleTarget(target, course)} className="w-4 h-4 accent-[#19C784] rounded-md cursor-pointer shrink-0" />
+                              <div className="flex flex-col min-w-0">
+                                <span className={`text-xs md:text-sm font-bold truncate ${target.isCompleted ? 'text-[#19C784] line-through' : 'text-slate-900 dark:text-white'}`}>{target.title}</span>
+                                <span className="text-[10px] text-slate-500 dark:text-[#A3A5A8] truncate">{target.parentTitle} • By {new Date(target.dueDate).toLocaleDateString()}</span>
+                              </div>
+                            </label>
+                            <button onClick={() => handleDeleteTarget(target.id, course)} className="text-slate-400 dark:text-[#707277] hover:text-red-500 p-1.5 shrink-0"><Trash2 size={14} /></button>
+                          </div>
+                        ))}
+                        {(!course.content_data?.group_targets || course.content_data.group_targets.length === 0) && (
+                          <p className="text-xs text-slate-400 dark:text-[#707277] text-center italic py-2">No active targets set.</p>
+                        )}
+                      </div>
+                    </div>
+
+                  </div>
                 </div>
-              </div>
-            )}
+              );
+            })}
 
             {/* OTHER COURSES */}
             <div>
@@ -585,15 +588,15 @@ export default function GroupDetails() {
                         <button onClick={(e) => { e.stopPropagation(); handleSyncContent(item); }} disabled={syncingId === item.id} className="p-1.5 text-slate-400 dark:text-[#707277] hover:text-[#FF9D2E] rounded-md"><RefreshCw size={14} className={syncingId === item.id ? 'animate-spin text-[#FF9D2E]' : ''} /></button>
                       </div>
                       <button 
-                        onClick={(e) => { e.stopPropagation(); handleSetActiveCourse(item.id); }}
+                        onClick={(e) => { e.stopPropagation(); handleToggleActiveCourse(item.id); }}
                         className="w-full py-2 bg-slate-100 dark:bg-[#141516] text-slate-600 dark:text-[#A3A5A8] hover:bg-[#FF9D2E] hover:text-slate-900 rounded-lg text-xs font-bold transition-colors flex items-center justify-center gap-1.5"
                       >
-                        <Target size={14} /> Force Set as Active Focus
+                        <Target size={14} /> Set as Active Focus
                       </button>
                     </div>
                   </div>
                 ))}
-                {inactiveCourses.length === 0 && !activeCourse && (
+                {inactiveCourses.length === 0 && activeCourses.length === 0 && (
                   <p className="text-slate-500 dark:text-[#707277] py-8 text-center col-span-full">No courses added yet. Push a course to get started.</p>
                 )}
               </div>
