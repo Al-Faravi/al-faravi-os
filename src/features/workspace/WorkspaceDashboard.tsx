@@ -6,7 +6,7 @@ import {
   Sun, Moon, LayoutDashboard, Users, User, BookOpen, Clock, FileText, 
   ChevronRight, MessageCircle, X, Send, Paperclip, Mic, Square, ArrowLeft, 
   Trash2, Edit3, FolderOpen, LogOut, CheckCircle2, Plus, DownloadCloud, Sparkles, ShieldCheck,
-  Target, TrendingUp, PlayCircle, BellRing
+  Target, TrendingUp, PlayCircle, BellRing, ChevronDown, ChevronUp 
 } from 'lucide-react';
 import ReactQuill from 'react-quill';
 import 'react-quill/dist/quill.snow.css';
@@ -66,6 +66,13 @@ export default function WorkspaceDashboard() {
   const [targetModuleId, setTargetModuleId] = useState('');
   const [targetContentId, setTargetContentId] = useState('all');
   const [targetDate, setTargetDate] = useState('');
+
+  // 🟢 Collapsible Active Course State
+  const [expandedCourses, setExpandedCourses] = useState<Record<string, boolean>>({});
+
+  const toggleCourseExpand = (courseId: string) => {
+    setExpandedCourses(prev => ({ ...prev, [courseId]: !prev[courseId] }));
+  };
 
   // Chat States
   const [isChatOpen, setIsChatOpen] = useState(false);
@@ -623,92 +630,105 @@ export default function WorkspaceDashboard() {
               
               <div className="flex-1 w-full space-y-8">
                 
-                {/* 🚀 PREMIUM ACTIVE COURSES UI (Multiple Active Support) */}
+                {/* 🚀 PREMIUM COLLAPSIBLE ACTIVE COURSES UI */}
                 {activeCourses.map(course => {
                   const calculatedProgress = getCalculatedProgress(course);
                   const isLms = course.content_type === 'lms_course';
                   const activeModules = isLms ? course.content_data?.modules || [] : course.content_data?.chapters || [];
                   const selectedModForDropdown = activeModules.find((m: any) => m.id === targetModuleId);
                   const activeContentsList = selectedModForDropdown ? (isLms ? selectedModForDropdown.contents || [] : selectedModForDropdown.resources || []) : [];
+                  const isExpanded = expandedCourses[course.id]; // 🟢 চেক করছি কার্ডটি ওপেন নাকি ক্লোজড
 
                   return (
-                    <div key={course.id} className="bg-gradient-to-br from-white to-slate-50 dark:from-[#18191A] dark:to-[#1D1E20] border border-slate-300 dark:border-[#FF9D2E]/50 rounded-3xl p-5 sm:p-8 shadow-xl relative overflow-hidden mb-8">
+                    <div key={course.id} className="bg-gradient-to-br from-white to-slate-50 dark:from-[#18191A] dark:to-[#1D1E20] border border-slate-300 dark:border-[#FF9D2E]/50 rounded-3xl p-5 sm:p-6 shadow-xl relative overflow-hidden mb-6 transition-all duration-300">
                       <div className="absolute top-0 right-0 w-64 h-64 bg-[#FF9D2E]/10 rounded-full blur-3xl -translate-y-1/2 translate-x-1/3 pointer-events-none"></div>
 
-                      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 relative z-10 mb-8">
-                        <div className="flex items-center gap-4">
+                      {/* --- Header Section (Always Visible) --- */}
+                      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 relative z-10">
+                        <div className="flex items-center gap-4 flex-1 w-full">
                           <div className="w-12 h-12 rounded-2xl bg-[#FF9D2E] flex items-center justify-center text-slate-900 shadow-lg shrink-0"><Target size={24} /></div>
-                          <div>
+                          <div className="flex-1 min-w-0">
                             <span className="text-[10px] font-black tracking-widest uppercase text-[#FF9D2E] mb-1 block">Active Focus</span>
-                            <h2 className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white leading-tight">{course.title}</h2>
+                            <h2 className="text-xl font-black text-slate-900 dark:text-white leading-tight truncate">{course.title}</h2>
                           </div>
                         </div>
                         
-                        <div className="flex flex-col gap-2 w-full sm:w-auto">
-                           <button onClick={() => setSelectedContent(course)} className="bg-slate-900 dark:bg-white text-white dark:text-slate-900 px-5 py-2.5 rounded-xl font-bold text-sm hover:scale-105 transition-transform flex items-center justify-center gap-2">
-                             Enter Course <PlayCircle size={18}/>
+                        <div className="flex flex-wrap sm:flex-nowrap items-center gap-2 w-full sm:w-auto">
+                           <button onClick={() => setSelectedContent(course)} className="flex-1 sm:flex-none bg-slate-900 dark:bg-white text-white dark:text-slate-900 px-4 py-2 rounded-xl font-bold text-sm hover:scale-105 transition-transform flex items-center justify-center gap-2">
+                             Enter <PlayCircle size={16}/>
                            </button>
-                           <button onClick={() => handleToggleActiveCourse(course.id)} className="bg-red-500/10 text-red-500 hover:bg-red-500/20 px-4 py-1.5 rounded-xl font-bold text-xs transition-colors flex items-center justify-center">
-                             Remove Active Status
+                           <button onClick={() => handleToggleActiveCourse(course.id)} className="bg-red-500/10 text-red-500 hover:bg-red-500/20 px-3 py-2 rounded-xl font-bold text-xs transition-colors whitespace-nowrap">
+                             Remove Active
+                           </button>
+                           
+                           {/* 🟢 Expand/Collapse Toggle Button */}
+                           <button onClick={() => toggleCourseExpand(course.id)} className="bg-slate-100 dark:bg-[#141516] text-slate-600 dark:text-[#A3A5A8] hover:text-[#FF9D2E] border border-slate-200 dark:border-[#292B2E] p-2 rounded-xl transition-colors">
+                             {isExpanded ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
                            </button>
                         </div>
                       </div>
 
-                      <div className="relative z-10 mb-8">
-                         <div className="flex justify-between items-end mb-2">
-                            <span className="text-sm font-bold text-slate-600 dark:text-[#A3A5A8]">Live Progress</span>
-                            <span className="text-2xl font-black text-[#19C784] leading-none">{calculatedProgress}%</span>
-                         </div>
-                         <div className="h-3 w-full bg-slate-200 dark:bg-[#141516] rounded-full overflow-hidden border border-slate-300 dark:border-[#292B2E]">
-                            <div className="h-full bg-gradient-to-r from-[#19C784] to-emerald-400 rounded-full transition-all duration-1000 ease-out relative" style={{ width: `${calculatedProgress}%` }}>
-                               <div className="absolute top-0 right-0 bottom-0 w-full bg-[linear-gradient(45deg,transparent_25%,rgba(255,255,255,0.2)_50%,transparent_75%)] bg-[length:20px_20px] animate-[shimmer_2s_linear_infinite]"></div>
-                            </div>
-                         </div>
-                      </div>
+                      {/* --- Collapsible Details Section (Progress & Targets) --- */}
+                      {isExpanded && (
+                        <div className="mt-6 pt-6 border-t border-slate-200 dark:border-[#292B2E] relative z-10 animate-fade-in">
+                          
+                          <div className="mb-6">
+                             <div className="flex justify-between items-end mb-2">
+                                <span className="text-sm font-bold text-slate-600 dark:text-[#A3A5A8]">Live Progress</span>
+                                <span className="text-2xl font-black text-[#19C784] leading-none">{calculatedProgress}%</span>
+                             </div>
+                             <div className="h-2 w-full bg-slate-200 dark:bg-[#141516] rounded-full overflow-hidden border border-slate-300 dark:border-[#292B2E]">
+                                <div className="h-full bg-gradient-to-r from-[#19C784] to-emerald-400 rounded-full transition-all duration-1000 ease-out relative" style={{ width: `${calculatedProgress}%` }}>
+                                   <div className="absolute top-0 right-0 bottom-0 w-full bg-[linear-gradient(45deg,transparent_25%,rgba(255,255,255,0.2)_50%,transparent_75%)] bg-[length:20px_20px] animate-[shimmer_2s_linear_infinite]"></div>
+                                </div>
+                             </div>
+                          </div>
 
-                      {/* TARGETS / TO-DO */}
-                      <div className="relative z-10 bg-slate-100 dark:bg-[#141516] rounded-2xl border border-slate-200 dark:border-[#292B2E] p-4 sm:p-5">
-                         <h3 className="text-sm font-bold text-slate-800 dark:text-[#A3A5A8] mb-4 flex items-center gap-2"><CheckCircle2 size={18} className="text-[#668CFF]"/> Course Targets & To-Do</h3>
-                         <div className="space-y-2 mb-4 max-h-[30vh] overflow-y-auto pr-2 custom-scrollbar">
-                            {course.content_data?.group_targets?.map((target: any) => (
-                              <div key={target.id} className={`flex items-center justify-between p-3 rounded-xl border ${target.isCompleted ? 'bg-[#19C784]/10 border-[#19C784]/30' : 'bg-white dark:bg-[#1D1E20] border-slate-200 dark:border-[#292B2E]'}`}>
-                                <label className="flex items-center gap-3 cursor-pointer flex-1">
-                                  <input type="checkbox" checked={target.isCompleted} onChange={() => handleToggleTarget(target, course)} className="w-5 h-5 accent-[#19C784] rounded-md cursor-pointer shrink-0" />
-                                  <div className="flex flex-col min-w-0">
-                                    <span className={`text-sm font-bold truncate ${target.isCompleted ? 'text-[#19C784] line-through' : 'text-slate-900 dark:text-white'}`}>{target.title}</span>
-                                    <span className="text-[10px] text-slate-500 dark:text-[#A3A5A8] truncate">{target.parentTitle} • By {new Date(target.dueDate).toLocaleDateString()}</span>
+                          <div className="bg-slate-100 dark:bg-[#141516] rounded-2xl border border-slate-200 dark:border-[#292B2E] p-4">
+                             <h3 className="text-sm font-bold text-slate-800 dark:text-[#A3A5A8] mb-4 flex items-center gap-2"><CheckCircle2 size={18} className="text-[#668CFF]"/> Course Targets & To-Do</h3>
+                             
+                             <div className="space-y-2 mb-4 max-h-[25vh] overflow-y-auto pr-2 custom-scrollbar">
+                                {course.content_data?.group_targets?.map((target: any) => (
+                                  <div key={target.id} className={`flex items-center justify-between p-3 rounded-xl border ${target.isCompleted ? 'bg-[#19C784]/10 border-[#19C784]/30' : 'bg-white dark:bg-[#1D1E20] border-slate-200 dark:border-[#292B2E]'}`}>
+                                    <label className="flex items-center gap-3 cursor-pointer flex-1 min-w-0">
+                                      <input type="checkbox" checked={target.isCompleted} onChange={() => handleToggleTarget(target, course)} className="w-5 h-5 accent-[#19C784] rounded-md cursor-pointer shrink-0" />
+                                      <div className="flex flex-col min-w-0">
+                                        <span className={`text-sm font-bold truncate ${target.isCompleted ? 'text-[#19C784] line-through' : 'text-slate-900 dark:text-white'}`}>{target.title}</span>
+                                        <span className="text-[10px] text-slate-500 dark:text-[#A3A5A8] truncate">{target.parentTitle} • By {new Date(target.dueDate).toLocaleDateString()}</span>
+                                      </div>
+                                    </label>
+                                    <button onClick={() => handleDeleteTarget(target.id, course)} className="text-slate-400 dark:text-[#707277] hover:text-red-500 p-1.5 shrink-0"><Trash2 size={16} /></button>
                                   </div>
-                                </label>
-                                <button onClick={() => handleDeleteTarget(target.id, course)} className="text-slate-400 dark:text-[#707277] hover:text-red-500 p-1.5 shrink-0"><Trash2 size={16} /></button>
-                              </div>
-                            ))}
-                            {(!course.content_data?.group_targets || course.content_data.group_targets.length === 0) && (
-                              <p className="text-xs text-slate-500 dark:text-[#707277] text-center italic py-2">No active targets set.</p>
-                            )}
-                         </div>
+                                ))}
+                                {(!course.content_data?.group_targets || course.content_data.group_targets.length === 0) && (
+                                  <p className="text-xs text-slate-500 dark:text-[#707277] text-center italic py-2">No active targets set.</p>
+                                )}
+                             </div>
 
-                         <div className="bg-white dark:bg-[#1D1E20] p-3 sm:p-4 rounded-xl border border-slate-200 dark:border-[#292B2E]">
-                            <p className="text-xs font-bold text-slate-500 dark:text-[#707277] mb-3 uppercase tracking-wider">Assign New Target</p>
-                            <div className="flex flex-col gap-3">
-                               <div className="flex flex-col md:flex-row gap-3">
-                                  <select value={targetModuleId} onChange={(e) => { setTargetModuleId(e.target.value); setTargetContentId('all'); }} className="flex-1 bg-slate-50 dark:bg-[#141516] border border-slate-200 dark:border-[#292B2E] rounded-lg px-3 py-2.5 text-sm text-slate-900 dark:text-white outline-none focus:border-[#FF9D2E] truncate">
-                                    <option value="">-- Select Module/Chapter --</option>
-                                    {activeModules.map((m: any) => <option key={m.id} value={m.id}>{m.title}</option>)}
-                                  </select>
-                                  <select value={targetContentId} disabled={!targetModuleId} onChange={(e) => setTargetContentId(e.target.value)} className="flex-1 bg-slate-50 dark:bg-[#141516] border border-slate-200 dark:border-[#292B2E] rounded-lg px-3 py-2.5 text-sm text-slate-900 dark:text-white outline-none focus:border-[#FF9D2E] truncate disabled:opacity-50">
-                                    <option value="all">📚 Entire Module (All Resources)</option>
-                                    {activeContentsList.map((c: any) => <option key={c.id} value={c.id}>📄 {c.title}</option>)}
-                                  </select>
-                               </div>
-                               <div className="flex flex-col sm:flex-row gap-3">
-                                  <input type="date" value={targetDate} onChange={(e) => setTargetDate(e.target.value)} className="flex-1 bg-slate-50 dark:bg-[#141516] border border-slate-200 dark:border-[#292B2E] rounded-lg px-3 py-2.5 text-sm text-slate-900 dark:text-white outline-none focus:border-[#FF9D2E] [color-scheme:light] dark:[color-scheme:dark]" />
-                                  <button onClick={() => handleAddTarget(course)} disabled={!targetModuleId || !targetDate || isSavingTarget} className="w-full sm:w-auto bg-[#FF9D2E] text-slate-900 px-6 py-2.5 rounded-lg font-bold flex items-center justify-center gap-2 hover:bg-[#FFAA3D] transition-colors disabled:opacity-50">
-                                     <Plus size={16}/> Add Target
-                                  </button>
-                               </div>
-                            </div>
-                         </div>
-                      </div>
+                             <div className="bg-white dark:bg-[#1D1E20] p-3 sm:p-4 rounded-xl border border-slate-200 dark:border-[#292B2E]">
+                                <p className="text-xs font-bold text-slate-500 dark:text-[#707277] mb-3 uppercase tracking-wider">Assign New Target</p>
+                                <div className="flex flex-col gap-3">
+                                   <div className="flex flex-col md:flex-row gap-3">
+                                      <select value={targetModuleId} onChange={(e) => { setTargetModuleId(e.target.value); setTargetContentId('all'); }} className="flex-1 bg-slate-50 dark:bg-[#141516] border border-slate-200 dark:border-[#292B2E] rounded-lg px-3 py-2 text-sm text-slate-900 dark:text-white outline-none focus:border-[#FF9D2E] truncate">
+                                        <option value="">-- Select Module/Chapter --</option>
+                                        {activeModules.map((m: any) => <option key={m.id} value={m.id}>{m.title}</option>)}
+                                      </select>
+                                      <select value={targetContentId} disabled={!targetModuleId} onChange={(e) => setTargetContentId(e.target.value)} className="flex-1 bg-slate-50 dark:bg-[#141516] border border-slate-200 dark:border-[#292B2E] rounded-lg px-3 py-2 text-sm text-slate-900 dark:text-white outline-none focus:border-[#FF9D2E] truncate disabled:opacity-50">
+                                        <option value="all">📚 Entire Module</option>
+                                        {activeContentsList.map((c: any) => <option key={c.id} value={c.id}>📄 {c.title}</option>)}
+                                      </select>
+                                   </div>
+                                   <div className="flex flex-col sm:flex-row gap-3">
+                                      <input type="date" value={targetDate} onChange={(e) => setTargetDate(e.target.value)} className="flex-1 bg-slate-50 dark:bg-[#141516] border border-slate-200 dark:border-[#292B2E] rounded-lg px-3 py-2 text-sm text-slate-900 dark:text-white outline-none focus:border-[#FF9D2E] [color-scheme:light] dark:[color-scheme:dark]" />
+                                      <button onClick={() => handleAddTarget(course)} disabled={!targetModuleId || !targetDate || isSavingTarget} className="w-full sm:w-auto bg-[#FF9D2E] text-slate-900 px-6 py-2 rounded-lg font-bold flex items-center justify-center gap-2 hover:bg-[#FFAA3D] transition-colors disabled:opacity-50">
+                                         <Plus size={16}/> Add Target
+                                      </button>
+                                   </div>
+                                </div>
+                             </div>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   );
                 })}
