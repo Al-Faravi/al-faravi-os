@@ -59,10 +59,11 @@ export default function WorkspaceDashboard() {
   const [noteContent, setNoteContent] = useState('');
   const [isEditing, setIsEditing] = useState(false);
 
-  // --- Active Course States ---
-  const [activeTargetText, setActiveTargetText] = useState('');
-  const [activeProgress, setActiveProgress] = useState(0);
+  // --- Active Course & To-Do Target States ---
   const [isSavingTarget, setIsSavingTarget] = useState(false);
+  const [targetModuleId, setTargetModuleId] = useState('');
+  const [targetContentId, setTargetContentId] = useState('all');
+  const [targetDate, setTargetDate] = useState('');
 
   // Chat States
   const [isChatOpen, setIsChatOpen] = useState(false);
@@ -105,6 +106,17 @@ export default function WorkspaceDashboard() {
   useEffect(() => {
     if (isChatOpen) chatBottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [chatMessages, isChatOpen]);
+
+  // 🚀 REFRESH BUG FIX: Restore Group from Session Storage
+  useEffect(() => {
+    const savedGroupId = sessionStorage.getItem('workspace_current_group');
+    if (savedGroupId && groups.length > 0 && !selectedGroup) {
+      const groupToRestore = groups.find(g => g.id === savedGroupId);
+      if (groupToRestore) {
+        handleGroupClick(groupToRestore);
+      }
+    }
+  }, [groups]);
 
   useEffect(() => {
     checkAuthAndFetchData();
@@ -187,6 +199,7 @@ export default function WorkspaceDashboard() {
   const handleGroupClick = (group: any) => {
     setSelectedGroup(group);
     setShowNoteForm(false);
+    sessionStorage.setItem('workspace_current_group', group.id); // Save for refresh
     fetchGroupContents(group.id);
   };
 
@@ -198,6 +211,7 @@ export default function WorkspaceDashboard() {
       setSelectedGroup(null);
       setGroupContents([]);
       setIsChatOpen(false);
+      sessionStorage.removeItem('workspace_current_group'); // Clear on back
     }
   };
 
@@ -244,51 +258,75 @@ export default function WorkspaceDashboard() {
   };
 
   // --- ACTIVE COURSE TRACKING LOGIC ---
+  const groupCourses = groupContents.filter(c => c.content_type === 'lms_course' || c.content_type === 'bcs_subject');
+  const activeCourse = groupCourses.find(c => c.content_data?.is_active);
+  const inactiveCourses = groupCourses.filter(c => c.id !== activeCourse?.id);
+
+  const isLms = activeCourse?.content_type === 'lms_course';
+  const activeModules = activeCourse ? (isLms ? activeCourse.content_data?.modules || [] : activeCourse.content_data?.chapters || []) : [];
+  const selectedModForDropdown = activeModules.find((m: any) => m.id === targetModuleId);
+  const activeContentsList = selectedModForDropdown ? (isLms ? selectedModForDropdown.contents || [] : selectedModForDropdown.resources || []) : [];
+
+  const getCalculatedProgress = (course: any) => {
+    if (!course?.content_data) return 0;
+    let total = 0, completed = 0;
+    const isLMS = course.content_type === 'lms_course';
+    const modules = isLMS ? course.content_data.modules : course.content_data.chapters;
+    modules?.forEach((m: any) => { const items = isLMS ? m.contents : m.resources; items?.forEach((i: any) => { total++; if (i.is_completed) completed++; }); });
+    return total === 0 ? 0 : Math.round((completed / total) * 100);
+  };
+  const calculatedProgress = getCalculatedProgress(activeCourse);
+
   const handleSetActiveCourse = async (courseId: string) => {
-    // Deactivate all others, activate this one
     const updatedContents = groupContents.map(c => {
       if (c.content_type.includes('course') || c.content_type.includes('subject')) {
-        if (c.id === courseId) {
-          return { ...c, content_data: { ...c.content_data, is_active: true } };
-        } else if (c.content_data?.is_active) {
-          return { ...c, content_data: { ...c.content_data, is_active: false } };
-        }
+        if (c.id === courseId) return { ...c, content_data: { ...c.content_data, is_active: true } };
+        else if (c.content_data?.is_active) return { ...c, content_data: { ...c.content_data, is_active: false } };
       }
       return c;
     });
-    setGroupContents(updatedContents); // Optimistic UI update
+    setGroupContents(updatedContents);
 
-    // Update in DB (Only for the activated one for performance, or both if needed)
     const previouslyActive = groupContents.find(c => c.content_data?.is_active && c.id !== courseId);
-    if (previouslyActive) {
-      await workspaceSupabase.from('shared_contents').update({ content_data: { ...previouslyActive.content_data, is_active: false } }).eq('id', previouslyActive.id);
-    }
-    await workspaceSupabase.from('shared_contents').update({ 
-      content_data: { ...groupContents.find(c=>c.id===courseId)?.content_data, is_active: true } 
-    }).eq('id', courseId);
+    if (previouslyActive) await workspaceSupabase.from('shared_contents').update({ content_data: { ...previouslyActive.content_data, is_active: false } }).eq('id', previouslyActive.id);
+    await workspaceSupabase.from('shared_contents').update({ content_data: { ...groupContents.find(c=>c.id===courseId)?.content_data, is_active: true } }).eq('id', courseId);
   };
 
-  const handleSaveActiveCourseData = async (courseId: string) => {
+  const handleAddTarget = async () => {
+    if (!targetModuleId || !targetDate || !activeCourse) return;
     setIsSavingTarget(true);
-    const targetCourse = groupContents.find(c => c.id === courseId);
-    if (targetCourse) {
-      const newData = { ...targetCourse.content_data, today_target: activeTargetText, progress_pct: activeProgress };
-      const { error } = await workspaceSupabase.from('shared_contents').update({ content_data: newData }).eq('id', courseId);
-      if (!error) {
-        setGroupContents(prev => prev.map(c => c.id === courseId ? { ...c, content_data: newData } : c));
-      }
-    }
-    setTimeout(() => setIsSavingTarget(false), 500); // Visual feedback
+    let targetTitle = targetContentId === 'all' ? `Full: ${selectedModForDropdown.title}` : activeContentsList.find((c: any) => c.id === targetContentId).title;
+    const newTarget = { id: `tgt-${Date.now()}`, moduleId: targetModuleId, contentId: targetContentId, title: targetTitle, parentTitle: selectedModForDropdown.title, dueDate: targetDate, isCompleted: false };
+    const existingTargets = activeCourse.content_data.group_targets || [];
+    const updatedData = { ...activeCourse.content_data, group_targets: [...existingTargets, newTarget] };
+    setGroupContents(prev => prev.map(c => c.id === activeCourse.id ? { ...c, content_data: updatedData } : c));
+    await workspaceSupabase.from('shared_contents').update({ content_data: updatedData }).eq('id', activeCourse.id);
+    setTargetModuleId(''); setTargetContentId('all'); setTargetDate(''); setIsSavingTarget(false);
   };
 
-  // Initialize states when active course changes
-  const activeCourse = groupContents.find(c => c.content_data?.is_active && (c.content_type === 'lms_course' || c.content_type === 'bcs_subject'));
-  useEffect(() => {
-    if (activeCourse) {
-      setActiveTargetText(activeCourse.content_data?.today_target || '');
-      setActiveProgress(activeCourse.content_data?.progress_pct || 0);
+  const handleToggleTarget = async (target: any) => {
+    if (!activeCourse) return;
+    const newStatus = !target.isCompleted;
+    const updatedData = JSON.parse(JSON.stringify(activeCourse.content_data));
+    const targetIndex = updatedData.group_targets.findIndex((t: any) => t.id === target.id);
+    if (targetIndex > -1) updatedData.group_targets[targetIndex].isCompleted = newStatus;
+    const modulesList = isLms ? updatedData.modules : updatedData.chapters;
+    const modIndex = modulesList.findIndex((m: any) => m.id === target.moduleId);
+    if (modIndex > -1) {
+      const contentsList = isLms ? modulesList[modIndex].contents : modulesList[modIndex].resources;
+      if (target.contentId === 'all') contentsList.forEach((c: any) => c.is_completed = newStatus);
+      else { const conIndex = contentsList.findIndex((c: any) => c.id === target.contentId); if (conIndex > -1) contentsList[conIndex].is_completed = newStatus; }
     }
-  }, [activeCourse?.id]);
+    updatedData.progress_pct = getCalculatedProgress({ content_type: activeCourse.content_type, content_data: updatedData });
+    setGroupContents(prev => prev.map(c => c.id === activeCourse.id ? { ...c, content_data: updatedData } : c));
+    await workspaceSupabase.from('shared_contents').update({ content_data: updatedData }).eq('id', activeCourse.id);
+  };
+
+  const handleDeleteTarget = async (targetId: string) => {
+    const updatedData = { ...activeCourse.content_data, group_targets: activeCourse.content_data.group_targets.filter((t:any) => t.id !== targetId) };
+    setGroupContents(prev => prev.map(c => c.id === activeCourse.id ? { ...c, content_data: updatedData } : c));
+    await workspaceSupabase.from('shared_contents').update({ content_data: updatedData }).eq('id', activeCourse.id);
+  };
 
   // --- Chat Logic ---
   useEffect(() => {
@@ -382,9 +420,6 @@ export default function WorkspaceDashboard() {
 
   const currentDate = new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
   const totalCourses = allContents.filter(c => c.content_type.includes('course') || c.content_type.includes('subject')).length;
-  
-  const groupCourses = groupContents.filter(c => c.content_type === 'lms_course' || c.content_type === 'bcs_subject');
-  const inactiveCourses = groupCourses.filter(c => c.id !== activeCourse?.id);
   const groupNotes = groupContents.filter(c => c.content_type === 'shared_note' || c.content_type === 'personal_note');
 
   return (
@@ -523,66 +558,79 @@ export default function WorkspaceDashboard() {
               
               <div className="flex-1 w-full space-y-8">
                 
-                {/* --- ACTIVE COURSE TRACKER --- */}
+                {/* 🚀 PREMIUM ACTIVE COURSE UI */}
                 {activeCourse && (
-                  <div className="bg-gradient-to-br from-white to-orange-50 dark:from-[#18191A] dark:to-[#1D1E20] border-2 border-[#FF9D2E] rounded-3xl p-6 shadow-[0_0_20px_rgba(255,157,46,0.15)] relative overflow-hidden group">
-                    <div className="absolute top-0 right-0 w-32 h-32 bg-[#FF9D2E]/10 rounded-full blur-2xl -translate-y-1/2 translate-x-1/3"></div>
-                    
-                    <div className="flex justify-between items-start mb-4 relative z-10">
-                      <div className="flex items-center gap-3">
-                        <div className="p-3 bg-[#FF9D2E] text-slate-900 rounded-xl shadow-md"><Target size={24} /></div>
-                        <div>
-                          <span className="text-[10px] uppercase font-bold text-[#FF9D2E] tracking-wider bg-[#FF9D2E]/10 px-2 py-1 rounded-md mb-1 inline-block">Running Currently</span>
-                          <h3 className="text-xl font-bold text-slate-900 dark:text-white leading-tight">{activeCourse.title}</h3>
-                        </div>
-                      </div>
-                      <button onClick={() => openContent(activeCourse)} className="hidden sm:flex items-center gap-2 bg-slate-900 dark:bg-white text-white dark:text-slate-900 px-4 py-2 rounded-xl font-bold text-sm hover:scale-105 transition-transform">
-                        Enter <PlayCircle size={16} />
-                      </button>
+                  <div className="bg-gradient-to-br from-white to-slate-50 dark:from-[#18191A] dark:to-[#1D1E20] border border-slate-300 dark:border-[#FF9D2E]/50 rounded-3xl p-5 sm:p-8 shadow-xl relative overflow-hidden">
+                    <div className="absolute top-0 right-0 w-64 h-64 bg-[#FF9D2E]/10 rounded-full blur-3xl -translate-y-1/2 translate-x-1/3 pointer-events-none"></div>
+
+                    <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 relative z-10 mb-8">
+                       <div className="flex items-center gap-4">
+                          <div className="w-12 h-12 rounded-2xl bg-[#FF9D2E] flex items-center justify-center text-slate-900 shadow-lg shrink-0"><Target size={24} /></div>
+                          <div>
+                             <span className="text-[10px] font-black tracking-widest uppercase text-[#FF9D2E] mb-1 block">Active Focus</span>
+                             <h2 className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white leading-tight">{activeCourse.title}</h2>
+                          </div>
+                       </div>
+                       <button onClick={() => setSelectedContent(activeCourse)} className="w-full sm:w-auto bg-slate-900 dark:bg-white text-white dark:text-slate-900 px-5 py-2.5 rounded-xl font-bold flex items-center justify-center gap-2 hover:opacity-90 transition-colors">
+                         Enter Course <PlayCircle size={18}/>
+                       </button>
                     </div>
 
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 relative z-10">
-                      {/* Live Progress Bar */}
-                      <div className="bg-white dark:bg-[#141516] p-4 rounded-2xl border border-slate-200 dark:border-[#292B2E]">
-                        <div className="flex justify-between items-center mb-2">
-                          <label className="text-sm font-bold flex items-center gap-2 text-slate-700 dark:text-[#A3A5A8]"><TrendingUp size={16} className="text-[#19C784]" /> Live Progress</label>
-                          <span className="font-black text-[#19C784] text-lg">{activeProgress}%</span>
-                        </div>
-                        <input 
-                          type="range" min="0" max="100" 
-                          value={activeProgress} 
-                          onChange={(e) => setActiveProgress(Number(e.target.value))}
-                          onMouseUp={() => handleSaveActiveCourseData(activeCourse.id)}
-                          onTouchEnd={() => handleSaveActiveCourseData(activeCourse.id)}
-                          className="w-full h-2 bg-slate-200 dark:bg-[#292B2E] rounded-lg appearance-none cursor-pointer accent-[#19C784]"
-                        />
-                      </div>
-
-                      {/* Today's Target */}
-                      <div className="bg-white dark:bg-[#141516] p-4 rounded-2xl border border-slate-200 dark:border-[#292B2E] flex flex-col justify-between">
-                        <label className="text-sm font-bold flex items-center gap-2 text-slate-700 dark:text-[#A3A5A8] mb-2"><CheckCircle2 size={16} className="text-[#668CFF]" /> Today's Target</label>
-                        <div className="flex gap-2">
-                          <input 
-                            type="text" 
-                            placeholder="e.g., Module 4 - Variables" 
-                            value={activeTargetText}
-                            onChange={(e) => setActiveTargetText(e.target.value)}
-                            className="flex-1 bg-slate-50 dark:bg-[#1D1E20] border border-slate-200 dark:border-[#292B2E] focus:border-[#668CFF] rounded-xl px-3 py-2 text-sm text-slate-900 dark:text-white outline-none"
-                          />
-                          <button 
-                            onClick={() => handleSaveActiveCourseData(activeCourse.id)}
-                            disabled={isSavingTarget}
-                            className="bg-[#668CFF] text-white px-4 rounded-xl font-bold text-sm hover:bg-blue-600 transition-colors disabled:opacity-50"
-                          >
-                            {isSavingTarget ? 'Saved!' : 'Save'}
-                          </button>
-                        </div>
-                      </div>
+                    <div className="relative z-10 mb-8">
+                       <div className="flex justify-between items-end mb-2">
+                          <span className="text-sm font-bold text-slate-600 dark:text-[#A3A5A8]">Live Progress</span>
+                          <span className="text-2xl font-black text-[#19C784] leading-none">{calculatedProgress}%</span>
+                       </div>
+                       <div className="h-3 w-full bg-slate-200 dark:bg-[#141516] rounded-full overflow-hidden border border-slate-300 dark:border-[#292B2E]">
+                          <div className="h-full bg-gradient-to-r from-[#19C784] to-emerald-400 rounded-full transition-all duration-1000 ease-out relative" style={{ width: `${calculatedProgress}%` }}>
+                             <div className="absolute top-0 right-0 bottom-0 w-full bg-[linear-gradient(45deg,transparent_25%,rgba(255,255,255,0.2)_50%,transparent_75%)] bg-[length:20px_20px] animate-[shimmer_2s_linear_infinite]"></div>
+                          </div>
+                       </div>
                     </div>
-                    
-                    <button onClick={() => openContent(activeCourse)} className="sm:hidden w-full mt-4 flex items-center justify-center gap-2 bg-slate-900 dark:bg-white text-white dark:text-slate-900 px-4 py-3 rounded-xl font-bold transition-transform">
-                      Enter Course <PlayCircle size={18} />
-                    </button>
+
+                    {/* TARGETS / TO-DO */}
+                    <div className="relative z-10 bg-slate-100 dark:bg-[#141516] rounded-2xl border border-slate-200 dark:border-[#292B2E] p-4 sm:p-5">
+                       <h3 className="text-sm font-bold text-slate-800 dark:text-[#A3A5A8] mb-4 flex items-center gap-2"><CheckCircle2 size={18} className="text-[#668CFF]"/> Course Targets & To-Do</h3>
+                       <div className="space-y-2 mb-4 max-h-[30vh] overflow-y-auto pr-2 custom-scrollbar">
+                          {activeCourse.content_data?.group_targets?.map((target: any) => (
+                            <div key={target.id} className={`flex items-center justify-between p-3 rounded-xl border ${target.isCompleted ? 'bg-[#19C784]/10 border-[#19C784]/30' : 'bg-white dark:bg-[#1D1E20] border-slate-200 dark:border-[#292B2E]'}`}>
+                              <label className="flex items-center gap-3 cursor-pointer flex-1">
+                                <input type="checkbox" checked={target.isCompleted} onChange={() => handleToggleTarget(target)} className="w-5 h-5 accent-[#19C784] rounded-md cursor-pointer shrink-0" />
+                                <div className="flex flex-col min-w-0">
+                                  <span className={`text-sm font-bold truncate ${target.isCompleted ? 'text-[#19C784] line-through' : 'text-slate-900 dark:text-white'}`}>{target.title}</span>
+                                  <span className="text-[10px] text-slate-500 dark:text-[#A3A5A8] truncate">{target.parentTitle} • By {new Date(target.dueDate).toLocaleDateString()}</span>
+                                </div>
+                              </label>
+                              <button onClick={() => handleDeleteTarget(target.id)} className="text-slate-400 dark:text-[#707277] hover:text-red-500 p-1.5 shrink-0"><Trash2 size={16} /></button>
+                            </div>
+                          ))}
+                          {(!activeCourse.content_data?.group_targets || activeCourse.content_data.group_targets.length === 0) && (
+                            <p className="text-xs text-slate-500 dark:text-[#707277] text-center italic py-2">No active targets set.</p>
+                          )}
+                       </div>
+
+                       <div className="bg-white dark:bg-[#1D1E20] p-3 sm:p-4 rounded-xl border border-slate-200 dark:border-[#292B2E]">
+                          <p className="text-xs font-bold text-slate-500 dark:text-[#707277] mb-3 uppercase tracking-wider">Assign New Target</p>
+                          <div className="flex flex-col gap-3">
+                             <div className="flex flex-col md:flex-row gap-3">
+                                <select value={targetModuleId} onChange={(e) => { setTargetModuleId(e.target.value); setTargetContentId('all'); }} className="flex-1 bg-slate-50 dark:bg-[#141516] border border-slate-200 dark:border-[#292B2E] rounded-lg px-3 py-2.5 text-sm text-slate-900 dark:text-white outline-none focus:border-[#FF9D2E] truncate">
+                                  <option value="">-- Select Module/Chapter --</option>
+                                  {activeModules.map((m: any) => <option key={m.id} value={m.id}>{m.title}</option>)}
+                                </select>
+                                <select value={targetContentId} disabled={!targetModuleId} onChange={(e) => setTargetContentId(e.target.value)} className="flex-1 bg-slate-50 dark:bg-[#141516] border border-slate-200 dark:border-[#292B2E] rounded-lg px-3 py-2.5 text-sm text-slate-900 dark:text-white outline-none focus:border-[#FF9D2E] truncate disabled:opacity-50">
+                                  <option value="all">📚 Entire Module (All Resources)</option>
+                                  {activeContentsList.map((c: any) => <option key={c.id} value={c.id}>📄 {c.title}</option>)}
+                                </select>
+                             </div>
+                             <div className="flex flex-col sm:flex-row gap-3">
+                                <input type="date" value={targetDate} onChange={(e) => setTargetDate(e.target.value)} className="flex-1 bg-slate-50 dark:bg-[#141516] border border-slate-200 dark:border-[#292B2E] rounded-lg px-3 py-2.5 text-sm text-slate-900 dark:text-white outline-none focus:border-[#FF9D2E] [color-scheme:light] dark:[color-scheme:dark]" />
+                                <button onClick={handleAddTarget} disabled={!targetModuleId || !targetDate || isSavingTarget} className="w-full sm:w-auto bg-[#FF9D2E] text-slate-900 px-6 py-2.5 rounded-lg font-bold flex items-center justify-center gap-2 hover:bg-[#FFAA3D] transition-colors disabled:opacity-50">
+                                   <Plus size={16}/> Add Target
+                                </button>
+                             </div>
+                          </div>
+                       </div>
+                    </div>
                   </div>
                 )}
 
@@ -852,7 +900,9 @@ export default function WorkspaceDashboard() {
       </nav>
 
       <style>{`
-        .pb-safe { padding-bottom: env(safe-area-inset-bottom, 20px); }
+        @keyframes shimmer { 100% { transform: translateX(100%); } }
+        .custom-scrollbar::-webkit-scrollbar { width: 4px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: #292B2E; border-radius: 4px; }
         .hide-scrollbar::-webkit-scrollbar { display: none; }
         .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
         .animate-fade-in { animation: fadeIn 0.3s ease-out; }
