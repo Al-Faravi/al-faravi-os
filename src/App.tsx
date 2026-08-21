@@ -20,12 +20,6 @@ import Settings from './features/dashboard/Settings';
 import SnippetVault from './features/developer/SnippetVault';
 import JobTracker from './features/developer/JobTracker';
 
-// Workspace (Guest House) Features
-import WorkspaceLogin from './features/workspace/WorkspaceLogin';
-import WorkspaceDashboard from './features/workspace/WorkspaceDashboard';
-import WorkspaceManager from './features/workspace/WorkspaceManager'; // আপনার কন্ট্রোল প্যানেল
-import GroupDetails from './features/workspace/GroupDetails'; // নতুন পেজ যুক্ত করা হয়েছে
-
 // গ্লোবাল সার্চ কম্পোনেন্ট (Cmd+K)
 import CommandPalette from './components/CommandPalette';
 
@@ -140,25 +134,15 @@ export default function App() {
   return (
     <Router>
       <Routes>
-        
         {/* ========================================== */}
-        {/* DOOR 2: GUEST WORKSPACE (সম্পূর্ণ আলাদা জগত) */}
-        {/* এরা ProtectedOSLayout-এর বাইরে, তাই ডক বা আপনার লগইন পেজ দেখবে না */}
-        {/* ========================================== */}
-        <Route path="/workspace/login" element={<WorkspaceLogin />} />
-        <Route path="/workspace/dashboard" element={<WorkspaceDashboard />} />
-
-        {/* ========================================== */}
-        {/* DOOR 1: MAIN AL_FARAVI OS (আপনার জগত) */}
+        {/* 🛡️ MAIN AL_FARAVI OS (আপনার জগত) */}
         {/* ProtectedOSLayout এর মাধ্যমে সিকিউর করা */}
         {/* ========================================== */}
         <Route element={<ProtectedOSLayout />}>
           <Route path="/" element={<ModernDashboard />} />
           
-          {/* Admin / Manager Routes */}
+          {/* Vault / Storage */}
           <Route path="/vault" element={<VaultManager />} />
-          <Route path="/workspace-manager" element={<WorkspaceManager />} />
-          <Route path="/workspace-manager/group/:groupId" element={<GroupDetails />} /> {/* নতুন রাউট */}
           
           {/* Main Modules */}
           <Route path="/finance" element={<FinanceManager />} />
@@ -185,7 +169,6 @@ export default function App() {
           {/* 404 Catch-all */}
           <Route path="*" element={<Navigate to="/" replace />} />
         </Route>
-
       </Routes>
     </Router>
   );

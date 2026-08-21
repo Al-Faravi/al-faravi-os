@@ -7,7 +7,7 @@ import {
   Briefcase, FolderLock, TrendingUp, 
   Clock, Flame, Quote, Sparkles, PlayCircle, 
   Bookmark, CheckCircle2, PauseCircle, LogOut,
-  GitBranch, Code2, Users 
+  GitBranch, Code2 
 } from 'lucide-react';
 
 // === Dynamic Motivational Quotes ===
@@ -253,7 +253,7 @@ export default function ModernDashboard() {
               </h3>
               
               {/* Standard Apps Grid */}
-              <div className="grid grid-cols-3 sm:grid-cols-3 lg:grid-cols-3 gap-3 mb-4">
+              <div className="grid grid-cols-3 sm:grid-cols-3 lg:grid-cols-3 gap-3">
                 {[
                   { name: 'BCS Prep', to: '/bcs', icon: <BookOpen size={24} className="text-[#02C2D5]" />, hover: 'hover:border-[#02C2D5] hover:bg-[#02C2D5]/5' },
                   { name: 'LMS Skill', to: '/lms', icon: <Briefcase size={24} className="text-purple-600" />, hover: 'hover:border-purple-400 hover:bg-purple-50' },
@@ -273,18 +273,6 @@ export default function ModernDashboard() {
                   </Link>
                 ))}
               </div>
-
-              {/* Single Premium Study Groups / Workspace Button */}
-              <button 
-                onClick={() => window.open('/workspace-manager', '_blank')}
-                className="w-full flex flex-col items-center justify-center p-5 bg-gradient-to-br from-gray-800 to-gray-900 border border-gray-700 rounded-2xl hover:border-blue-500 transition-all group shadow-md"
-              >
-                <div className="w-12 h-12 bg-blue-500/10 rounded-xl flex items-center justify-center mb-3 group-hover:scale-110 transition-transform">
-                  <Users className="w-6 h-6 text-blue-500" />
-                </div>
-                <span className="text-white font-bold text-base">Study Groups</span>
-                <span className="text-xs text-gray-400 mt-0.5">Manage & Collaborate</span>
-              </button>
             </div>
 
             {/* Dynamic Motivation Widget */}
