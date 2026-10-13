@@ -7,8 +7,11 @@ import {
   Loader2, GraduationCap, Video, FileText, ArrowRight, GripVertical
 } from 'lucide-react';
 
-// ১. @dnd-kit ইমপোর্টসমূহ
-import { DndContext, closestCenter } from '@dnd-kit/core';
+// ১. @dnd-kit সেন্সর ইমপোর্টসমূহ
+import { 
+  DndContext, closestCenter, 
+  PointerSensor, useSensor, useSensors 
+} from '@dnd-kit/core';
 import { SortableContext, verticalListSortingStrategy, arrayMove } from '@dnd-kit/sortable';
 import { SortableItem } from '../../components/ui/SortableItem';
 
@@ -29,6 +32,15 @@ interface Resource {
 }
 
 export default function LmsManager() {
+  // ক্লিকে/স্ক্রলে ঝামেলা এড়াতে PointerSensor সক্রিয়করণ
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: {
+        distance: 8, // ৮ পিক্সেল ড্র্যাগ করলে সক্রিয় হবে
+      },
+    })
+  );
+
   const [activeTab, setActiveTab] = useState<'courses' | 'resources'>('courses');
   const [loading, setLoading] = useState(true);
   
@@ -50,7 +62,6 @@ export default function LmsManager() {
   const fetchData = async () => {
     setLoading(true);
     try {
-      // অর্ডার ইনডেক্স অনুযায়ী ফেচ করা যাতে ড্র্যাগ করার পর সিকোয়েন্স ঠিক থাকে
       const { data: coursesData, error: coursesError } = await supabase
         .from('lms_courses')
         .select('*')
@@ -74,7 +85,6 @@ export default function LmsManager() {
     }
   };
 
-  // ২. Drag শেষ হলে সিরিয়াল আপডেট করার লজিক
   const handleDragEnd = async (event: any) => {
     const { active, over } = event;
     
@@ -85,14 +95,13 @@ export default function LmsManager() {
         
         const newItems = arrayMove(items, oldIndex, newIndex);
 
-        // ডাটাবেসে নতুন সিরিয়াল আপডেট করা (Supabase Upsert)
         const updates = newItems.map((item, index) => ({
           id: item.id,
           title: item.title,
           platform: item.platform,
           status: item.status,
           progress: item.progress,
-          order_index: index, // নতুন পজিশন ইনডেক্স
+          order_index: index,
         }));
 
         supabase.from('lms_courses').upsert(updates).then(({ error }) => {
@@ -118,7 +127,7 @@ export default function LmsManager() {
         platform: cPlatform,
         status: cStatus,
         progress: cProgress,
-        order_index: courses.length // নতুন আইটেম সবার শেষে যোগ হবে
+        order_index: courses.length
       }]);
 
       if (error) throw error;
@@ -252,8 +261,11 @@ export default function LmsManager() {
             <p className="text-[#475569] font-bold text-lg">Your learning track is empty.</p>
           </div>
         ) : (
-          /* ৩. DndContext এবং SortableContext দিয়ে গ্রিড র‍্যাপ করা হয়েছে */
-          <DndContext collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+          <DndContext 
+            sensors={sensors}
+            collisionDetection={closestCenter} 
+            onDragEnd={handleDragEnd}
+          >
             <SortableContext items={courses.map(c => c.id)} strategy={verticalListSortingStrategy}>
               <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
                 {courses.map(course => {

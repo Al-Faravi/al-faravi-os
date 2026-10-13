@@ -6,8 +6,11 @@ import {
   BookMarked, BrainCircuit, Globe, FlaskConical, MonitorDot, GripVertical
 } from 'lucide-react';
 
-// ১. @dnd-kit ইমপোর্টসমূহ
-import { DndContext, closestCenter } from '@dnd-kit/core';
+// ১. @dnd-kit সেন্সর এবং ড্র্যাগ-অ্যান্ড-ড্রপ ইমপোর্টসমূহ
+import { 
+  DndContext, closestCenter, 
+  PointerSensor, useSensor, useSensors 
+} from '@dnd-kit/core';
 import { SortableContext, verticalListSortingStrategy, arrayMove } from '@dnd-kit/sortable';
 import { SortableItem } from '../../components/ui/SortableItem';
 
@@ -17,10 +20,19 @@ interface BcsSubject {
   marks: number;
   icon_color: string;
   order_index?: number;
-  user_id: string;
+  user_id?: string;
 }
 
 export default function BcsManager() {
+  // ক্লিকে বা স্ক্রলে ঝামেলা এড়াতে PointerSensor সক্রিয়করণ (৮ পিক্সেল ড্র্যাগ কনস্ট্রেইন্ট)
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: {
+        distance: 8,
+      },
+    })
+  );
+
   const [subjects, setSubjects] = useState<BcsSubject[]>([]);
   const [loading, setLoading] = useState(true);
   const [isInitializing, setIsInitializing] = useState(false);
@@ -157,8 +169,12 @@ export default function BcsManager() {
           </button>
         </div>
       ) : (
-        /* ৩. DndContext এবং SortableContext দিয়ে গ্রিড র‍্যাপ করা হয়েছে */
-        <DndContext collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+        /* ৩. DndContext (sensors সহ) এবং SortableContext দিয়ে গ্রিড র‍্যাপ করা হয়েছে */
+        <DndContext 
+          sensors={sensors}
+          collisionDetection={closestCenter} 
+          onDragEnd={handleDragEnd}
+        >
           <SortableContext items={subjects.map(s => s.id)} strategy={verticalListSortingStrategy}>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {subjects.map((subject) => (
