@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { supabase } from '../../lib/supabase';
-import { Target, Plus, Loader2, GripVertical, BookOpen, ChevronRight, PlayCircle } from 'lucide-react';
+import { Target, Plus, Loader2, GripVertical, BookOpen, PlayCircle, X } from 'lucide-react';
 import { DndContext, closestCenter, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
 import { SortableContext, verticalListSortingStrategy, arrayMove } from '@dnd-kit/sortable';
 import { SortableItem } from '../../components/ui/SortableItem';
@@ -18,6 +18,12 @@ interface Course {
 export default function LmsManager() {
   const [courses, setCourses] = useState<Course[]>([]);
   const [loading, setLoading] = useState(true);
+
+  // --- Add Course Modal States ---
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [newTitle, setNewTitle] = useState('');
+  const [newPlatform, setNewPlatform] = useState('YouTube');
+  const [isSaving, setIsSaving] = useState(false);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } })
@@ -37,6 +43,38 @@ export default function LmsManager() {
     if (error) console.error(error);
     if (data) setCourses(data);
     setLoading(false);
+  };
+
+  // --- Create New Course Logic ---
+  const handleCreateCourse = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newTitle.trim()) return;
+    setIsSaving(true);
+
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      
+      const { error } = await supabase.from('lms_courses').insert([{
+        user_id: user?.id,
+        title: newTitle,
+        platform: newPlatform,
+        status: 'pending',
+        progress_pct: 0,
+        order_index: courses.length
+      }]);
+
+      if (error) throw error;
+      
+      setNewTitle('');
+      setNewPlatform('YouTube');
+      setShowAddModal(false);
+      fetchCourses(); // রিফ্রেশ করে নতুন কোর্সটি নিয়ে আসা
+    } catch (error) {
+      console.error("Error creating course:", error);
+      alert("Failed to create course!");
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const handleDragEnd = async (event: any) => {
@@ -67,7 +105,55 @@ export default function LmsManager() {
   }
 
   return (
-    <div className="p-4 md:p-8 lg:p-12 max-w-7xl mx-auto text-[#020F33] mb-28">
+    <div className="p-4 md:p-8 lg:p-12 max-w-7xl mx-auto text-[#020F33] mb-28 relative">
+      
+      {/* --- ADD COURSE MODAL --- */}
+      {showAddModal && (
+        <div className="fixed inset-0 z-[1000] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+          <div className="bg-white p-6 rounded-2xl w-full max-w-md shadow-2xl animate-in fade-in zoom-in-95 duration-200">
+            <div className="flex justify-between items-center mb-5">
+              <h3 className="font-bold text-xl text-[#020F33]">Add New Course</h3>
+              <button onClick={() => setShowAddModal(false)} className="text-slate-400 hover:text-rose-500 bg-slate-50 hover:bg-rose-50 p-1.5 rounded-lg transition-colors">
+                <X size={20}/>
+              </button>
+            </div>
+            
+            <form onSubmit={handleCreateCourse} className="space-y-4">
+              <div>
+                <label className="block text-sm font-bold text-[#475569] mb-1.5">Course Title</label>
+                <input 
+                  type="text" 
+                  value={newTitle} 
+                  onChange={(e) => setNewTitle(e.target.value)} 
+                  placeholder="e.g. Advanced React Patterns" 
+                  className="w-full bg-[#F8FAFC] border border-[#E2E8F0] focus:border-purple-500 rounded-xl p-3 outline-none text-sm font-medium" 
+                  required
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-bold text-[#475569] mb-1.5">Platform / Source</label>
+                <input 
+                  type="text" 
+                  value={newPlatform} 
+                  onChange={(e) => setNewPlatform(e.target.value)} 
+                  placeholder="e.g. YouTube, Udemy, Coursera" 
+                  className="w-full bg-[#F8FAFC] border border-[#E2E8F0] focus:border-purple-500 rounded-xl p-3 outline-none text-sm font-medium" 
+                  required
+                />
+              </div>
+              <button 
+                type="submit" 
+                disabled={isSaving} 
+                className="w-full bg-[#020F33] text-white font-bold py-3.5 rounded-xl hover:bg-purple-600 transition-colors disabled:opacity-50 mt-2 flex items-center justify-center gap-2"
+              >
+                {isSaving ? <Loader2 size={18} className="animate-spin" /> : <Plus size={18} />}
+                {isSaving ? 'Creating...' : 'Create Course'}
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
+
       {/* Header Area */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-10 bg-white p-6 rounded-3xl border border-slate-200 shadow-sm">
         <div>
@@ -76,9 +162,12 @@ export default function LmsManager() {
           </h1>
           <p className="text-[#475569] mt-2 font-medium">Mastering MERN, AI, & Data Intelligence.</p>
         </div>
-        <Link to="/lms/new" className="bg-purple-600 text-white px-6 py-3 rounded-xl font-bold hover:bg-purple-700 transition-all flex items-center gap-2 shadow-md hover:shadow-lg hover:-translate-y-0.5">
+        <button 
+          onClick={() => setShowAddModal(true)} 
+          className="bg-purple-600 text-white px-6 py-3 rounded-xl font-bold hover:bg-purple-700 transition-all flex items-center gap-2 shadow-md hover:shadow-lg hover:-translate-y-0.5"
+        >
           <Plus size={18} /> New Course
-        </Link>
+        </button>
       </div>
 
       {courses.length === 0 ? (
