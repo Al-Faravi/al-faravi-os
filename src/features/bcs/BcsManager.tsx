@@ -3,14 +3,21 @@ import { supabase } from '../../lib/supabase';
 import { Link } from 'react-router-dom';
 import { 
   Target, BookOpen, ChevronRight, Loader2, Award, 
-  BookMarked, BrainCircuit, Globe, FlaskConical, MonitorDot
+  BookMarked, BrainCircuit, Globe, FlaskConical, MonitorDot, GripVertical
 } from 'lucide-react';
+
+// ১. @dnd-kit ইমপোর্টসমূহ
+import { DndContext, closestCenter } from '@dnd-kit/core';
+import { SortableContext, verticalListSortingStrategy, arrayMove } from '@dnd-kit/sortable';
+import { SortableItem } from '../../components/ui/SortableItem';
 
 interface BcsSubject {
   id: string;
   title: string;
   marks: number;
   icon_color: string;
+  order_index?: number;
+  user_id: string;
 }
 
 export default function BcsManager() {
@@ -28,7 +35,7 @@ export default function BcsManager() {
       const { data, error } = await supabase
         .from('bcs_subjects')
         .select('*')
-        .order('marks', { ascending: false }); 
+        .order('order_index', { ascending: true }); // সিরিয়াল অনুযায়ী ফেচ করা
       
       if (error) throw error;
       setSubjects(data || []);
@@ -39,6 +46,36 @@ export default function BcsManager() {
     }
   };
 
+  // ২. Drag শেষ হলে সিরিয়াল আপডেট করার লজিক
+  const handleDragEnd = async (event: any) => {
+    const { active, over } = event;
+    
+    if (over && active.id !== over.id) {
+      setSubjects((items) => {
+        const oldIndex = items.findIndex((item) => item.id === active.id);
+        const newIndex = items.findIndex((item) => item.id === over.id);
+        
+        const newItems = arrayMove(items, oldIndex, newIndex);
+
+        // ডাটাবেসে নতুন সিরিয়াল আপডেট করা (Supabase Upsert)
+        const updates = newItems.map((item, index) => ({
+          id: item.id,
+          title: item.title,
+          marks: item.marks,
+          icon_color: item.icon_color,
+          user_id: item.user_id,
+          order_index: index, // নতুন পজিশন ইনডেক্স
+        }));
+
+        supabase.from('bcs_subjects').upsert(updates).then(({ error }) => {
+          if (error) console.error("BCS Reorder Error:", error);
+        });
+
+        return newItems;
+      });
+    }
+  };
+
   const handleInitializeSyllabus = async () => {
     setIsInitializing(true);
     try {
@@ -46,16 +83,16 @@ export default function BcsManager() {
       if (!user) throw new Error("User not found");
 
       const defaultSyllabus = [
-        { title: 'বাংলা ভাষা ও সাহিত্য', marks: 35, icon_color: '#EF4444', user_id: user.id },
-        { title: 'English Language & Literature', marks: 35, icon_color: '#3B82F6', user_id: user.id },
-        { title: 'বাংলাদেশ বিষয়াবলি', marks: 30, icon_color: '#10B981', user_id: user.id },
-        { title: 'আন্তর্জাতিক বিষয়াবলি', marks: 20, icon_color: '#F59E0B', user_id: user.id },
-        { title: 'সাধারণ বিজ্ঞান', marks: 15, icon_color: '#06B6D4', user_id: user.id },
-        { title: 'কম্পিউটার ও তথ্যপ্রযুক্তি', marks: 15, icon_color: '#6366F1', user_id: user.id },
-        { title: 'গাণিতিক যুক্তি', marks: 15, icon_color: '#EC4899', user_id: user.id },
-        { title: 'মানসিক দক্ষতা', marks: 15, icon_color: '#F43F5E', user_id: user.id },
-        { title: 'ভূগোল, পরিবেশ ও দুর্যোগ ব্যবস্থাপনা', marks: 10, icon_color: '#8B5CF6', user_id: user.id },
-        { title: 'নৈতিকতা, মূল্যবোধ ও সুশাসন', marks: 10, icon_color: '#14B8A6', user_id: user.id },
+        { title: 'বাংলা ভাষা ও সাহিত্য', marks: 35, icon_color: '#EF4444', user_id: user.id, order_index: 0 },
+        { title: 'English Language & Literature', marks: 35, icon_color: '#3B82F6', user_id: user.id, order_index: 1 },
+        { title: 'বাংলাদেশ বিষয়াবলি', marks: 30, icon_color: '#10B981', user_id: user.id, order_index: 2 },
+        { title: 'আন্তর্জাতিক বিষয়াবলি', marks: 20, icon_color: '#F59E0B', user_id: user.id, order_index: 3 },
+        { title: 'সাধারণ বিজ্ঞান', marks: 15, icon_color: '#06B6D4', user_id: user.id, order_index: 4 },
+        { title: 'কম্পিউটার ও তথ্যপ্রযুক্তি', marks: 15, icon_color: '#6366F1', user_id: user.id, order_index: 5 },
+        { title: 'গাণিতিক যুক্তি', marks: 15, icon_color: '#EC4899', user_id: user.id, order_index: 6 },
+        { title: 'মানসিক দক্ষতা', marks: 15, icon_color: '#F43F5E', user_id: user.id, order_index: 7 },
+        { title: 'ভূগোল, পরিবেশ ও দুর্যোগ ব্যবস্থাপনা', marks: 10, icon_color: '#8B5CF6', user_id: user.id, order_index: 8 },
+        { title: 'নৈতিকতা, মূল্যবোধ ও সুশাসন', marks: 10, icon_color: '#14B8A6', user_id: user.id, order_index: 9 },
       ];
 
       const { error } = await supabase.from('bcs_subjects').insert(defaultSyllabus);
@@ -96,7 +133,6 @@ export default function BcsManager() {
             <Target className="text-[#02C2D5] w-10 h-10" /> 
             BCS Mission Control
           </h1>
-          {/* Target 130+ রিমুভ করা হয়েছে */}
           <p className="text-[#475569] mt-2 font-bold">Total Marks: 200</p>
         </div>
       </div>
@@ -121,38 +157,48 @@ export default function BcsManager() {
           </button>
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {subjects.map((subject) => (
-            <Link 
-              key={subject.id} 
-              to={`/bcs/subject/${subject.id}`}
-              className="bg-white border border-[#E2E8F0] p-6 rounded-3xl shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all group flex flex-col justify-between"
-            >
-              <div className="flex justify-between items-start mb-4">
-                <div 
-                  className="w-12 h-12 rounded-2xl flex items-center justify-center bg-opacity-10"
-                  style={{ backgroundColor: `${subject.icon_color}15` }}
-                >
-                  {getIcon(subject.title, subject.icon_color)}
-                </div>
-                <div className="bg-[#F8FAFC] border border-[#E2E8F0] px-3 py-1 rounded-lg">
-                  <span className="text-sm font-black" style={{ color: subject.icon_color }}>
-                    {subject.marks} Marks
-                  </span>
-                </div>
-              </div>
-              
-              <h3 className="text-xl font-bold text-[#020F33] leading-snug group-hover:text-[#02C2D5] transition-colors mb-2">
-                {subject.title}
-              </h3>
-              
-              <div className="mt-4 flex items-center justify-between text-sm font-bold text-[#475569]">
-                <span>View Chapters</span>
-                <ChevronRight size={18} className="group-hover:translate-x-1 transition-transform text-[#02C2D5]" />
-              </div>
-            </Link>
-          ))}
-        </div>
+        /* ৩. DndContext এবং SortableContext দিয়ে গ্রিড র‍্যাপ করা হয়েছে */
+        <DndContext collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+          <SortableContext items={subjects.map(s => s.id)} strategy={verticalListSortingStrategy}>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {subjects.map((subject) => (
+                <SortableItem key={subject.id} id={subject.id}>
+                  <div className="bg-white border border-[#E2E8F0] p-6 rounded-3xl shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all group flex flex-col justify-between h-full relative">
+                    <div className="flex justify-between items-start mb-4">
+                      <div 
+                        className="w-12 h-12 rounded-2xl flex items-center justify-center bg-opacity-10"
+                        style={{ backgroundColor: `${subject.icon_color}15` }}
+                      >
+                        {getIcon(subject.title, subject.icon_color)}
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-gray-300 cursor-grab active:cursor-grabbing p-1">
+                          <GripVertical size={18} />
+                        </span>
+                        <div className="bg-[#F8FAFC] border border-[#E2E8F0] px-3 py-1 rounded-lg">
+                          <span className="text-sm font-black" style={{ color: subject.icon_color }}>
+                            {subject.marks} Marks
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                    
+                    <Link to={`/bcs/subject/${subject.id}`} className="block">
+                      <h3 className="text-xl font-bold text-[#020F33] leading-snug group-hover:text-[#02C2D5] transition-colors mb-2">
+                        {subject.title}
+                      </h3>
+                    </Link>
+                    
+                    <Link to={`/bcs/subject/${subject.id}`} className="mt-4 flex items-center justify-between text-sm font-bold text-[#475569]">
+                      <span>View Chapters</span>
+                      <ChevronRight size={18} className="group-hover:translate-x-1 transition-transform text-[#02C2D5]" />
+                    </Link>
+                  </div>
+                </SortableItem>
+              ))}
+            </div>
+          </SortableContext>
+        </DndContext>
       )}
     </div>
   );

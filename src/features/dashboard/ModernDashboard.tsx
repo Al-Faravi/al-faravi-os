@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { supabase } from '../../lib/supabase';
 import TaskManager from './TaskManager';
+import { StickyNotes } from '../../components/dashboard/StickyNotes';
 import { 
   Sun, Moon, Sunrise, BookOpen, Target, 
   Briefcase, FolderLock, TrendingUp, 
@@ -238,9 +239,17 @@ export default function ModernDashboard() {
         {/* --- 3. Main Content Grid --- */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start flex-1 pb-10">
           
-          {/* Left Column: Task Manager */}
-          <div className="lg:col-span-7 xl:col-span-8 flex flex-col h-[650px] lg:h-[700px] xl:h-[800px] bg-white rounded-3xl border border-[#E2E8F0] overflow-hidden shadow-sm">
-             <TaskManager />
+          {/* Left Column: Task Manager & Sticky Notes */}
+          <div className="lg:col-span-7 xl:col-span-8 flex flex-col gap-6">
+            {/* Task Manager Container */}
+            <div className="bg-white rounded-3xl border border-[#E2E8F0] overflow-hidden shadow-sm h-[600px] lg:h-[650px] flex flex-col">
+               <TaskManager />
+            </div>
+            
+            {/* Quick Scratchpad Sticky Notes Container */}
+            <div className="bg-white rounded-3xl border border-[#E2E8F0] overflow-hidden shadow-sm p-5 md:p-6">
+               <StickyNotes />
+            </div>
           </div>
 
           {/* Right Sidebar: Apps, Motivation & Progress */}

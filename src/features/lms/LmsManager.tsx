@@ -4,8 +4,13 @@ import { Link } from 'react-router-dom';
 import { 
   BookOpen, Plus, Trophy, PlayCircle, ExternalLink, 
   CheckCircle2, Code2, Layout, Database, Trash2, Code, 
-  Loader2, GraduationCap, Video, FileText, ArrowRight
+  Loader2, GraduationCap, Video, FileText, ArrowRight, GripVertical
 } from 'lucide-react';
+
+// ১. @dnd-kit ইমপোর্টসমূহ
+import { DndContext, closestCenter } from '@dnd-kit/core';
+import { SortableContext, verticalListSortingStrategy, arrayMove } from '@dnd-kit/sortable';
+import { SortableItem } from '../../components/ui/SortableItem';
 
 interface Course {
   id: string;
@@ -13,6 +18,7 @@ interface Course {
   platform: string;
   status: 'Not Started' | 'In Progress' | 'Completed';
   progress: number;
+  order_index?: number;
 }
 
 interface Resource {
@@ -44,15 +50,19 @@ export default function LmsManager() {
   const fetchData = async () => {
     setLoading(true);
     try {
-      // Fail-safe fetching: Promise.all এর বদলে আলাদা আলাদা ফেচ করা হয়েছে
+      // অর্ডার ইনডেক্স অনুযায়ী ফেচ করা যাতে ড্র্যাগ করার পর সিকোয়েন্স ঠিক থাকে
       const { data: coursesData, error: coursesError } = await supabase
-        .from('lms_courses').select('*').order('created_at', { ascending: false });
+        .from('lms_courses')
+        .select('*')
+        .order('order_index', { ascending: true });
       
       if (coursesError) console.error('Courses fetch error:', coursesError);
       setCourses(coursesData || []);
 
       const { data: resourcesData, error: resourcesError } = await supabase
-        .from('lms_resources').select('*').order('created_at', { ascending: false });
+        .from('lms_resources')
+        .select('*')
+        .order('created_at', { ascending: false });
       
       if (resourcesError) console.error('Resources fetch error:', resourcesError);
       setResources(resourcesData || []);
@@ -60,7 +70,37 @@ export default function LmsManager() {
     } catch (error) {
       console.error('Unexpected error:', error);
     } finally {
-      setLoading(false); // যেকোনো অবস্থাতেই লোডিং বন্ধ হবে
+      setLoading(false);
+    }
+  };
+
+  // ২. Drag শেষ হলে সিরিয়াল আপডেট করার লজিক
+  const handleDragEnd = async (event: any) => {
+    const { active, over } = event;
+    
+    if (over && active.id !== over.id) {
+      setCourses((items) => {
+        const oldIndex = items.findIndex((item) => item.id === active.id);
+        const newIndex = items.findIndex((item) => item.id === over.id);
+        
+        const newItems = arrayMove(items, oldIndex, newIndex);
+
+        // ডাটাবেসে নতুন সিরিয়াল আপডেট করা (Supabase Upsert)
+        const updates = newItems.map((item, index) => ({
+          id: item.id,
+          title: item.title,
+          platform: item.platform,
+          status: item.status,
+          progress: item.progress,
+          order_index: index, // নতুন পজিশন ইনডেক্স
+        }));
+
+        supabase.from('lms_courses').upsert(updates).then(({ error }) => {
+          if (error) console.error("Reorder Error:", error);
+        });
+
+        return newItems;
+      });
     }
   };
 
@@ -77,7 +117,8 @@ export default function LmsManager() {
         title: cTitle,
         platform: cPlatform,
         status: cStatus,
-        progress: cProgress
+        progress: cProgress,
+        order_index: courses.length // নতুন আইটেম সবার শেষে যোগ হবে
       }]);
 
       if (error) throw error;
@@ -205,44 +246,54 @@ export default function LmsManager() {
       {loading ? (
         <div className="flex justify-center p-20"><Loader2 className="animate-spin text-[#02C2D5]" size={40} /></div>
       ) : activeTab === 'courses' ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
-          {courses.length === 0 ? (
-            <div className="col-span-full text-center py-20 bg-white rounded-3xl border border-dashed border-[#E2E8F0]">
-              <BookOpen size={48} className="mx-auto mb-4 text-[#475569] opacity-30" />
-              <p className="text-[#475569] font-bold text-lg">Your learning track is empty.</p>
-            </div>
-          ) : (
-            courses.map(course => {
-              const isCompleted = course.status === 'Completed';
-              const isStarted = course.status !== 'Not Started';
-              const accentColor = isCompleted ? '#A3D803' : isStarted ? '#02C2D5' : '#CBD5E1';
+        courses.length === 0 ? (
+          <div className="col-span-full text-center py-20 bg-white rounded-3xl border border-dashed border-[#E2E8F0]">
+            <BookOpen size={48} className="mx-auto mb-4 text-[#475569] opacity-30" />
+            <p className="text-[#475569] font-bold text-lg">Your learning track is empty.</p>
+          </div>
+        ) : (
+          /* ৩. DndContext এবং SortableContext দিয়ে গ্রিড র‍্যাপ করা হয়েছে */
+          <DndContext collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+            <SortableContext items={courses.map(c => c.id)} strategy={verticalListSortingStrategy}>
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+                {courses.map(course => {
+                  const isCompleted = course.status === 'Completed';
+                  const isStarted = course.status !== 'Not Started';
+                  const accentColor = isCompleted ? '#A3D803' : isStarted ? '#02C2D5' : '#CBD5E1';
 
-              return (
-                <div key={course.id} className="bg-white border border-[#E2E8F0] p-6 rounded-3xl shadow-sm hover:-translate-y-1 hover:shadow-xl transition-all duration-300 group relative flex flex-col h-full">
-                  <div className="absolute top-0 left-0 w-full h-1.5" style={{ backgroundColor: accentColor }}></div>
-                  <div className="flex justify-between items-start mb-4 mt-2">
-                    <span className="text-xs font-black bg-[#F8FAFC] border border-[#E2E8F0] text-[#475569] px-3 py-1.5 rounded-lg uppercase tracking-wider">{course.platform}</span>
-                    <button onClick={() => handleDeleteCourse(course.id)} className="text-[#475569] hover:text-rose-500 hover:bg-rose-50 p-2 rounded-xl transition-colors opacity-0 group-hover:opacity-100"><Trash2 size={18} /></button>
-                  </div>
-                  <Link to={`/lms/course/${course.id}`} className="text-xl font-bold text-[#020F33] leading-snug mb-6 flex-grow hover:text-[#02C2D5] transition-colors">
-                    {course.title}
-                  </Link>
-                  <div className="mt-auto">
-                    <div className="flex justify-between items-center text-sm font-bold mb-3">
-                      <span className="flex items-center gap-1.5" style={{ color: accentColor }}>
-                        {isCompleted ? <CheckCircle2 size={16} /> : <PlayCircle size={16} />}{course.status}
-                      </span>
-                      <span className="text-[#020F33]">{course.progress}%</span>
-                    </div>
-                    <div className="w-full bg-[#F8FAFC] rounded-full h-3 border border-[#E2E8F0] overflow-hidden">
-                      <div className="h-full rounded-full transition-all duration-1000 ease-out" style={{ width: `${course.progress}%`, backgroundColor: accentColor }}></div>
-                    </div>
-                  </div>
-                </div>
-              );
-            })
-          )}
-        </div>
+                  return (
+                    <SortableItem key={course.id} id={course.id}>
+                      <div className="bg-white border border-[#E2E8F0] p-6 rounded-3xl shadow-sm hover:-translate-y-1 hover:shadow-xl transition-all duration-300 group relative flex flex-col h-full">
+                        <div className="absolute top-0 left-0 w-full h-1.5" style={{ backgroundColor: accentColor }}></div>
+                        <div className="flex justify-between items-center mb-4 mt-2">
+                          <span className="text-xs font-black bg-[#F8FAFC] border border-[#E2E8F0] text-[#475569] px-3 py-1.5 rounded-lg uppercase tracking-wider">{course.platform}</span>
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-gray-300 cursor-grab active:cursor-grabbing p-1"><GripVertical size={18} /></span>
+                            <button onClick={() => handleDeleteCourse(course.id)} className="text-[#475569] hover:text-rose-500 hover:bg-rose-50 p-2 rounded-xl transition-colors opacity-0 group-hover:opacity-100"><Trash2 size={18} /></button>
+                          </div>
+                        </div>
+                        <Link to={`/lms/course/${course.id}`} className="text-xl font-bold text-[#020F33] leading-snug mb-6 flex-grow hover:text-[#02C2D5] transition-colors">
+                          {course.title}
+                        </Link>
+                        <div className="mt-auto">
+                          <div className="flex justify-between items-center text-sm font-bold mb-3">
+                            <span className="flex items-center gap-1.5" style={{ color: accentColor }}>
+                              {isCompleted ? <CheckCircle2 size={16} /> : <PlayCircle size={16} />}{course.status}
+                            </span>
+                            <span className="text-[#020F33]">{course.progress}%</span>
+                          </div>
+                          <div className="w-full bg-[#F8FAFC] rounded-full h-3 border border-[#E2E8F0] overflow-hidden">
+                            <div className="h-full rounded-full transition-all duration-1000 ease-out" style={{ width: `${course.progress}%`, backgroundColor: accentColor }}></div>
+                          </div>
+                        </div>
+                      </div>
+                    </SortableItem>
+                  );
+                })}
+              </div>
+            </SortableContext>
+          </DndContext>
+        )
       ) : (
         <div className="bg-white border border-[#E2E8F0] rounded-3xl shadow-sm overflow-hidden p-6 md:p-8">
            <div className="flex justify-between items-center border-b pb-4 mb-4">
