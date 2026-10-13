@@ -1,227 +1,157 @@
 import React, { useState, useEffect } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import { supabase } from '../../lib/supabase';
-import { 
-  ArrowLeft, Plus, Trash2, ExternalLink, FileText, 
-  Video, Code, Loader2, BookOpen, GripVertical, CheckCircle2, Circle 
-} from 'lucide-react';
-
-// ১. @dnd-kit ইমপোর্টসমূহ
-import { 
-  DndContext, closestCenter, 
-  PointerSensor, useSensor, useSensors 
-} from '@dnd-kit/core';
+import { Target, BookOpen, ChevronRight, Loader2, Award, BookMarked, BrainCircuit, Globe, FlaskConical, MonitorDot, GripVertical } from 'lucide-react';
+import { DndContext, closestCenter, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
 import { SortableContext, verticalListSortingStrategy, arrayMove } from '@dnd-kit/sortable';
 import { SortableItem } from '../../components/ui/SortableItem';
 
-interface Resource {
+interface BcsSubject {
   id: string;
-  chapter_id: string;
   title: string;
-  url: string;
-  type: string;
+  marks: number;
+  icon_color: string;
   order_index?: number;
+  user_id: string;
 }
 
-export default function BcsWorkspace() {
-  const { chapterId } = useParams<{ chapterId: string }>();
+export default function BcsManager() {
+  const [subjects, setSubjects] = useState<BcsSubject[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [isInitializing, setIsInitializing] = useState(false);
 
-  // মাউস/টাচ সেন্সর (৮ পিক্সেল টানলে ড্র্যাগ শুরু হবে)
   const sensors = useSensors(
-    useSensor(PointerSensor, {
-      activationConstraint: { distance: 8 },
-    })
+    useSensor(PointerSensor, { activationConstraint: { distance: 8 } })
   );
 
-  const [loading, setLoading] = useState(true);
-  const [resources, setResources] = useState<Resource[]>([]);
-  const [showForm, setShowForm] = useState(false);
-  
-  // নতুন রিসোর্স ফর্ম স্টেট
-  const [title, setTitle] = useState('');
-  const [url, setUrl] = useState('');
-  const [type, setType] = useState('Doc');
-  const [isSaving, setIsSaving] = useState(false);
-
   useEffect(() => {
-    if (chapterId) {
-      fetchResources();
-    }
-  }, [chapterId]);
+    fetchSubjects();
+  }, []);
 
-  const fetchResources = async () => {
+  const fetchSubjects = async () => {
     setLoading(true);
-    try {
-      const { data, error } = await supabase
-        .from('bcs_resources')
-        .select('*')
-        .eq('chapter_id', chapterId)
-        .order('order_index', { ascending: true });
-
-      if (error) throw error;
-      setResources(data || []);
-    } catch (error) {
-      console.error('Error fetching resources:', error);
-    } finally {
-      setLoading(false);
-    }
+    const { data } = await supabase
+      .from('bcs_subjects')
+      .select('*')
+      .order('order_index', { ascending: true });
+    
+    if (data) setSubjects(data);
+    setLoading(false);
   };
 
-  // ২. Drag & Drop হ্যান্ডলার (রিসোর্স রিঅর্ডার ও Supabase আপডেট)
-  const handleResourceDragEnd = async (event: any) => {
+  const handleDragEnd = async (event: any) => {
     const { active, over } = event;
-    
     if (over && active.id !== over.id) {
-      setResources((items) => {
+      setSubjects((items) => {
         const oldIndex = items.findIndex((item) => item.id === active.id);
         const newIndex = items.findIndex((item) => item.id === over.id);
-        
         const newItems = arrayMove(items, oldIndex, newIndex);
 
-        // Supabase-এ bcs_resources টেবিলের order_index আপডেট করা
-        const updates = newItems.map((item, index) => ({
-          id: item.id,
-          title: item.title,
-          url: item.url,
-          type: item.type,
-          chapter_id: item.chapter_id,
-          order_index: index,
-        }));
-
-        supabase.from('bcs_resources').upsert(updates).then(({ error }) => {
-          if (error) console.error("BCS Resource Reorder Error:", error);
-        });
+        const updates = newItems.map((item, index) => ({ id: item.id, order_index: index }));
+        supabase.from('bcs_subjects').upsert(updates).then();
 
         return newItems;
       });
     }
   };
 
-  const handleAddResource = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!title || !url) return;
-    setIsSaving(true);
-
+  const handleInitializeSyllabus = async () => {
+    setIsInitializing(true);
     try {
-      const { data, error } = await supabase.from('bcs_resources').insert([{
-        chapter_id: chapterId,
-        title,
-        url,
-        type,
-        order_index: resources.length
-      }]).select().single();
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error("User not found");
 
-      if (error) throw error;
-      if (data) setResources([...resources, data]);
+      const defaultSyllabus = [
+        { title: 'বাংলা ভাষা ও সাহিত্য', marks: 35, icon_color: '#EF4444', user_id: user.id, order_index: 0 },
+        { title: 'English Language & Literature', marks: 35, icon_color: '#3B82F6', user_id: user.id, order_index: 1 },
+        { title: 'বাংলাদেশ বিষয়াবলি', marks: 30, icon_color: '#10B981', user_id: user.id, order_index: 2 },
+        { title: 'আন্তর্জাতিক বিষয়াবলি', marks: 20, icon_color: '#F59E0B', user_id: user.id, order_index: 3 },
+        { title: 'সাধারণ বিজ্ঞান', marks: 15, icon_color: '#06B6D4', user_id: user.id, order_index: 4 },
+        { title: 'কম্পিউটার ও তথ্যপ্রযুক্তি', marks: 15, icon_color: '#6366F1', user_id: user.id, order_index: 5 },
+        { title: 'গাণিতিক যুক্তি', marks: 15, icon_color: '#EC4899', user_id: user.id, order_index: 6 },
+        { title: 'মানসিক দক্ষতা', marks: 15, icon_color: '#F43F5E', user_id: user.id, order_index: 7 },
+        { title: 'ভূগোল, পরিবেশ ও দুর্যোগ ব্যবস্থাপনা', marks: 10, icon_color: '#8B5CF6', user_id: user.id, order_index: 8 },
+        { title: 'নৈতিকতা, মূল্যবোধ ও সুশাসন', marks: 10, icon_color: '#14B8A6', user_id: user.id, order_index: 9 },
+      ];
 
-      setTitle('');
-      setUrl('');
-      setShowForm(false);
-    } catch (error) {
-      console.error('Error adding resource:', error);
+      await supabase.from('bcs_subjects').insert(defaultSyllabus);
+      await fetchSubjects();
+    } catch (error: any) {
+      console.error('Failed to init syllabus:', error);
     } finally {
-      setIsSaving(false);
+      setIsInitializing(false);
     }
   };
 
-  const handleDeleteResource = async (id: string) => {
-    if (!window.confirm('Delete this resource?')) return;
-    try {
-      await supabase.from('bcs_resources').delete().eq('id', id);
-      setResources(resources.filter(r => r.id !== id));
-    } catch (error) {
-      console.error('Error deleting resource:', error);
-    }
+  const getIcon = (title: string, color: string) => {
+    if (title.includes('বিজ্ঞান')) return <FlaskConical size={24} color={color} />;
+    if (title.includes('কম্পিউটার')) return <MonitorDot size={24} color={color} />;
+    if (title.includes('আন্তর্জাতিক') || title.includes('ভূগোল')) return <Globe size={24} color={color} />;
+    if (title.includes('মানসিক') || title.includes('গাণিতিক')) return <BrainCircuit size={24} color={color} />;
+    return <BookMarked size={24} color={color} />;
   };
 
-  if (loading) {
-    return (
-      <div className="min-h-[60vh] flex items-center justify-center">
-        <Loader2 className="animate-spin text-[#02C2D5]" size={40} />
-      </div>
-    );
-  }
+  if (loading) return <div className="min-h-[60vh] flex items-center justify-center"><Loader2 className="animate-spin text-[#02C2D5]" size={40} /></div>;
 
   return (
     <div className="p-4 md:p-8 lg:p-12 max-w-7xl mx-auto text-[#020F33] mb-28">
-      {/* Header */}
-      <div className="mb-8">
-        <Link to="/bcs" className="inline-flex items-center gap-2 text-sm font-bold text-[#475569] hover:text-[#020F33] transition-colors mb-4">
-          <ArrowLeft size={16} /> Back to BCS Mission Control
-        </Link>
-        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-          <div>
-            <h1 className="text-2xl md:text-3xl font-black">Chapter Resources & Study Materials</h1>
-            <p className="text-[#475569] mt-1 font-medium text-sm">Organize notes, video links, and reference materials.</p>
-          </div>
-          <button
-            onClick={() => setShowForm(!showForm)}
-            className="bg-[#020F33] text-white px-5 py-2.5 rounded-xl font-bold hover:bg-[#02C2D5] hover:text-[#020F33] transition-all flex items-center gap-2 shadow-md"
-          >
-            <Plus size={18} /> {showForm ? 'Cancel' : 'Add Resource'}
-          </button>
+      {/* Header Area */}
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-10 bg-white p-6 rounded-3xl border border-slate-200 shadow-sm">
+        <div>
+          <h1 className="text-3xl md:text-4xl font-black flex items-center gap-3 tracking-tight">
+            <Target className="text-[#02C2D5] w-10 h-10" /> BCS Mission Control
+          </h1>
+          <p className="text-[#475569] mt-2 font-bold">Total Marks: 200 — Track your entire preliminary journey.</p>
         </div>
       </div>
 
-      {/* Add Resource Form */}
-      {showForm && (
-        <form onSubmit={handleAddResource} className="bg-white border border-[#E2E8F0] p-6 rounded-3xl shadow-lg mb-8">
-          <h3 className="text-lg font-bold mb-4">Add New Study Material</h3>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
-            <div>
-              <label className="block text-sm font-bold text-[#475569] mb-1">Title</label>
-              <input type="text" required value={title} onChange={e => setTitle(e.target.value)} placeholder="e.g. Important PDF Note" className="w-full bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#02C2D5]" />
-            </div>
-            <div>
-              <label className="block text-sm font-bold text-[#475569] mb-1">URL / Link</label>
-              <input type="url" required value={url} onChange={e => setUrl(e.target.value)} placeholder="https://..." className="w-full bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#02C2D5]" />
-            </div>
-            <div>
-              <label className="block text-sm font-bold text-[#475569] mb-1">Type</label>
-              <select value={type} onChange={e => setType(e.target.value)} className="w-full bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#02C2D5]">
-                <option value="Doc">Doc / PDF</option>
-                <option value="Video">Video</option>
-                <option value="Github">Github / Code</option>
-                <option value="Link">External Link</option>
-              </select>
-            </div>
-          </div>
-          <button type="submit" disabled={isSaving} className="bg-[#020F33] hover:bg-[#02C2D5] text-white hover:text-[#020F33] font-bold py-2.5 px-6 rounded-xl transition-all text-sm flex items-center gap-2">
-            {isSaving ? <Loader2 className="animate-spin" size={16} /> : 'Save Resource'}
+      {subjects.length === 0 ? (
+        <div className="bg-white border border-[#E2E8F0] rounded-3xl p-12 text-center shadow-sm">
+          <Award size={64} className="mx-auto mb-6 text-[#A3D803]" />
+          <h2 className="text-2xl font-bold mb-2">Start Your BCS Journey</h2>
+          <p className="text-[#475569] mb-8 max-w-md mx-auto">
+            Click below to automatically set up all 10 subjects of the BCS Preliminary syllabus.
+          </p>
+          <button onClick={handleInitializeSyllabus} disabled={isInitializing} className="bg-[#020F33] text-white font-bold px-8 py-4 rounded-xl flex items-center justify-center gap-2 mx-auto hover:bg-[#02C2D5] hover:text-[#020F33] transition-colors">
+            {isInitializing ? <Loader2 className="animate-spin" size={20} /> : <><BookOpen size={20} /> Initialize BCS Syllabus</>}
           </button>
-        </form>
-      )}
-
-      {/* ۳. DndContext এবং SortableContext দিয়ে রিসোর্স লিস্ট রেন্ডার */}
-      {resources.length === 0 ? (
-        <div className="text-center py-16 bg-white rounded-3xl border border-dashed border-[#E2E8F0]">
-          <BookOpen size={40} className="mx-auto mb-3 text-[#475569] opacity-30" />
-          <p className="text-[#475569] font-bold">No resources added yet.</p>
         </div>
       ) : (
-        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleResourceDragEnd}>
-          <SortableContext items={resources.map(r => r.id)} strategy={verticalListSortingStrategy}>
-            <div className="space-y-3">
-              {resources.map((resource) => (
-                <SortableItem key={resource.id} id={resource.id}>
-                  <div className="flex items-center justify-between p-4 bg-white border border-[#E2E8F0] rounded-2xl shadow-sm hover:border-[#02C2D5] transition-all group">
-                    <div className="flex items-center gap-3">
-                      <span className="cursor-grab active:cursor-grabbing text-slate-300 group-hover:text-slate-500 p-1">
-                        <GripVertical size={18} />
-                      </span>
-                      <div>
-                        <h4 className="font-bold text-[#020F33] text-sm md:text-base">{resource.title}</h4>
-                        <span className="text-xs text-[#475569] uppercase tracking-wider font-semibold">{resource.type}</span>
+        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+          <SortableContext items={subjects.map(s => s.id)} strategy={verticalListSortingStrategy}>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {subjects.map((subject) => (
+                <SortableItem key={subject.id} id={subject.id}>
+                  <div className="bg-white border border-slate-200 p-6 rounded-3xl shadow-sm hover:shadow-xl hover:border-[#02C2D5] transition-all group flex flex-col justify-between h-full relative">
+                    
+                    {/* Top Row */}
+                    <div className="flex justify-between items-start mb-6">
+                      <div className="w-14 h-14 rounded-2xl flex items-center justify-center bg-opacity-10 group-hover:scale-110 transition-transform" style={{ backgroundColor: `${subject.icon_color}15` }}>
+                        {getIcon(subject.title, subject.icon_color)}
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-slate-300 cursor-grab active:cursor-grabbing p-1 hover:text-slate-500">
+                          <GripVertical size={18} />
+                        </span>
+                        <div className="bg-slate-50 border border-slate-200 px-3 py-1.5 rounded-lg">
+                          <span className="text-xs font-black" style={{ color: subject.icon_color }}>{subject.marks} Marks</span>
+                        </div>
                       </div>
                     </div>
-                    <div className="flex items-center gap-2">
-                      <a href={resource.url} target="_blank" rel="noreferrer" className="p-2 bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl text-[#020F33] hover:text-[#02C2D5] transition-colors">
-                        <ExternalLink size={16} />
-                      </a>
-                      <button onClick={() => handleDeleteResource(resource.id)} className="p-2 text-[#475569] hover:text-rose-500 hover:bg-rose-50 rounded-xl opacity-0 group-hover:opacity-100 transition-opacity">
-                        <Trash2 size={16} />
-                      </button>
-                    </div>
+                    
+                    {/* Content */}
+                    <Link to={`/bcs/subject/${subject.id}`} className="block flex-1">
+                      <h3 className="text-xl font-bold text-[#020F33] leading-snug group-hover:text-[#02C2D5] transition-colors mb-2">
+                        {subject.title}
+                      </h3>
+                    </Link>
+                    
+                    {/* Bottom Action */}
+                    <Link to={`/bcs/subject/${subject.id}`} className="mt-4 pt-4 border-t border-slate-100 flex items-center justify-between text-sm font-bold text-[#475569]">
+                      <span className="group-hover:text-[#02C2D5] transition-colors">View Chapters & Resources</span>
+                      <ChevronRight size={18} className="group-hover:translate-x-1 transition-transform text-[#02C2D5]" />
+                    </Link>
+
                   </div>
                 </SortableItem>
               ))}
