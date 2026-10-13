@@ -42,17 +42,25 @@ export default function ModernDashboard() {
   const [allCourses, setAllCourses] = useState<any[]>([]);
   const [pinnedNotes, setPinnedNotes] = useState<any[]>([]);
 
-  // === ক. Pinned Notes Fetcher (live sync with StickyNotes) ===
+  // === Pinned Notes Fetcher (live sync with StickyNotes) ===
   const fetchPinnedNotes = async () => {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return;
-    const { data } = await supabase
-      .from('sticky_notes')
-      .select('*')
-      .eq('user_id', user.id)
-      .eq('is_pinned', true)
-      .order('created_at', { ascending: false });
-    if (data) setPinnedNotes(data);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      // FIXED: Changed from 'sticky_notes' to 'dashboard_notes'
+      const { data, error } = await supabase
+        .from('dashboard_notes')
+        .select('*')
+        .eq('user_id', user.id)
+        .eq('is_pinned', true)
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+      if (data) setPinnedNotes(data);
+    } catch (error) {
+      console.error("Error fetching pinned notes:", error);
+    }
   };
 
   useEffect(() => {
@@ -99,7 +107,7 @@ export default function ModernDashboard() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
-      // Real-time Cloud Streak Logic
+      // Real-time Cloud Streak Logic (Safe Metadata extraction)
       const metadata = user.user_metadata || {};
       const lastActive = metadata.last_active_date;
       const currentStreak = metadata.streak_count || 0;
@@ -121,8 +129,8 @@ export default function ModernDashboard() {
       }
       setStreak(newStreak);
 
-      // Fetch Global Stats (Pinned Notes আলাদাভাবে fetchPinnedNotes-এ চলে)
-      const [tasksRes, bcsRes, lmsRes, vaultRes] = await Promise.all([
+      // Fetch Global Stats Safely (using count exact)
+      const [tasksRes, bcsRes, lmsRes, vaultRes] = await Promise.allSettled([
         supabase.from('tasks').select('*', { count: 'exact', head: true }).eq('user_id', user.id).eq('is_completed', false),
         supabase.from('bcs_resources').select('*', { count: 'exact', head: true }).eq('user_id', user.id).eq('is_completed', true),
         supabase.from('lms_contents').select('*', { count: 'exact', head: true }).eq('user_id', user.id).eq('is_completed', true),
@@ -130,10 +138,10 @@ export default function ModernDashboard() {
       ]);
 
       setStats({
-        pendingTasks: tasksRes.count || 0,
-        bcsCompleted: bcsRes.count || 0,
-        lmsCompleted: lmsRes.count || 0,
-        vaultItems: vaultRes.count || 0
+        pendingTasks: tasksRes.status === 'fulfilled' ? tasksRes.value.count || 0 : 0,
+        bcsCompleted: bcsRes.status === 'fulfilled' ? bcsRes.value.count || 0 : 0,
+        lmsCompleted: lmsRes.status === 'fulfilled' ? lmsRes.value.count || 0 : 0,
+        vaultItems: vaultRes.status === 'fulfilled' ? vaultRes.value.count || 0 : 0
       });
 
       // Fetch All Courses for Tracker
@@ -146,7 +154,7 @@ export default function ModernDashboard() {
       ]);
 
     } catch (error) {
-      console.error("Error fetching stats:", error);
+      console.error("Error fetching stats and streak:", error);
     }
   };
 
@@ -157,7 +165,7 @@ export default function ModernDashboard() {
     }
   };
 
-  // --- Course Grouping ---
+  // --- Course Grouping (Safeguarding against undefined statuses) ---
   const activeCourses = allCourses.filter(c => c.status === 'active');
   const pendingCourses = allCourses.filter(c => c.status === 'pending');
   const watchLaterCourses = allCourses.filter(c => c.status === 'watch_later');
@@ -174,14 +182,14 @@ export default function ModernDashboard() {
   // --- Reusable Smart Course Component ---
   const CourseProgressItem = ({ course, isFocused = false }: { course: any, isFocused?: boolean }) => {
     const isLms = course.courseType === 'lms';
-    const link = isLms ? `/lms/${course.id}` : `/bcs/${course.id}`;
+    const link = isLms ? `/lms/course/${course.id}` : `/bcs/subject/${course.id}`; // Adjusted typical link structure
     const color = isLms ? '#9333ea' : (course.icon_color || '#02C2D5');
     
     return (
       <div className={`group ${isFocused ? 'bg-white border-2 border-[#02C2D5]/30 shadow-md p-4 rounded-2xl hover:border-[#02C2D5] transition-all duration-300 hover:shadow-lg hover:-translate-y-0.5' : 'py-3 border-b border-[#E2E8F0] last:border-0'}`}>
         <div className="flex justify-between items-end mb-2">
           <Link to={link} className={`font-bold truncate pr-2 flex-1 transition-colors ${isFocused ? 'text-base text-[#020F33] hover:text-[#02C2D5]' : 'text-sm text-[#475569] hover:text-[#020F33]'}`}>
-            {course.title}
+            {course.title || 'Untitled'}
           </Link>
           <span className={`text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded shrink-0 ${isLms ? 'text-purple-600 bg-purple-100' : 'text-[#02C2D5] bg-[#02C2D5]/10'}`}>
             {isLms ? 'LMS' : 'BCS'}
@@ -198,7 +206,6 @@ export default function ModernDashboard() {
   };
 
   return (
-    // Clean Light Mode Wrapper
     <div className="min-h-screen bg-[#F8FAFC] flex flex-col">
       <div className="p-3 md:p-6 lg:p-8 2xl:px-12 max-w-[1536px] mx-auto w-full mb-24 md:mb-10 flex-1 flex flex-col">
         
@@ -227,7 +234,7 @@ export default function ModernDashboard() {
             {/* Dynamic Gamification Streak Widget */}
             <div className="flex items-center gap-3 bg-[#F8FAFC] border border-[#E2E8F0] p-2.5 md:p-3 rounded-2xl flex-1 xl:flex-none shadow-sm">
               <div className="w-10 h-10 bg-amber-100 text-amber-600 rounded-xl flex items-center justify-center shrink-0">
-                <Flame size={20} className={streak > 0 ? "animate-pulse" : ""} />
+                <Flame size={20} className={streak > 0 ? "animate-pulse text-amber-500" : "text-amber-400"} />
               </div>
               <div className="pr-2">
                 <p className="text-[10px] md:text-xs font-bold text-[#475569] uppercase tracking-wider">Current Streak</p>
@@ -325,9 +332,9 @@ export default function ModernDashboard() {
                     {pinnedNotes.map((note, i) => (
                       <div
                         key={note.id}
-                        title={note.title || 'Pinned note'}
+                        title="Click to view in Sticky Notes section"
                         onClick={() => document.getElementById('sticky-notes-section')?.scrollIntoView({ behavior: 'smooth' })}
-                        className={`relative shrink-0 w-52 md:w-60 ${NOTE_TILTS[i % NOTE_TILTS.length]} hover:!rotate-0 hover:scale-[1.04] hover:z-30 transition-all duration-300 cursor-pointer`}
+                        className={`relative shrink-0 w-52 md:w-60 ${NOTE_TILTS[i % NOTE_TILTS.length]} hover:!rotate-0 hover:scale-[1.04] hover:z-30 transition-all duration-300 cursor-pointer group/note`}
                       >
                         {/* === Realistic Push Pin Assembly === */}
                         {/* Soft shadow on paper */}
@@ -346,7 +353,7 @@ export default function ModernDashboard() {
 
                         {/* === Paper Note === */}
                         <div
-                          className="relative rounded-lg p-4 pt-6 min-h-[140px] max-h-[175px] overflow-hidden shadow-[0_12px_24px_rgba(0,0,0,0.30),0_2px_6px_rgba(0,0,0,0.18)] group-hover:shadow-[0_18px_32px_rgba(0,0,0,0.35)] transition-shadow duration-300"
+                          className="relative rounded-lg p-4 pt-6 min-h-[140px] max-h-[175px] overflow-hidden shadow-[0_12px_24px_rgba(0,0,0,0.30),0_2px_6px_rgba(0,0,0,0.18)] group-hover/note:shadow-[0_18px_32px_rgba(0,0,0,0.35)] transition-shadow duration-300"
                           style={{ backgroundColor: note.bg_color || '#FEF3C7' }}
                         >
                           {/* lined paper texture */}
@@ -360,7 +367,7 @@ export default function ModernDashboard() {
                           {/* Content */}
                           <div
                             className="relative text-[13px] leading-relaxed text-slate-800 font-medium line-clamp-4 break-words"
-                            dangerouslySetInnerHTML={{ __html: note.content || note.title || '<span class="italic opacity-50">Empty note…</span>' }}
+                            dangerouslySetInnerHTML={{ __html: note.content || '<span class="italic opacity-50">Empty note…</span>' }}
                           />
                           
                           {/* Date stamp */}
@@ -393,7 +400,7 @@ export default function ModernDashboard() {
             </div>
             
             {/* Quick Scratchpad Sticky Notes Container */}
-            <div id="sticky-notes-section" className="bg-white rounded-3xl border border-[#E2E8F0] overflow-hidden shadow-sm p-5 md:p-6">
+            <div id="sticky-notes-section" className="bg-white rounded-3xl border border-[#E2E8F0] overflow-hidden shadow-sm p-5 md:p-6 scroll-mt-6">
                <StickyNotes />
             </div>
           </div>
