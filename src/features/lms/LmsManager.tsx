@@ -1,13 +1,12 @@
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
+import { useParams, Link } from 'react-router-dom';
 import { supabase } from '../../lib/supabase';
-import { Link } from 'react-router-dom';
 import { 
-  BookOpen, Plus, Trophy, PlayCircle, ExternalLink, 
-  CheckCircle2, Code2, Layout, Database, Trash2, Code, 
-  Loader2, GraduationCap, Video, FileText, ArrowRight, GripVertical
+  ArrowLeft, Plus, Trash2, Video, FileText, CheckCircle2, 
+  Circle, GripVertical, Loader2, BookOpen, ExternalLink, Edit3 
 } from 'lucide-react';
 
-// ১. @dnd-kit সেন্সর ইমপোর্টসমূহ
+// ১. @dnd-kit ইমপোর্টসমূহ (LmsManager এর মতো)
 import { 
   DndContext, closestCenter, 
   PointerSensor, useSensor, useSensors 
@@ -15,322 +14,331 @@ import {
 import { SortableContext, verticalListSortingStrategy, arrayMove } from '@dnd-kit/sortable';
 import { SortableItem } from '../../components/ui/SortableItem';
 
+interface Lecture {
+  id: string;
+  module_id: string;
+  title: string;
+  video_url?: string;
+  duration?: string;
+  is_completed: boolean;
+  order_index?: number;
+}
+
+interface Module {
+  id: string;
+  course_id: string;
+  title: string;
+  order_index?: number;
+}
+
 interface Course {
   id: string;
   title: string;
   platform: string;
-  status: 'Not Started' | 'In Progress' | 'Completed';
+  status: string;
   progress: number;
-  order_index?: number;
 }
 
-interface Resource {
-  id: string;
-  title: string;
-  url: string;
-  type: string;
-}
+export default function LmsWorkspace() {
+  const { courseId } = useParams<{ courseId: string }>();
 
-export default function LmsManager() {
-  // ক্লিকে/স্ক্রলে ঝামেলা এড়াতে PointerSensor সক্রিয়করণ
+  // ক্লিকে বা স্ক্রলে ঝামেলা এড়াতে PointerSensor সক্রিয়করণ
   const sensors = useSensors(
     useSensor(PointerSensor, {
       activationConstraint: {
-        distance: 8, // ৮ পিক্সেল ড্র্যাগ করলে সক্রিয় হবে
+        distance: 8, // ৮ পিক্সেল ড্র্যাগ করলে সক্রিয় হবে
       },
     })
   );
 
-  const [activeTab, setActiveTab] = useState<'courses' | 'resources'>('courses');
   const [loading, setLoading] = useState(true);
-  
-  const [courses, setCourses] = useState<Course[]>([]);
-  const [resources, setResources] = useState<Resource[]>([]);
-  
-  const [showCourseForm, setShowCourseForm] = useState(false);
-  const [isSaving, setIsSaving] = useState(false);
+  const [course, setCourse] = useState<Course | null>(null);
+  const [modules, setModules] = useState<Module[]>([]);
+  const [lectures, setLectures] = useState<Lecture[]>([]);
 
-  const [cTitle, setCTitle] = useState('');
-  const [cPlatform, setCPlatform] = useState('');
-  const [cStatus, setCStatus] = useState<'Not Started' | 'In Progress' | 'Completed'>('In Progress');
-  const [cProgress, setCProgress] = useState(0);
+  // নতুন মডিউল বা লেকচার যোগ করার স্টেট
+  const [newModuleTitle, setNewModuleTitle] = useState('');
+  const [showModuleInput, setShowModuleInput] = useState(false);
+  const [activeModuleId, setActiveModuleId] = useState<string | null>(null);
+  const [newLectureTitle, setNewLectureTitle] = useState('');
 
   useEffect(() => {
-    fetchData();
-  }, []);
+    if (courseId) {
+      fetchCourseData();
+    }
+  }, [courseId]);
 
-  const fetchData = async () => {
+  const fetchCourseData = async () => {
     setLoading(true);
     try {
-      const { data: coursesData, error: coursesError } = await supabase
+      // ১. কোর্স ফেচ করা
+      const { data: courseData, error: courseError } = await supabase
         .from('lms_courses')
         .select('*')
-        .order('order_index', { ascending: true });
-      
-      if (coursesError) console.error('Courses fetch error:', coursesError);
-      setCourses(coursesData || []);
+        .eq('id', courseId)
+        .single();
 
-      const { data: resourcesData, error: resourcesError } = await supabase
-        .from('lms_resources')
+      if (courseError) throw courseError;
+      setCourse(courseData);
+
+      // ২. মডিউল ফেচ করা
+      const { data: modulesData, error: modulesError } = await supabase
+        .from('lms_modules')
         .select('*')
-        .order('created_at', { ascending: false });
-      
-      if (resourcesError) console.error('Resources fetch error:', resourcesError);
-      setResources(resourcesData || []);
-      
+        .eq('course_id', courseId)
+        .order('order_index', { ascending: true });
+
+      if (modulesError) console.error('Modules error:', modulesError);
+      setModules(modulesData || []);
+
+      // ৩. লেকচার ফেচ করা
+      const { data: lecturesData, error: lecturesError } = await supabase
+        .from('lms_lectures')
+        .select('*')
+        .order('order_index', { ascending: true });
+
+      if (lecturesError) console.error('Lectures error:', lecturesError);
+      setLectures(lecturesData || []);
+
     } catch (error) {
-      console.error('Unexpected error:', error);
+      console.error('Error fetching workspace data:', error);
     } finally {
       setLoading(false);
     }
   };
 
-  const handleDragEnd = async (event: any) => {
+  // লেকচার ড্র্যাগ এন্ড ড্রপ হ্যান্ডলার
+  const handleLectureDragEnd = async (event: any, moduleId: string) => {
     const { active, over } = event;
-    
-    if (over && active.id !== over.id) {
-      setCourses((items) => {
-        const oldIndex = items.findIndex((item) => item.id === active.id);
-        const newIndex = items.findIndex((item) => item.id === over.id);
-        
-        const newItems = arrayMove(items, oldIndex, newIndex);
 
-        const updates = newItems.map((item, index) => ({
+    if (over && active.id !== over.id) {
+      setLectures((prevLectures) => {
+        // শুধু নির্দিষ্ট মডিউলের লেকচারগুলো ফিল্টার করি
+        const moduleLectures = prevLectures.filter(l => l.module_id === moduleId);
+        const otherLectures = prevLectures.filter(l => l.module_id !== moduleId);
+
+        const oldIndex = moduleLectures.findIndex((item) => item.id === active.id);
+        const newIndex = moduleLectures.findIndex((item) => item.id === over.id);
+
+        const reorderedModuleLectures = arrayMove(moduleLectures, oldIndex, newIndex);
+
+        // নতুন অর্ডার ইনডেক্স সেট করা
+        const updates = reorderedModuleLectures.map((item, index) => ({
           id: item.id,
+          module_id: item.module_id,
           title: item.title,
-          platform: item.platform,
-          status: item.status,
-          progress: item.progress,
+          is_completed: item.is_completed,
           order_index: index,
         }));
 
-        supabase.from('lms_courses').upsert(updates).then(({ error }) => {
-          if (error) console.error("Reorder Error:", error);
+        // Supabase-এ আপডেটেড অর্ডার সেভ করা
+        supabase.from('lms_lectures').upsert(updates).then(({ error }) => {
+          if (error) console.error("Lecture Reorder Error:", error);
         });
 
-        return newItems;
+        return [...otherLectures, ...reorderedModuleLectures];
       });
     }
   };
 
-  const handleAddCourse = async (e: React.FormEvent) => {
+  // মডিউল যোগ করার ফাংশন
+  const handleAddModule = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!cTitle || !cPlatform) return;
-    setIsSaving(true);
-    try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
+    if (!newModuleTitle.trim()) return;
 
-      const { error } = await supabase.from('lms_courses').insert([{
-        user_id: user.id,
-        title: cTitle,
-        platform: cPlatform,
-        status: cStatus,
-        progress: cProgress,
-        order_index: courses.length
-      }]);
+    try {
+      const { data, error } = await supabase.from('lms_modules').insert([{
+        course_id: courseId,
+        title: newModuleTitle,
+        order_index: modules.length
+      }]).select().single();
 
       if (error) throw error;
-      
-      await fetchData();
-      setShowCourseForm(false);
-      setCTitle('');
-      setCPlatform('');
-      setCProgress(0);
-      setCStatus('In Progress');
-    } catch (error) {
-      console.error('Error adding course:', error);
-      alert("Failed to add course. Make sure the database table exists.");
-    } finally {
-      setIsSaving(false);
+      if (data) setModules([...modules, data]);
+      setNewModuleTitle('');
+      setShowModuleInput(false);
+    } catch (err) {
+      console.error('Error adding module:', err);
     }
   };
 
-  const handleDeleteCourse = async (id: string) => {
-    if(!window.confirm('Delete this course?')) return;
+  // লেকচার যোগ করার ফাংশন
+  const handleAddLecture = async (moduleId: string, e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newLectureTitle.trim()) return;
+
+    const moduleLectures = lectures.filter(l => l.module_id === moduleId);
+
     try {
-      await supabase.from('lms_courses').delete().eq('id', id);
-      setCourses(courses.filter(c => c.id !== id));
-    } catch (error) {
-      console.error(error);
+      const { data, error } = await supabase.from('lms_lectures').insert([{
+        module_id: moduleId,
+        title: newLectureTitle,
+        is_completed: false,
+        order_index: moduleLectures.length
+      }]).select().single();
+
+      if (error) throw error;
+      if (data) setLectures([...lectures, data]);
+      setNewLectureTitle('');
+      setActiveModuleId(null);
+    } catch (err) {
+      console.error('Error adding lecture:', err);
     }
   };
 
-  const completedCount = courses.filter(c => c.status === 'Completed').length;
-  const inProgressCount = courses.filter(c => c.status === 'In Progress').length;
-
-  const getResourceIcon = (type: string) => {
-    switch(type) {
-      case 'Github': return <Code size={18} />;
-      case 'Video': return <Video size={18} />;
-      case 'Doc': return <FileText size={18} />;
-      default: return <ExternalLink size={18} />;
-    }
+  // লেকচার কমপ্লিট টগল
+  const toggleLectureCompletion = async (lectureId: string, currentStatus: boolean) => {
+    setLectures(lectures.map(l => l.id === lectureId ? { ...l, is_completed: !currentStatus } : l));
+    
+    await supabase
+      .from('lms_lectures')
+      .update({ is_completed: !currentStatus })
+      .eq('id', lectureId);
   };
+
+  // লেকচার ডিলিট
+  const handleDeleteLecture = async (lectureId: string) => {
+    setLectures(lectures.filter(l => l.id !== lectureId));
+    await supabase.from('lms_lectures').delete().eq('id', lectureId);
+  };
+
+  if (loading) {
+    return (
+      <div className="flex justify-center items-center min-h-[60vh]">
+        <Loader2 className="animate-spin text-[#02C2D5]" size={40} />
+      </div>
+    );
+  }
 
   return (
     <div className="p-4 md:p-8 lg:p-12 max-w-7xl mx-auto text-[#020F33] mb-20">
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-8">
-        <div>
-          <h1 className="text-3xl md:text-4xl font-extrabold flex items-center gap-3 tracking-tight">
-            <GraduationCap className="text-[#02C2D5] w-10 h-10" /> 
-            Knowledge Hub
-          </h1>
-          <p className="text-[#475569] mt-2 font-medium">Mastering MERN, AI, & Data Intelligence.</p>
-        </div>
-        <button 
-          onClick={() => setShowCourseForm(!showCourseForm)}
-          className="w-full md:w-auto bg-[#020F33] text-white px-6 py-3 rounded-xl font-bold hover:bg-[#02C2D5] hover:text-[#020F33] transition-all flex items-center justify-center gap-2 shadow-lg"
-        >
-          <Plus size={20} /> {showCourseForm ? 'Cancel' : 'New Course'}
-        </button>
-      </div>
-
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6 mb-10">
-        <div className="col-span-2 bg-[#020F33] text-white p-6 md:p-8 rounded-3xl shadow-xl relative overflow-hidden group">
-          <div className="absolute -right-6 -top-6 p-4 opacity-5 group-hover:scale-110 transition-transform duration-700">
-            <Code2 size={150} />
+      {/* Top Header & Back Button */}
+      <div className="mb-6">
+        <Link to="/lms" className="inline-flex items-center gap-2 text-sm font-bold text-[#475569] hover:text-[#020F33] transition-colors mb-4">
+          <ArrowLeft size={16} /> Back to Knowledge Hub
+        </Link>
+        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+          <div>
+            <span className="text-xs font-black bg-[#02C2D5]/10 text-[#02C2D5] px-3 py-1.5 rounded-lg uppercase tracking-wider">
+              {course?.platform || 'Course Workspace'}
+            </span>
+            <h1 className="text-2xl md:text-3xl font-extrabold mt-2">{course?.title}</h1>
           </div>
-          <div className="relative z-10">
-            <p className="text-[#02C2D5] font-bold text-xs md:text-sm mb-2 uppercase tracking-widest">Active Skill Focus</p>
-            <h2 className="text-2xl md:text-3xl font-black leading-tight">Advanced MERN & System Architecture</h2>
-          </div>
-        </div>
-        
-        <div className="bg-white border border-[#E2E8F0] p-6 rounded-3xl shadow-sm flex flex-col justify-center gap-3">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-full bg-[#02C2D5]/10 flex items-center justify-center text-[#02C2D5]"><PlayCircle size={20} /></div>
-            <p className="text-[#475569] font-bold text-sm">In Progress</p>
-          </div>
-          <h3 className="text-3xl font-black text-[#020F33]">{inProgressCount}</h3>
-        </div>
-
-        <div className="bg-white border border-[#E2E8F0] p-6 rounded-3xl shadow-sm flex flex-col justify-center gap-3">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-full bg-[#A3D803]/10 flex items-center justify-center text-[#A3D803]"><Trophy size={20} /></div>
-            <p className="text-[#475569] font-bold text-sm">Completed</p>
-          </div>
-          <h3 className="text-3xl font-black text-[#020F33]">{completedCount}</h3>
+          <button
+            onClick={() => setShowModuleInput(!showModuleInput)}
+            className="bg-[#020F33] text-white px-5 py-2.5 rounded-xl font-bold hover:bg-[#02C2D5] hover:text-[#020F33] transition-all flex items-center gap-2 shadow-md"
+          >
+            <Plus size={18} /> {showModuleInput ? 'Cancel' : 'Add Module'}
+          </button>
         </div>
       </div>
 
-      <div className="flex gap-2 mb-8 bg-white p-1.5 rounded-2xl border border-[#E2E8F0] w-fit shadow-sm">
-        <button onClick={() => setActiveTab('courses')} className={`px-6 py-2.5 rounded-xl text-sm font-bold transition-all flex items-center gap-2 ${activeTab === 'courses' ? 'bg-[#020F33] text-white shadow-md' : 'text-[#475569] hover:text-[#020F33]'}`}><Layout size={16} /> My Courses</button>
-        <button onClick={() => setActiveTab('resources')} className={`px-6 py-2.5 rounded-xl text-sm font-bold transition-all flex items-center gap-2 ${activeTab === 'resources' ? 'bg-[#020F33] text-white shadow-md' : 'text-[#475569] hover:text-[#020F33]'}`}><Database size={16} /> Cheat Sheets & Links</button>
-      </div>
-
-      {showCourseForm && (
-        <form onSubmit={handleAddCourse} className="bg-white border border-[#E2E8F0] p-6 md:p-8 rounded-3xl shadow-lg mb-10 animate-in fade-in slide-in-from-top-4">
-          <h3 className="text-xl font-bold mb-6 flex items-center gap-2"><BookOpen className="text-[#02C2D5]" /> Add New Learning Track</h3>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5 mb-6">
-            <div className="lg:col-span-2">
-              <label className="block text-sm font-bold text-[#475569] mb-2">Course Title</label>
-              <input type="text" required value={cTitle} onChange={e => setCTitle(e.target.value)} placeholder="e.g. Master OpenCV & TensorFlow" className="w-full bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-[#02C2D5] font-medium" />
-            </div>
-            <div>
-              <label className="block text-sm font-bold text-[#475569] mb-2">Platform / Source</label>
-              <input type="text" required value={cPlatform} onChange={e => setCPlatform(e.target.value)} placeholder="e.g. Udemy, YouTube" className="w-full bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-[#02C2D5] font-medium" />
-            </div>
-            <div>
-              <label className="block text-sm font-bold text-[#475569] mb-2">Progress (%)</label>
-              <input type="number" min="0" max="100" required value={cProgress} onChange={e => setCProgress(parseInt(e.target.value) || 0)} className="w-full bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-[#02C2D5] font-medium" />
-            </div>
-          </div>
-          <div className="flex flex-col md:flex-row justify-between items-center gap-4">
-            <div className="flex gap-4 w-full md:w-auto">
-              {['Not Started', 'In Progress', 'Completed'].map(status => (
-                <label key={status} className="flex items-center gap-2 cursor-pointer">
-                  <input type="radio" name="status" checked={cStatus === status} onChange={() => setCStatus(status as any)} className="accent-[#02C2D5] w-4 h-4" />
-                  <span className="text-sm font-bold text-[#020F33]">{status}</span>
-                </label>
-              ))}
-            </div>
-            <button type="submit" disabled={isSaving} className="w-full md:w-auto bg-[#020F33] hover:bg-[#02C2D5] text-white hover:text-[#020F33] font-bold py-3 px-8 rounded-xl transition-all flex items-center justify-center gap-2 shadow-md">
-              {isSaving ? <Loader2 className="animate-spin" size={18} /> : 'Save Course'}
-            </button>
-          </div>
+      {/* New Module Form */}
+      {showModuleInput && (
+        <form onSubmit={handleAddModule} className="bg-white border border-[#E2E8F0] p-5 rounded-2xl shadow-sm mb-8 flex gap-3">
+          <input
+            type="text"
+            required
+            value={newModuleTitle}
+            onChange={(e) => setNewModuleTitle(e.target.value)}
+            placeholder="Module Title (e.g. Module 1: Fundamentals)"
+            className="flex-grow bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-[#02C2D5] font-medium text-sm"
+          />
+          <button type="submit" className="bg-[#020F33] text-white px-6 py-2.5 rounded-xl font-bold hover:bg-[#02C2D5] hover:text-[#020F33] transition-all text-sm">
+            Save Module
+          </button>
         </form>
       )}
 
-      {loading ? (
-        <div className="flex justify-center p-20"><Loader2 className="animate-spin text-[#02C2D5]" size={40} /></div>
-      ) : activeTab === 'courses' ? (
-        courses.length === 0 ? (
-          <div className="col-span-full text-center py-20 bg-white rounded-3xl border border-dashed border-[#E2E8F0]">
-            <BookOpen size={48} className="mx-auto mb-4 text-[#475569] opacity-30" />
-            <p className="text-[#475569] font-bold text-lg">Your learning track is empty.</p>
+      {/* Modules & Lectures List */}
+      <div className="space-y-6">
+        {modules.length === 0 ? (
+          <div className="text-center py-16 bg-white rounded-3xl border border-dashed border-[#E2E8F0]">
+            <BookOpen size={40} className="mx-auto mb-3 text-[#475569] opacity-30" />
+            <p className="text-[#475569] font-bold">No modules created yet. Add your first module above!</p>
           </div>
         ) : (
-          <DndContext 
-            sensors={sensors}
-            collisionDetection={closestCenter} 
-            onDragEnd={handleDragEnd}
-          >
-            <SortableContext items={courses.map(c => c.id)} strategy={verticalListSortingStrategy}>
-              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
-                {courses.map(course => {
-                  const isCompleted = course.status === 'Completed';
-                  const isStarted = course.status !== 'Not Started';
-                  const accentColor = isCompleted ? '#A3D803' : isStarted ? '#02C2D5' : '#CBD5E1';
+          modules.map((module, mIndex) => {
+            const moduleLectures = lectures.filter(l => l.module_id === module.id);
 
-                  return (
-                    <SortableItem key={course.id} id={course.id}>
-                      <div className="bg-white border border-[#E2E8F0] p-6 rounded-3xl shadow-sm hover:-translate-y-1 hover:shadow-xl transition-all duration-300 group relative flex flex-col h-full">
-                        <div className="absolute top-0 left-0 w-full h-1.5" style={{ backgroundColor: accentColor }}></div>
-                        <div className="flex justify-between items-center mb-4 mt-2">
-                          <span className="text-xs font-black bg-[#F8FAFC] border border-[#E2E8F0] text-[#475569] px-3 py-1.5 rounded-lg uppercase tracking-wider">{course.platform}</span>
-                          <div className="flex items-center gap-1.5">
-                            <span className="text-gray-300 cursor-grab active:cursor-grabbing p-1"><GripVertical size={18} /></span>
-                            <button onClick={() => handleDeleteCourse(course.id)} className="text-[#475569] hover:text-rose-500 hover:bg-rose-50 p-2 rounded-xl transition-colors opacity-0 group-hover:opacity-100"><Trash2 size={18} /></button>
-                          </div>
-                        </div>
-                        <Link to={`/lms/course/${course.id}`} className="text-xl font-bold text-[#020F33] leading-snug mb-6 flex-grow hover:text-[#02C2D5] transition-colors">
-                          {course.title}
-                        </Link>
-                        <div className="mt-auto">
-                          <div className="flex justify-between items-center text-sm font-bold mb-3">
-                            <span className="flex items-center gap-1.5" style={{ color: accentColor }}>
-                              {isCompleted ? <CheckCircle2 size={16} /> : <PlayCircle size={16} />}{course.status}
-                            </span>
-                            <span className="text-[#020F33]">{course.progress}%</span>
-                          </div>
-                          <div className="w-full bg-[#F8FAFC] rounded-full h-3 border border-[#E2E8F0] overflow-hidden">
-                            <div className="h-full rounded-full transition-all duration-1000 ease-out" style={{ width: `${course.progress}%`, backgroundColor: accentColor }}></div>
-                          </div>
-                        </div>
+            return (
+              <div key={module.id} className="bg-white border border-[#E2E8F0] rounded-3xl p-6 shadow-sm">
+                <div className="flex justify-between items-center mb-4 pb-3 border-b border-[#E2E8F0]">
+                  <h3 className="text-lg font-black text-[#020F33]">
+                    Module {mIndex + 1}: {module.title}
+                  </h3>
+                  <button
+                    onClick={() => setActiveModuleId(activeModuleId === module.id ? null : module.id)}
+                    className="text-xs font-bold text-[#02C2D5] hover:underline flex items-center gap-1"
+                  >
+                    <Plus size={14} /> Add Lecture
+                  </button>
+                </div>
+
+                {/* Add Lecture Form for specific module */}
+                {activeModuleId === module.id && (
+                  <form onSubmit={(e) => handleAddLecture(module.id, e)} className="mb-4 flex gap-2 bg-[#F8FAFC] p-3 rounded-xl border border-[#E2E8F0]">
+                    <input
+                      type="text"
+                      required
+                      value={newLectureTitle}
+                      onChange={(e) => setNewLectureTitle(e.target.value)}
+                      placeholder="Lecture Title..."
+                      className="flex-grow bg-white border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#02C2D5]"
+                    />
+                    <button type="submit" className="bg-[#020F33] text-white px-4 py-2 rounded-lg font-bold text-xs hover:bg-[#02C2D5] hover:text-[#020F33] transition-all">
+                      Add
+                    </button>
+                  </form>
+                )}
+
+                {/* DndContext & SortableContext for Lectures */}
+                {moduleLectures.length === 0 ? (
+                  <p className="text-xs text-[#475569] italic py-2">No lectures in this module yet.</p>
+                ) : (
+                  <DndContext 
+                    sensors={sensors}
+                    collisionDetection={closestCenter} 
+                    onDragEnd={(event) => handleLectureDragEnd(event, module.id)}
+                  >
+                    <SortableContext items={moduleLectures.map(l => l.id)} strategy={verticalListSortingStrategy}>
+                      <div className="space-y-2">
+                        {moduleLectures.map((lecture) => (
+                          <SortableItem key={lecture.id} id={lecture.id}>
+                            <div className="flex items-center justify-between p-3.5 bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl hover:border-[#02C2D5] transition-all group">
+                              <div className="flex items-center gap-3">
+                                <span className="cursor-grab active:cursor-grabbing text-slate-300 hover:text-slate-500 p-1">
+                                  <GripVertical size={16} />
+                                </span>
+                                <button 
+                                  onClick={() => toggleLectureCompletion(lecture.id, lecture.is_completed)}
+                                  className={`transition-colors ${lecture.is_completed ? 'text-[#A3D803]' : 'text-slate-300 hover:text-slate-500'}`}
+                                >
+                                  {lecture.is_completed ? <CheckCircle2 size={18} /> : <Circle size={18} />}
+                                </button>
+                                <span className={`text-sm font-bold ${lecture.is_completed ? 'line-through text-[#475569]' : 'text-[#020F33]'}`}>
+                                  {lecture.title}
+                                </span>
+                              </div>
+                              <button
+                                onClick={() => handleDeleteLecture(lecture.id)}
+                                className="text-[#475569] hover:text-rose-500 p-1.5 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity"
+                                title="Delete Lecture"
+                              >
+                                <Trash2 size={15} />
+                              </button>
+                            </div>
+                          </SortableItem>
+                        ))}
                       </div>
-                    </SortableItem>
-                  );
-                })}
+                    </SortableContext>
+                  </DndContext>
+                )}
               </div>
-            </SortableContext>
-          </DndContext>
-        )
-      ) : (
-        <div className="bg-white border border-[#E2E8F0] rounded-3xl shadow-sm overflow-hidden p-6 md:p-8">
-           <div className="flex justify-between items-center border-b pb-4 mb-4">
-              <h2 className="text-xl font-bold text-[#020F33]">Developer Arsenal</h2>
-           </div>
-           {resources.length === 0 ? (
-             <div className="text-center py-12"><Database size={40} className="mx-auto mb-4 text-[#475569] opacity-30" /><p className="text-[#475569] font-bold">No resources saved yet.</p></div>
-           ) : (
-             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {resources.map(res => (
-                  <a key={res.id} href={res.url} target="_blank" rel="noreferrer" className="flex items-center justify-between p-4 rounded-2xl border border-[#E2E8F0] hover:border-[#02C2D5] hover:shadow-md transition-all group bg-white">
-                    <div className="flex items-center gap-4">
-                      <div className="w-12 h-12 rounded-xl bg-[#F8FAFC] flex items-center justify-center text-[#020F33] group-hover:text-[#02C2D5] transition-colors">{getResourceIcon(res.type)}</div>
-                      <div>
-                        <h4 className="font-bold text-[#020F33] text-sm md:text-base">{res.title}</h4>
-                        <p className="text-xs text-[#475569] font-medium uppercase tracking-wider mt-0.5">{res.type}</p>
-                      </div>
-                    </div>
-                    <ExternalLink size={18} className="text-[#CBD5E1] group-hover:text-[#02C2D5] transition-colors" />
-                  </a>
-                ))}
-             </div>
-           )}
-        </div>
-      )}
+            );
+          })
+        )}
+      </div>
     </div>
   );
 }

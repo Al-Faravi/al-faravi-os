@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabase';
-import { Plus, Trash2, Bold, Italic, Check, Loader2 } from 'lucide-react';
+import { Plus, Trash2, Bold, Italic, Check, Loader2, Pin } from 'lucide-react';
 
 interface Note {
   id: string;
   content: string;
   bg_color: string;
+  is_pinned?: boolean;
   created_at?: string;
 }
 
@@ -32,6 +33,7 @@ export const StickyNotes: React.FC = () => {
       const { data, error } = await supabase
         .from('dashboard_notes')
         .select('*')
+        .order('is_pinned', { ascending: false })
         .order('created_at', { ascending: false });
 
       if (error) throw error;
@@ -51,6 +53,7 @@ export const StickyNotes: React.FC = () => {
       const newNote = {
         content: '',
         bg_color: color,
+        is_pinned: false,
         user_id: user.id,
       };
 
@@ -88,6 +91,30 @@ export const StickyNotes: React.FC = () => {
   const updateColor = async (id: string, bg_color: string) => {
     setNotes(notes.map((n) => (n.id === id ? { ...n, bg_color } : n)));
     await supabase.from('dashboard_notes').update({ bg_color }).eq('id', id);
+  };
+
+  const togglePin = async (id: string, currentPinStatus?: boolean) => {
+    const newPinStatus = !currentPinStatus;
+    
+    // লোকাল স্টেটে আপডেট এবং পিন করা নোটগুলো উপরে সাজানো
+    const updatedNotes = notes.map((n) => (n.id === id ? { ...n, is_pinned: newPinStatus } : n));
+    updatedNotes.sort((a, b) => (b.is_pinned ? 1 : 0) - (a.is_pinned ? 1 : 0));
+    
+    setNotes(updatedNotes);
+    
+    try {
+      const { error } = await supabase
+        .from('dashboard_notes')
+        .update({ is_pinned: newPinStatus })
+        .eq('id', id);
+
+      if (error) throw error;
+
+      // ড্যাশবোর্ড বা অন্যান্য কম্পোনেন্টকে নোটিফাই করার জন্য কাস্টম ইভেন্ট ট্রিগার করা
+      window.dispatchEvent(new Event('notes_updated'));
+    } catch (err) {
+      console.error('Error updating pin status:', err);
+    }
   };
 
   const deleteNote = async (id: string) => {
@@ -130,9 +157,11 @@ export const StickyNotes: React.FC = () => {
           <div
             key={note.id}
             style={{ backgroundColor: note.bg_color }}
-            className="rounded-2xl p-4 shadow-sm border border-black/5 flex flex-col justify-between min-h-[190px] relative transition hover:shadow-md"
+            className={`rounded-2xl p-4 shadow-sm border ${
+              note.is_pinned ? 'border-amber-400 ring-1 ring-amber-300' : 'border-black/5'
+            } flex flex-col justify-between min-h-[190px] relative transition hover:shadow-md`}
           >
-            {/* Formatting Toolbar */}
+            {/* Formatting & Pin Toolbar */}
             <div className="flex items-center justify-between gap-1 pb-2 mb-2 border-b border-black/10 text-slate-700">
               <div className="flex items-center gap-1">
                 <button
@@ -150,6 +179,17 @@ export const StickyNotes: React.FC = () => {
                   title="Italic"
                 >
                   <Italic size={13} />
+                </button>
+                <button
+                  onClick={() => togglePin(note.id, note.is_pinned)}
+                  className={`p-1 rounded transition ${
+                    note.is_pinned
+                      ? 'text-red-500 bg-red-50/80'
+                      : 'text-slate-400 hover:text-slate-600 hover:bg-black/10'
+                  }`}
+                  title={note.is_pinned ? "Unpin from wall" : "Pin to wall"}
+                >
+                  <Pin size={13} className={note.is_pinned ? "fill-current" : ""} />
                 </button>
               </div>
 
