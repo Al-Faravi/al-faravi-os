@@ -8,7 +8,7 @@ import {
   Briefcase, FolderLock, TrendingUp, 
   Clock, Flame, Quote, Sparkles, PlayCircle, 
   Bookmark, CheckCircle2, PauseCircle, LogOut,
-  GitBranch, Code2, Pin 
+  GitBranch, Code2, Pin // Pin আইকন ইমপোর্ট করা হয়েছে
 } from 'lucide-react';
 
 // === Dynamic Motivational Quotes ===
@@ -66,9 +66,9 @@ export default function ModernDashboard() {
 
     // 3. Load Data & Gamification
     fetchStatsAndStreak();
-    fetchPinnedNotes();
 
-    // StickyNotes থেকে পিন/আনপিন করলে সাথে সাথে রিফ্রেশ হওয়ার জন্য ইভেন্ট লিসেনার
+    // 4. Pinned Notes Fetch এবং Real-time Listener
+    fetchPinnedNotes();
     window.addEventListener('notes_updated', fetchPinnedNotes);
 
     return () => {
@@ -77,20 +77,19 @@ export default function ModernDashboard() {
     };
   }, []);
 
-  // --- Pinned Notes Fetcher ---
+  // --- Fetch Pinned Notes ---
   const fetchPinnedNotes = async () => {
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
-      const { data, error } = await supabase
-        .from('dashboard_notes') // টেবিল নাম ঠিক করা হয়েছে
+      const { data } = await supabase
+        .from('sticky_notes') // আপনার টেবিল নাম অনুযায়ী রাখা হয়েছে
         .select('*')
         .eq('user_id', user.id)
         .eq('is_pinned', true)
         .order('created_at', { ascending: false });
-
-      if (error) throw error;
+        
       if (data) setPinnedNotes(data);
     } catch (error) {
       console.error("Error fetching pinned notes:", error);
@@ -125,7 +124,7 @@ export default function ModernDashboard() {
       }
       setStreak(newStreak);
 
-      // Fetch Global Stats
+      // Fetch Global Stats (Pinned notes আলাদাভাবে fetch করা হচ্ছে তাই এখান থেকে বাদ দেওয়া হলো)
       const [tasksRes, bcsRes, lmsRes, vaultRes] = await Promise.all([
         supabase.from('tasks').select('*', { count: 'exact', head: true }).eq('user_id', user.id).eq('is_completed', false),
         supabase.from('bcs_resources').select('*', { count: 'exact', head: true }).eq('user_id', user.id).eq('is_completed', true),
@@ -194,6 +193,7 @@ export default function ModernDashboard() {
   };
 
   return (
+    // Clean Light Mode Wrapper
     <div className="min-h-screen bg-[#F8FAFC] flex flex-col">
       <div className="p-3 md:p-6 lg:p-8 2xl:px-12 max-w-[1536px] mx-auto w-full mb-24 md:mb-10 flex-1 flex flex-col">
         
@@ -244,77 +244,80 @@ export default function ModernDashboard() {
         </div>
 
         {/* --- 2. Compact Live Stats Grid --- */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
-          {[
-            { title: 'Pending Tasks', value: stats.pendingTasks, icon: <Target size={18}/>, color: 'text-rose-500', bg: 'bg-rose-50' },
-            { title: 'BCS Items Read', value: stats.bcsCompleted, icon: <BookOpen size={18}/>, color: 'text-[#02C2D5]', bg: 'bg-[#02C2D5]/10' },
-            { title: 'Skills Mastered', value: stats.lmsCompleted, icon: <Briefcase size={18}/>, color: 'text-purple-600', bg: 'bg-purple-100' },
-            { title: 'Vault Files', value: stats.vaultItems, icon: <FolderLock size={18}/>, color: 'text-slate-600', bg: 'bg-slate-100' }
-          ].map((stat, i) => (
-            <div key={i} className="bg-white p-3 rounded-2xl border border-[#E2E8F0] shadow-sm flex items-center gap-3">
-              <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${stat.bg} ${stat.color}`}>
-                {stat.icon}
-              </div>
-              <div>
-                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{stat.title}</p>
-                <p className="text-xl font-black text-[#020F33]">{stat.value}</p>
-              </div>
-            </div>
-          ))}
-        </div>
-
-        {/* --- Pinned Sticky Notes Section --- */}
-        {pinnedNotes.length > 0 && (
-          <div className="mb-8">
-            <h3 className="text-sm font-bold text-slate-500 mb-4 flex items-center gap-2 uppercase tracking-wider">
-              <Pin size={16} className="text-red-500 fill-current" /> Pinned Notes
-            </h3>
-            <div className="flex gap-5 overflow-x-auto pb-4 custom-scrollbar">
-              {pinnedNotes.map((note) => (
-                <div 
-                  key={note.id} 
-                  className="w-64 shrink-0 p-5 rounded-xl shadow-md relative transition-transform hover:-translate-y-1 min-h-[120px]" 
-                  style={{ backgroundColor: note.bg_color }}
-                >
-                  {/* Realistic Red Pin Design */}
-                  <div className="absolute -top-3 left-1/2 -translate-x-1/2 w-6 h-6 rounded-full bg-red-500 shadow-[0_3px_6px_rgba(0,0,0,0.4)] border border-red-700 z-10 flex items-center justify-center">
-                     <div className="w-2 h-2 rounded-full bg-white opacity-50 shadow-inner"></div>
-                  </div>
-                  
-                  {/* Note Content */}
-                  <div 
-                    className="text-sm text-slate-800 mt-2 font-medium leading-relaxed" 
-                    dangerouslySetInnerHTML={{ __html: note.content || '<span class="text-slate-400 italic">Empty note...</span>' }} 
-                  />
-                </div>
-              ))}
-            </div>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-8">
+          <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex flex-col justify-center">
+            <p className="text-xs text-slate-500 font-bold mb-1">Pending Tasks</p>
+            <h3 className="text-2xl font-black text-slate-800">{stats.pendingTasks}</h3>
           </div>
-        )}
+          <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex flex-col justify-center">
+            <p className="text-xs text-slate-500 font-bold mb-1">BCS Items Read</p>
+            <h3 className="text-2xl font-black text-slate-800">{stats.bcsCompleted}</h3>
+          </div>
+          <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex flex-col justify-center">
+            <p className="text-xs text-slate-500 font-bold mb-1">Skills Mastered</p>
+            <h3 className="text-2xl font-black text-slate-800">{stats.lmsCompleted}</h3>
+          </div>
+          <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex flex-col justify-center">
+            <p className="text-xs text-slate-500 font-bold mb-1">Vault Files</p>
+            <h3 className="text-2xl font-black text-slate-800">{stats.vaultItems}</h3>
+          </div>
+        </div>
 
         {/* --- 3. Main Content Grid --- */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start flex-1 pb-10">
           
           {/* Left Column: Task Manager & Sticky Notes */}
           <div className="lg:col-span-7 xl:col-span-8 flex flex-col gap-6">
+            {/* Task Manager Container */}
             <div className="bg-white rounded-3xl border border-[#E2E8F0] overflow-hidden shadow-sm h-[600px] lg:h-[650px] flex flex-col">
                <TaskManager />
             </div>
             
+            {/* Quick Scratchpad Sticky Notes Container */}
             <div className="bg-white rounded-3xl border border-[#E2E8F0] overflow-hidden shadow-sm p-5 md:p-6">
                <StickyNotes />
             </div>
           </div>
 
-          {/* Right Sidebar: Apps, Motivation & Progress */}
+          {/* Right Sidebar: Pinned Notes, Apps, Motivation & Progress */}
           <div className="lg:col-span-5 xl:col-span-4 flex flex-col gap-5 md:gap-6">
             
+            {/* 2. Pinned Notes Section (Quick Apps-এর ঠিক উপরে) */}
+            {pinnedNotes.length > 0 && (
+              <div className="mb-2">
+                <h3 className="text-sm font-bold text-slate-500 mb-5 flex items-center gap-2 uppercase tracking-wider">
+                  <Pin size={16} className="text-red-500 fill-current" /> Pinned Notes
+                </h3>
+                <div className="flex gap-5 overflow-x-auto pb-4 custom-scrollbar">
+                  {pinnedNotes.map((note) => (
+                    <div 
+                      key={note.id} 
+                      className="w-64 shrink-0 p-5 rounded-xl shadow-md relative transition-transform hover:-translate-y-1 min-h-[120px]" 
+                      style={{ backgroundColor: note.bg_color || '#FEF3C7' }}
+                    >
+                      {/* Realistic Red Pin Design (দেয়ালে আটকানো পিন) */}
+                      <div className="absolute -top-3 left-1/2 -translate-x-1/2 w-6 h-6 rounded-full bg-red-500 shadow-[0_3px_6px_rgba(0,0,0,0.4)] border border-red-700 z-10 flex items-center justify-center">
+                         <div className="w-2 h-2 rounded-full bg-white opacity-50 shadow-inner"></div>
+                      </div>
+                      
+                      {/* Note Content */}
+                      <div 
+                        className="text-sm text-slate-800 mt-2 font-medium leading-relaxed" 
+                        dangerouslySetInnerHTML={{ __html: note.content || '<span class="text-slate-400 italic">Empty note...</span>' }} 
+                      />
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
             {/* Quick Access Menu */}
             <div className="bg-white border border-[#E2E8F0] rounded-3xl p-5 md:p-6 shadow-sm">
               <h3 className="text-lg font-bold text-[#020F33] mb-5 flex items-center gap-2">
                 <TrendingUp className="text-[#02C2D5]" size={20} /> Quick Apps
               </h3>
               
+              {/* Standard Apps Grid */}
               <div className="grid grid-cols-3 sm:grid-cols-3 lg:grid-cols-3 gap-3">
                 {[
                   { name: 'BCS Prep', to: '/bcs', icon: <BookOpen size={24} className="text-[#02C2D5]" />, hover: 'hover:border-[#02C2D5] hover:bg-[#02C2D5]/5' },
