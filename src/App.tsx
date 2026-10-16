@@ -13,6 +13,7 @@ import LmsWorkspace from './features/lms/LmsWorkspace';
 import BcsManager from './features/bcs/BcsManager';
 import BcsWorkspace from './features/bcs/BcsWorkspace';
 import MockTests from './features/bcs/MockTests';
+import DailyTargets from './features/bcs/DailyTargets';
 import FamilyManager from './features/family/FamilyManager';
 import GithubHub from './features/github/GithubHub';
 import Settings from './features/dashboard/Settings';
@@ -36,7 +37,7 @@ const PlaceholderPage = ({ title }: { title: string }) => (
 const FloatingDock = () => {
   const location = useLocation();
   
-  // LMS/BCS ওয়ার্কস্পেস বা নির্দিষ্ট কিছু পেজে ডক হাইড করতে চাইলে
+  // LMS/BCS ওয়ার্কস্পেস বা নির্দিষ্ট কিছু পেজে ডক হাইড করতে চাইলে
   if (location.pathname.includes('/lms/course/') || location.pathname.includes('/bcs/subject/')) return null;
   
   const navItems = [
@@ -153,6 +154,7 @@ export default function App() {
           {/* BCS Routes */}
           <Route path="/bcs" element={<BcsManager />} />
           <Route path="/bcs/mock-tests" element={<MockTests />} />
+          <Route path="/bcs/targets" element={<DailyTargets />} />
           <Route path="/bcs/subject/:subjectId" element={<BcsWorkspace />} /> 
           
           {/* Family Route */}
