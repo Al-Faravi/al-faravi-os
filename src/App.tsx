@@ -14,6 +14,11 @@ import BcsManager from './features/bcs/BcsManager';
 import BcsWorkspace from './features/bcs/BcsWorkspace';
 import MockTests from './features/bcs/MockTests';
 import DailyTargets from './features/bcs/DailyTargets';
+import PyqMatrix from './features/bcs/PyqMatrix';
+import ResourceVault from './features/bcs/ResourceVault';
+import Flashcards from './features/bcs/Flashcards';
+import WeaknessDetector from './features/bcs/WeaknessDetector';
+import SubjectView from './features/bcs/SubjectView';
 import FamilyManager from './features/family/FamilyManager';
 import GithubHub from './features/github/GithubHub';
 import Settings from './features/dashboard/Settings';
@@ -155,6 +160,11 @@ export default function App() {
           <Route path="/bcs" element={<BcsManager />} />
           <Route path="/bcs/mock-tests" element={<MockTests />} />
           <Route path="/bcs/targets" element={<DailyTargets />} />
+          <Route path="/bcs/pyq" element={<PyqMatrix />} />
+          <Route path="/bcs/vault" element={<ResourceVault />} />
+          <Route path="/bcs/flashcards" element={<Flashcards />} />
+          <Route path="/bcs/weakness" element={<WeaknessDetector />} />
+          <Route path="/bcs/subject/:id" element={<SubjectView />} />
           <Route path="/bcs/subject/:subjectId" element={<BcsWorkspace />} /> 
           
           {/* Family Route */}
