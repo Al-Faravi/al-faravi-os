@@ -122,6 +122,39 @@ export default function BcsManager() {
     }
   };
 
+  // ================= NEW: ADD CUSTOM COURSE / BANK FUNCTION =================
+  const handleAddCustomCourse = async () => {
+    const title = prompt("Enter Custom Course / Bank Title (e.g. 'Job Solution Book'):");
+    if (!title) return;
+
+    const marksStr = prompt("Enter Total Marks for this course (Default is 100):", "100");
+    const marks = parseInt(marksStr || "100", 10);
+
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error("User not found");
+
+      // Random nice color for the new custom card
+      const colors = ['#8B5CF6', '#F43F5E', '#10B981', '#F59E0B', '#3B82F6', '#EC4899', '#02C2D5'];
+      const randomColor = colors[Math.floor(Math.random() * colors.length)];
+
+      const newSubject = {
+        title,
+        marks,
+        icon_color: randomColor,
+        user_id: user.id,
+        order_index: subjects.length, 
+        is_custom: true
+      };
+
+      await supabase.from('bcs_subjects').insert([newSubject]);
+      await fetchSubjects(); // Refresh the list magically!
+
+    } catch (error: any) {
+      alert("Error creating custom course: " + error.message);
+    }
+  };
+
   const handleInitializeSyllabus = async () => {
     setIsInitializing(true);
     try {
@@ -283,7 +316,11 @@ export default function BcsManager() {
         <h2 className="text-xl font-black flex items-center gap-2">
           <BookOpen className="text-[#02C2D5]" size={24} /> Syllabus & Question Banks
         </h2>
-        <button className="flex items-center gap-2 bg-[#020F33] text-white px-4 py-2 rounded-xl text-xs font-bold hover:bg-[#02C2D5] hover:text-[#020F33] transition-colors shadow-sm">
+        {/* THE FIXED BUTTON IS HERE! */}
+        <button 
+          onClick={handleAddCustomCourse}
+          className="flex items-center gap-2 bg-[#020F33] text-white px-4 py-2 rounded-xl text-xs font-bold hover:bg-[#02C2D5] hover:text-[#020F33] transition-colors shadow-sm"
+        >
           <Plus size={16} /> Add Custom Course / Bank
         </button>
       </div>
