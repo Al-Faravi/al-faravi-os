@@ -6,7 +6,7 @@ import {
   Database, ChevronDown, ChevronUp, Trash2, 
   PlayCircle, UploadCloud, LayoutTemplate, 
   MonitorPlay, ExternalLink, ShieldAlert,
-  Bold, Italic, List, ListOrdered, Baseline, Calculator, Sigma, Type, AlignLeft
+  Bold, Italic, List, ListOrdered, Baseline, Calculator, Sigma, AlignLeft, X, Move
 } from 'lucide-react';
 
 export default function SubjectView() {
@@ -23,6 +23,9 @@ export default function SubjectView() {
   // Multi-Tab Notes States
   const [notes, setNotes] = useState<any[]>([]);
   const [activeNoteId, setActiveNoteId] = useState<string>('');
+  
+  // Floating Calculator State
+  const [showCalculator, setShowCalculator] = useState(false);
 
   // Viewer State (In-App Player)
   const [previewResource, setPreviewResource] = useState<any>(null);
@@ -125,6 +128,7 @@ export default function SubjectView() {
   const openTopicPanel = async (topic: any) => {
     setActiveTopic(topic);
     setPreviewResource(null);
+    setShowCalculator(false);
     
     // Parse Multi-Tab Notes JSON
     let parsedNotes = [];
@@ -257,10 +261,10 @@ export default function SubjectView() {
   if (!subject) return <div className="text-center py-20 text-slate-500 font-bold">Subject not found.</div>;
 
   return (
-    <div className="h-[100vh] w-full flex overflow-hidden bg-white">
+    <div className="h-[100vh] w-full flex overflow-hidden bg-white relative">
       
       {/* ================= LEFT SIDEBAR ================= */}
-      <div className="w-[320px] shrink-0 border-r border-slate-200 bg-slate-50 flex flex-col h-full overflow-hidden hidden md:flex">
+      <div className="w-[320px] shrink-0 border-r border-slate-200 bg-slate-50 flex flex-col h-full overflow-hidden hidden md:flex z-10 relative">
         
         <div className="p-4 border-b border-slate-200 bg-white">
           <Link to="/bcs" className="inline-flex items-center gap-2 text-xs font-bold text-slate-400 hover:text-[#020F33] transition-colors mb-3">
@@ -330,7 +334,7 @@ export default function SubjectView() {
               </div>
             </div>
 
-            <div className="flex-1 flex overflow-hidden">
+            <div className="flex-1 flex overflow-hidden relative">
               
               {/* ---------------- THEATER VIEWER ---------------- */}
               <div className="flex-[2] xl:flex-[3] bg-[#0B1120] relative flex items-center justify-center overflow-hidden">
@@ -379,16 +383,16 @@ export default function SubjectView() {
               </div>
 
               {/* ---------------- TOOLS PANEL (Resources & Notes) ---------------- */}
-              <div className="w-[400px] xl:w-[450px] shrink-0 bg-white border-l border-slate-200 flex flex-col overflow-hidden shadow-[-4px_0_15px_rgba(0,0,0,0.03)]">
+              <div className="w-[400px] xl:w-[450px] shrink-0 bg-white border-l border-slate-200 flex flex-col overflow-hidden shadow-[-4px_0_15px_rgba(0,0,0,0.03)] relative z-20">
                 
-                {/* 1. Resources Area */}
-                <div className="max-h-[40%] flex flex-col border-b border-slate-200 bg-slate-50">
-                  <div className="p-4 flex-1 overflow-y-auto">
+                {/* 1. Resources Area (FIXED HEIGHT WITH SCROLL) */}
+                <div className="flex flex-col border-b border-slate-200 bg-slate-50 shrink-0">
+                  <div className="p-4 max-h-[220px] overflow-y-auto custom-scrollbar">
                     <h3 className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-3 flex items-center gap-1">
                       <Database size={12}/> Attached Materials
                     </h3>
                     {topicResources.length === 0 ? (
-                      <p className="text-xs text-slate-400 font-medium p-2">No resources yet.</p>
+                      <p className="text-xs text-slate-400 font-medium p-2 text-center border border-dashed border-slate-200 rounded-lg">No resources yet.</p>
                     ) : (
                       <div className="space-y-1.5">
                         {topicResources.map(res => (
@@ -414,26 +418,28 @@ export default function SubjectView() {
                     <select value={resType} onChange={e => {setResType(e.target.value); setResUrl(''); setFile(null);}} className="bg-slate-50 border border-slate-200 rounded px-2 text-[10px] font-bold outline-none">
                       <option value="video_link">Video</option>
                       <option value="pdf">PDF</option>
+                      {/* ADDED DRIVE LINK OPTION HERE */}
+                      <option value="drive_link">Drive Link</option>
                     </select>
                     {resType === 'pdf' ? (
-                      <label className="flex-1 flex items-center justify-center gap-1 border border-dashed border-slate-300 bg-slate-50 rounded px-2 cursor-pointer">
+                      <label className="flex-1 flex items-center justify-center gap-1 border border-dashed border-slate-300 bg-slate-50 rounded px-2 cursor-pointer hover:border-[#02C2D5]">
                         {uploadingFile ? <Loader2 className="animate-spin" size={12} /> : <UploadCloud size={12} />}
                         <span className="text-[10px] font-bold text-slate-500 truncate">{file ? file.name : 'Choose File'}</span>
                         <input type="file" className="hidden" accept=".pdf" onChange={e => e.target.files && handleFileUpload(e.target.files[0])} />
                       </label>
                     ) : (
-                      <input type="url" required value={resUrl} onChange={e => setResUrl(e.target.value)} placeholder="URL..." className="flex-1 bg-slate-50 border border-slate-200 rounded px-2 text-xs outline-none" />
+                      <input type="url" required value={resUrl} onChange={e => setResUrl(e.target.value)} placeholder="Paste link URL..." className="flex-1 bg-slate-50 border border-slate-200 rounded px-2 text-xs outline-none focus:border-[#02C2D5]" />
                     )}
-                    <input type="text" required value={resTitle} onChange={e => setResTitle(e.target.value)} placeholder="Title" className="w-20 bg-slate-50 border border-slate-200 rounded px-2 text-[10px] outline-none" />
+                    <input type="text" required value={resTitle} onChange={e => setResTitle(e.target.value)} placeholder="Title" className="w-20 bg-slate-50 border border-slate-200 rounded px-2 text-[10px] outline-none focus:border-[#02C2D5]" />
                     <button type="submit" disabled={uploadingFile} className="bg-[#020F33] text-white px-2 rounded hover:bg-[#02C2D5]"><Plus size={14}/></button>
                   </form>
                 </div>
 
                 {/* 2. RICH MULTI-TAB NOTES AREA */}
-                <div className="flex-1 flex flex-col bg-white">
+                <div className="flex-1 flex flex-col bg-white overflow-hidden">
                   
                   {/* Tabs Row */}
-                  <div className="flex items-center bg-slate-100 overflow-x-auto border-b border-slate-200">
+                  <div className="flex items-center bg-slate-100 overflow-x-auto border-b border-slate-200 custom-scrollbar">
                     {notes.map(note => (
                       <div key={note.id} 
                         onClick={() => setActiveNoteId(note.id)}
@@ -453,7 +459,7 @@ export default function SubjectView() {
                       <Plus size={14} />
                     </button>
                     
-                    <div className="ml-auto px-3">
+                    <div className="ml-auto px-3 shrink-0">
                       <button onClick={saveTopicNotes} disabled={savingContent} className="text-[10px] font-bold bg-[#020F33] text-white px-3 py-1.5 rounded hover:bg-[#02C2D5] hover:text-[#020F33] transition-colors shadow-sm">
                         {savingContent ? 'Saving...' : 'Save Notes'}
                       </button>
@@ -462,11 +468,24 @@ export default function SubjectView() {
 
                   {/* Rich Text Editor Component for Active Note */}
                   {notes.map(note => note.id === activeNoteId && (
-                    <RichEditor key={note.id} initialHtml={note.body} onChange={updateActiveNoteBody} />
+                    <RichEditor 
+                      key={note.id} 
+                      initialHtml={note.body} 
+                      onChange={updateActiveNoteBody} 
+                      onToggleCalc={() => setShowCalculator(!showCalculator)} 
+                    />
                   ))}
                 </div>
 
               </div>
+              
+              {/* FLOATING CALCULATOR COMPONENT */}
+              {showCalculator && (
+                <div className="absolute right-[420px] xl:right-[470px] bottom-10 bg-white/90 backdrop-blur-md border border-slate-200 shadow-2xl rounded-2xl p-4 w-64 z-50 animate-in slide-in-from-bottom-10 fade-in duration-200">
+                  <FloatingCalculator onClose={() => setShowCalculator(false)} />
+                </div>
+              )}
+
             </div>
           </>
         )}
@@ -476,8 +495,61 @@ export default function SubjectView() {
   );
 }
 
-// ================= CUSTOM RICH TEXT & MATH EDITOR COMPONENT =================
-function RichEditor({ initialHtml, onChange }: { initialHtml: string, onChange: (html: string) => void }) {
+// ================= FLOATING CALCULATOR UI =================
+function FloatingCalculator({ onClose }: { onClose: () => void }) {
+  const [calcInput, setCalcInput] = useState('');
+
+  const handleBtn = (btn: string) => {
+    if (btn === 'C') {
+      setCalcInput('');
+    } else if (btn === '=') {
+      try {
+        // Safe evaluation
+        const sanitized = calcInput.replace(/[^0-9+\-*/().]/g, '');
+        if (sanitized) {
+          const res = Function(`"use strict"; return (${sanitized})`)();
+          setCalcInput(res.toString());
+        }
+      } catch(e) {
+        setCalcInput('Error');
+      }
+    } else {
+      setCalcInput(prev => prev === 'Error' ? btn : prev + btn);
+    }
+  };
+
+  const buttons = ['C', '(', ')', '/', '7', '8', '9', '*', '4', '5', '6', '-', '1', '2', '3', '+', '0', '.', '='];
+
+  return (
+    <div>
+      <div className="flex justify-between items-center mb-3">
+        <h4 className="text-xs font-black text-slate-500 flex items-center gap-1"><Calculator size={14}/> Calculator</h4>
+        <button onClick={onClose} className="text-slate-400 hover:text-rose-500"><X size={14}/></button>
+      </div>
+      <div className="bg-slate-100 rounded-xl p-3 mb-3 text-right text-lg font-black text-[#020F33] overflow-hidden truncate h-12 flex items-center justify-end">
+        {calcInput || '0'}
+      </div>
+      <div className="grid grid-cols-4 gap-2">
+        {buttons.map(btn => (
+          <button 
+            key={btn} 
+            onClick={() => handleBtn(btn)}
+            className={`py-2 rounded-lg font-bold text-sm transition-all active:scale-95
+              ${btn === '=' ? 'col-span-2 bg-[#02C2D5] text-[#020F33] hover:bg-[#02a9b9]' 
+              : btn === 'C' ? 'text-rose-500 bg-rose-50 hover:bg-rose-100' 
+              : ['/','*','-','+'].includes(btn) ? 'text-indigo-500 bg-indigo-50 hover:bg-indigo-100'
+              : 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 shadow-sm'}`}
+          >
+            {btn}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ================= CUSTOM RICH TEXT EDITOR COMPONENT =================
+function RichEditor({ initialHtml, onChange, onToggleCalc }: { initialHtml: string, onChange: (html: string) => void, onToggleCalc: () => void }) {
   const editorRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -486,94 +558,71 @@ function RichEditor({ initialHtml, onChange }: { initialHtml: string, onChange: 
     }
   }, []);
 
-  const exec = (cmd: string, val: string | undefined = undefined) => {
+  // Use onMouseDown + e.preventDefault() so the editor doesn't lose focus!
+  const handleFormat = (e: React.MouseEvent, cmd: string, val: string | undefined = undefined) => {
+    e.preventDefault(); 
     document.execCommand(cmd, false, val);
-    editorRef.current?.focus();
-    if(editorRef.current) onChange(editorRef.current.innerHTML);
-  };
-
-  const insertText = (text: string) => {
-    document.execCommand('insertText', false, text);
-    if(editorRef.current) onChange(editorRef.current.innerHTML);
-  };
-
-  // The Magic AI Calculator
-  const handleCalculate = () => {
-    const selection = window.getSelection();
-    if (selection && !selection.isCollapsed) {
-      const text = selection.toString();
-      try {
-        // Evaluate safely removing anything that isn't a math symbol
-        const sanitized = text.replace(/[^0-9+\-*/().]/g, '');
-        if(sanitized) {
-          const result = Function('"use strict";return (' + sanitized + ')')();
-          document.execCommand('insertHTML', false, `&nbsp;<strong style="color:#02C2D5;">= ${result}</strong>&nbsp;`);
-          if(editorRef.current) onChange(editorRef.current.innerHTML);
-        }
-      } catch(e) {
-        alert('Invalid Math Expression! Select something like "50 * 5"');
-      }
-    } else {
-      alert("Highlight a math expression (e.g., 250*4) and click this to calculate.");
+    if(editorRef.current) {
+      editorRef.current.focus();
+      onChange(editorRef.current.innerHTML);
     }
+  };
+
+  const insertSymbol = (e: React.MouseEvent, sym: string) => {
+    e.preventDefault();
+    document.execCommand('insertText', false, sym);
+    if(editorRef.current) onChange(editorRef.current.innerHTML);
   };
 
   return (
     <div className="flex flex-col h-full">
       {/* Editor Toolbar */}
-      <div className="bg-slate-50 border-b border-slate-100 p-2 flex flex-wrap items-center gap-1">
+      <div className="bg-slate-50 border-b border-slate-100 p-2 flex flex-wrap items-center gap-1 shadow-sm relative z-10">
         
         {/* Formatting */}
-        <button onClick={() => exec('bold')} className="p-1.5 hover:bg-slate-200 rounded text-slate-700" title="Bold"><Bold size={14}/></button>
-        <button onClick={() => exec('italic')} className="p-1.5 hover:bg-slate-200 rounded text-slate-700" title="Italic"><Italic size={14}/></button>
+        <button onMouseDown={(e) => handleFormat(e, 'bold')} className="p-1.5 hover:bg-slate-200 rounded text-slate-700 active:bg-slate-300" title="Bold"><Bold size={14}/></button>
+        <button onMouseDown={(e) => handleFormat(e, 'italic')} className="p-1.5 hover:bg-slate-200 rounded text-slate-700 active:bg-slate-300" title="Italic"><Italic size={14}/></button>
         <div className="w-px h-4 bg-slate-300 mx-1"></div>
         
-        {/* Lists */}
-        <button onClick={() => exec('insertUnorderedList')} className="p-1.5 hover:bg-slate-200 rounded text-slate-700" title="Bullet List"><List size={14}/></button>
-        <button onClick={() => exec('insertOrderedList')} className="p-1.5 hover:bg-slate-200 rounded text-slate-700" title="Numbered List"><ListOrdered size={14}/></button>
+        {/* Lists (Fixed Focus Loss) */}
+        <button onMouseDown={(e) => handleFormat(e, 'insertUnorderedList')} className="p-1.5 hover:bg-slate-200 rounded text-slate-700 active:bg-slate-300" title="Bullet List"><List size={14}/></button>
+        <button onMouseDown={(e) => handleFormat(e, 'insertOrderedList')} className="p-1.5 hover:bg-slate-200 rounded text-slate-700 active:bg-slate-300" title="Numbered List"><ListOrdered size={14}/></button>
         <div className="w-px h-4 bg-slate-300 mx-1"></div>
         
-        {/* Fonts & Colors */}
-        <select onChange={(e) => exec('fontSize', e.target.value)} className="text-[10px] border border-slate-200 rounded px-1 py-1 bg-white outline-none">
-          <option value="3">Normal</option>
-          <option value="1">Small</option>
-          <option value="5">Large</option>
-          <option value="7">Huge</option>
-        </select>
-        <div className="relative group">
-          <button className="p-1.5 hover:bg-slate-200 rounded text-slate-700 flex items-center"><Baseline size={14}/></button>
-          <input type="color" onChange={(e) => exec('foreColor', e.target.value)} className="absolute opacity-0 inset-0 w-full h-full cursor-pointer" title="Text Color" />
+        {/* Color Picker (Fixed Focus Loss) */}
+        <div className="relative group flex items-center">
+          <button onMouseDown={(e) => e.preventDefault()} className="p-1.5 hover:bg-slate-200 rounded text-slate-700 flex items-center pointer-events-none relative z-10"><Baseline size={14}/></button>
+          <input type="color" onMouseDown={(e) => e.preventDefault()} onChange={(e) => handleFormat(e as any, 'foreColor', e.target.value)} className="absolute opacity-0 inset-0 w-full h-full cursor-pointer z-20" title="Text Color" />
         </div>
         <div className="w-px h-4 bg-slate-300 mx-1"></div>
 
-        {/* Math & Calculator Magic */}
-        <button onClick={handleCalculate} className="p-1.5 hover:bg-[#02C2D5]/20 bg-[#02C2D5]/10 rounded text-[#02C2D5] font-bold flex items-center gap-1" title="Select math and click to calculate!">
-          <Calculator size={14}/> <span className="text-[10px]">Calc</span>
-        </button>
-        
         {/* Math Symbols Dropdown */}
         <div className="relative group">
-          <button className="p-1.5 hover:bg-slate-200 rounded text-slate-700"><Sigma size={14}/></button>
+          <button onMouseDown={(e) => e.preventDefault()} className="p-1.5 hover:bg-slate-200 rounded text-slate-700"><Sigma size={14}/></button>
           <div className="absolute top-full left-0 mt-1 bg-white border shadow-lg rounded-lg p-2 hidden group-hover:grid grid-cols-4 gap-1 z-50 w-32">
             {['+', '-', '×', '÷', '=', '≠', '≈', '>', '<', '±', '√', 'π', 'θ', '∑', '∫', '∞'].map(sym => (
-              <button key={sym} onClick={() => insertText(sym)} className="hover:bg-slate-100 rounded text-xs py-1 text-center font-black text-slate-700">
+              <button key={sym} onMouseDown={(e) => insertSymbol(e, sym)} className="hover:bg-slate-100 rounded text-xs py-1 text-center font-black text-slate-700">
                 {sym}
               </button>
             ))}
           </div>
         </div>
 
+        {/* NEW: Floating Calculator Toggle */}
+        <button onClick={onToggleCalc} className="ml-auto p-1.5 bg-[#02C2D5]/10 hover:bg-[#02C2D5]/20 border border-[#02C2D5]/30 rounded-lg text-[#02C2D5] font-bold flex items-center gap-1.5 transition-colors" title="Open floating calculator">
+          <Calculator size={14}/> <span className="text-[10px]">Open Calc</span>
+        </button>
+
       </div>
 
-      {/* Editable Area */}
       {/* Editable Area */}
       <div 
         ref={editorRef}
         contentEditable
         onInput={(e) => onChange(e.currentTarget.innerHTML)}
-        className="flex-1 overflow-y-auto p-4 bg-[#FDFCF7] outline-none text-slate-800 text-sm leading-relaxed empty:before:content-[attr(data-placeholder)] empty:before:text-slate-400 empty:before:cursor-text"
-        style={{ minHeight: '200px' }}
-        data-placeholder="Type your rich notes here..."
+        className="flex-1 overflow-y-auto p-4 lg:p-6 bg-[#FDFCF7] outline-none text-slate-800 text-sm leading-relaxed empty:before:content-[attr(data-placeholder)] empty:before:text-slate-400 empty:before:cursor-text custom-scrollbar"
+        style={{ minHeight: '300px' }}
+        data-placeholder="Type your notes here. You can use Bold, Italic, Bullet lists, and change colors..."
       />
     </div>
   );
