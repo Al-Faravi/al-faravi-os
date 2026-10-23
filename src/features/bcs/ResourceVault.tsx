@@ -4,7 +4,7 @@ import { supabase } from '../../lib/supabase';
 import { 
   ArrowLeft, Database, Loader2, Plus, 
   UploadCloud, FileText, Image as ImageIcon, Link as LinkIcon, 
-  Video, Trash2, Edit2, PlayCircle, Search, X, Maximize2
+  Video, Trash2, Edit2, PlayCircle, Search, X, Maximize2, ExternalLink, ShieldAlert
 } from 'lucide-react';
 
 interface Resource {
@@ -37,6 +37,7 @@ export default function ResourceVault() {
 
   // Viewer State
   const [previewResource, setPreviewResource] = useState<Resource | null>(null);
+  const [iframeLoading, setIframeLoading] = useState(true);
 
   useEffect(() => {
     fetchData();
@@ -93,7 +94,6 @@ export default function ResourceVault() {
       const { data: { user } } = await supabase.auth.getUser();
       
       if (editId) {
-        // UPDATE Existing
         await supabase.from('bcs_resources').update({
           subject_id: subjectId || null,
           title,
@@ -101,7 +101,6 @@ export default function ResourceVault() {
           url
         }).eq('id', editId);
       } else {
-        // CREATE New
         await supabase.from('bcs_resources').insert([{
           user_id: user?.id,
           subject_id: subjectId || null,
@@ -150,18 +149,32 @@ export default function ResourceVault() {
     setTitle(''); setSubjectId(''); setResourceType('pdf'); setUrl(''); setFile(null);
   };
 
-  // --- Helpers for In-App Viewing ---
-  const getEmbedUrl = (rawUrl: string) => {
-    // YouTube Embed Matcher
-    const ytMatch = rawUrl.match(/(?:youtu\.be\/|youtube\.com\/(?:embed\/|v\/|watch\?v=|watch\?.+&v=))((\w|-){11})/);
-    if (ytMatch && ytMatch[1]) return `https://www.youtube.com/embed/${ytMatch[1]}`;
-    
-    // Facebook Video Matcher
-    if (rawUrl.includes('facebook.com') && rawUrl.includes('/videos/')) {
-      return `https://www.facebook.com/plugins/video.php?href=${encodeURIComponent(rawUrl)}&show_text=0`;
+  // --- SMART PREVIEW HELPERS ---
+  const getEmbedInfo = (rawUrl: string, type: string) => {
+    // 1. YouTube Auto-Embed
+    if (type === 'video_link' && (rawUrl.includes('youtube.com') || rawUrl.includes('youtu.be'))) {
+      const ytMatch = rawUrl.match(/(?:youtu\.be\/|youtube\.com\/(?:embed\/|v\/|watch\?v=|watch\?.+&v=))((\w|-){11})/);
+      if (ytMatch && ytMatch[1]) return { canEmbed: true, embedUrl: `https://www.youtube.com/embed/${ytMatch[1]}` };
     }
     
-    return rawUrl; // Return original for PDF/Image/Drive
+    // 2. Facebook Videos (Blocks iframes without SDK)
+    if (type === 'video_link' && rawUrl.includes('facebook.com')) {
+      return { canEmbed: false, reason: 'Facebook does not allow inline playback.', embedUrl: rawUrl };
+    }
+    
+    // 3. Google Drive Auto-Preview Converter
+    if (type === 'drive_link') {
+      const driveEmbedUrl = rawUrl.replace(/\/view.*$/, '/preview').replace(/\/edit.*$/, '/preview');
+      return { canEmbed: true, embedUrl: driveEmbedUrl };
+    }
+
+    // 4. Regular Notes / Websites (Usually block iframes)
+    if (type === 'note') {
+      return { canEmbed: false, reason: 'External websites may block inline viewing for security.', embedUrl: rawUrl };
+    }
+
+    // Default for PDF and Images uploaded directly
+    return { canEmbed: true, embedUrl: rawUrl };
   };
 
   const getIconForType = (type: string) => {
@@ -178,6 +191,11 @@ export default function ResourceVault() {
     r.title.toLowerCase().includes(searchTerm.toLowerCase()) || 
     r.subject?.title.toLowerCase().includes(searchTerm.toLowerCase())
   );
+
+  const openPreview = (resource: Resource) => {
+    setPreviewResource(resource);
+    setIframeLoading(true);
+  };
 
   if (loading) return <div className="min-h-[60vh] flex items-center justify-center"><Loader2 className="animate-spin text-[#02C2D5]" size={40} /></div>;
 
@@ -202,7 +220,7 @@ export default function ResourceVault() {
         </div>
       </div>
 
-      {/* Add / Edit Resource Form */}
+      {/* Add / Edit Resource Form (Remains Same) */}
       {showForm && (
         <form onSubmit={handleSaveResource} className="bg-[#F8FAFC] border border-slate-200 p-6 rounded-3xl shadow-sm mb-8 animate-in fade-in slide-in-from-top-4">
           <h2 className="text-lg font-black text-[#020F33] mb-4 flex items-center gap-2">
@@ -305,60 +323,98 @@ export default function ResourceVault() {
             </div>
             
             <button 
-              onClick={() => setPreviewResource(resource)}
+              onClick={() => openPreview(resource)}
               className="flex items-center justify-center gap-2 w-full bg-[#02C2D5]/10 hover:bg-[#02C2D5] text-[#02C2D5] hover:text-[#020F33] font-bold py-2.5 rounded-xl border border-transparent transition-colors text-sm"
             >
               {['pdf', 'image'].includes(resource.resource_type) ? <Maximize2 size={16} /> : <PlayCircle size={16} />}
-              {['pdf', 'image'].includes(resource.resource_type) ? 'Read / View Inside' : 'Watch Inline'}
+              View Resource
             </button>
           </div>
         ))}
       </div>
 
-      {/* ================= IN-APP PREVIEW MODAL ================= */}
+      {/* ================= ULTRA-PROFESSIONAL PREVIEW MODAL ================= */}
       {previewResource && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#020F33]/90 backdrop-blur-sm p-4 md:p-8 animate-in fade-in">
-          <div className="bg-white w-full max-w-6xl h-[85vh] rounded-3xl flex flex-col overflow-hidden shadow-2xl">
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/90 backdrop-blur-md p-4 md:p-8 animate-in fade-in duration-200">
+          
+          <div className="bg-[#0B1120] w-full max-w-6xl h-[90vh] rounded-3xl flex flex-col overflow-hidden shadow-2xl border border-slate-700">
+            
             {/* Modal Header */}
-            <div className="flex justify-between items-center px-6 py-4 border-b border-slate-100">
-              <div>
-                <h3 className="text-lg font-black text-[#020F33]">{previewResource.title}</h3>
-                <p className="text-xs font-bold text-slate-400">{previewResource.resource_type.toUpperCase()}</p>
+            <div className="flex justify-between items-center px-6 py-4 bg-slate-800/50 border-b border-slate-700">
+              <div className="flex items-center gap-4">
+                <div className="bg-slate-700 p-2 rounded-lg text-slate-300 hidden sm:block">
+                  {getIconForType(previewResource.resource_type)}
+                </div>
+                <div>
+                  <h3 className="text-lg font-black text-white line-clamp-1">{previewResource.title}</h3>
+                  <p className="text-xs font-medium text-slate-400">
+                    {previewResource.subject?.title || 'General'} • {previewResource.resource_type.toUpperCase()}
+                  </p>
+                </div>
               </div>
-              <div className="flex items-center gap-3">
-                <a href={previewResource.url} target="_blank" rel="noopener noreferrer" className="text-sm font-bold text-[#02C2D5] hover:underline hidden md:block">
-                  Open in New Tab
+              <div className="flex items-center gap-3 shrink-0">
+                <a href={previewResource.url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 text-sm font-bold text-[#02C2D5] bg-[#02C2D5]/10 hover:bg-[#02C2D5]/20 px-4 py-2 rounded-xl transition-colors">
+                  <ExternalLink size={16} /> <span className="hidden sm:inline">Open Native</span>
                 </a>
-                <button onClick={() => setPreviewResource(null)} className="p-2 bg-slate-100 hover:bg-rose-100 text-slate-500 hover:text-rose-500 rounded-full transition-colors">
+                <button onClick={() => setPreviewResource(null)} className="p-2 bg-slate-700 hover:bg-rose-500/20 text-slate-300 hover:text-rose-400 rounded-xl transition-colors">
                   <X size={24} />
                 </button>
               </div>
             </div>
             
-            {/* Modal Content / Viewer */}
-            <div className="flex-1 bg-slate-100 w-full h-full relative overflow-hidden flex items-center justify-center">
+            {/* Modal Content Area */}
+            <div className="flex-1 w-full h-full relative flex items-center justify-center bg-[#0B1120]">
               
-              {previewResource.resource_type === 'pdf' && (
-                <iframe src={`${previewResource.url}#toolbar=0`} className="w-full h-full border-none" title="PDF Viewer" />
-              )}
-              
-              {previewResource.resource_type === 'image' && (
-                <img src={previewResource.url} alt="Preview" className="max-w-full max-h-full object-contain p-4" />
-              )}
-              
-              {previewResource.resource_type === 'video_link' && (
-                <iframe 
-                  src={getEmbedUrl(previewResource.url)} 
-                  className="w-full h-full border-none max-w-4xl mx-auto shadow-lg bg-black" 
-                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" 
-                  allowFullScreen
-                  title="Video Player"
-                />
-              )}
-              
-              {['drive_link', 'note'].includes(previewResource.resource_type) && (
-                <iframe src={previewResource.url} className="w-full h-full border-none bg-white" title="Web Viewer" />
-              )}
+              {/* Intelligent Embed System */}
+              {(() => {
+                const { canEmbed, reason, embedUrl } = getEmbedInfo(previewResource.url, previewResource.resource_type);
+
+                // Scenario 1: CANNOT EMBED (FB, Notes, Security block)
+                if (!canEmbed) {
+                  return (
+                    <div className="text-center p-8 max-w-md">
+                      <div className="w-20 h-20 bg-slate-800 rounded-full flex items-center justify-center mx-auto mb-6">
+                        <ShieldAlert size={40} className="text-slate-400" />
+                      </div>
+                      <h3 className="text-2xl font-black text-white mb-3">External Content</h3>
+                      <p className="text-slate-400 mb-8">{reason}</p>
+                      <a href={previewResource.url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 bg-[#02C2D5] text-[#020F33] px-8 py-3.5 rounded-xl font-black hover:bg-white transition-colors">
+                        <ExternalLink size={20} /> Open Securely in New Tab
+                      </a>
+                    </div>
+                  );
+                }
+
+                // Scenario 2: CAN EMBED (PDF, YT, Image, Drive Preview)
+                return (
+                  <>
+                    {/* Loading Spinner for iframes */}
+                    {iframeLoading && previewResource.resource_type !== 'image' && (
+                      <div className="absolute inset-0 flex flex-col items-center justify-center bg-[#0B1120] z-10">
+                        <Loader2 className="animate-spin text-[#02C2D5] mb-4" size={48} />
+                        <p className="text-slate-400 font-medium">Loading Resource...</p>
+                        {previewResource.resource_type === 'drive_link' && (
+                           <p className="text-xs text-rose-400 mt-2 max-w-xs text-center">If it doesn't load, ensure your Drive link is set to "Anyone with the link".</p>
+                        )}
+                      </div>
+                    )}
+
+                    {previewResource.resource_type === 'image' ? (
+                      <img src={embedUrl} alt="Preview" className="max-w-full max-h-full object-contain p-4" />
+                    ) : (
+                      <iframe 
+                        src={previewResource.resource_type === 'pdf' ? `${embedUrl}#toolbar=0` : embedUrl} 
+                        onLoad={() => setIframeLoading(false)}
+                        className={`w-full h-full border-none ${previewResource.resource_type === 'video_link' ? 'max-w-5xl mx-auto shadow-2xl bg-black' : 'bg-white'}`} 
+                        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" 
+                        allowFullScreen
+                        title="Resource Viewer"
+                      />
+                    )}
+                  </>
+                );
+              })()}
+
             </div>
           </div>
         </div>
