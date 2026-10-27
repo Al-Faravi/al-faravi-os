@@ -5,9 +5,10 @@ import {
   Target, BookOpen, Loader2, Award, BookMarked, 
   BrainCircuit, Globe, FlaskConical, MonitorDot, GripVertical,
   LineChart, Repeat, AlertTriangle, Layers, Database, Plus,
-  CheckCircle2, Circle, TrendingDown, ArrowRight
+  CheckCircle2, Circle, TrendingDown
 } from 'lucide-react';
-import { DndContext, closestCenter, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
+// Updated dnd-kit imports for mobile scrolling fix:
+import { DndContext, closestCenter, MouseSensor, TouchSensor, useSensor, useSensors } from '@dnd-kit/core';
 import { SortableContext, verticalListSortingStrategy, arrayMove } from '@dnd-kit/sortable';
 import { SortableItem } from '../../components/ui/SortableItem';
 
@@ -32,8 +33,10 @@ export default function BcsManager() {
   const [dueCardsCount, setDueCardsCount] = useState(0);
   const [dangerSubjectsCount, setDangerSubjectsCount] = useState(0);
 
+  // --- MOBILE SCROLLING FIX (250ms delay for touch) ---
   const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 8 } })
+    useSensor(MouseSensor, { activationConstraint: { distance: 8 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 250, tolerance: 5 } })
   );
 
   useEffect(() => {
@@ -122,7 +125,7 @@ export default function BcsManager() {
     }
   };
 
-  // ================= NEW: ADD CUSTOM COURSE / BANK FUNCTION =================
+  // ================= ADD CUSTOM COURSE / BANK FUNCTION =================
   const handleAddCustomCourse = async () => {
     const title = prompt("Enter Custom Course / Bank Title (e.g. 'Job Solution Book'):");
     if (!title) return;
@@ -134,7 +137,6 @@ export default function BcsManager() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("User not found");
 
-      // Random nice color for the new custom card
       const colors = ['#8B5CF6', '#F43F5E', '#10B981', '#F59E0B', '#3B82F6', '#EC4899', '#02C2D5'];
       const randomColor = colors[Math.floor(Math.random() * colors.length)];
 
@@ -148,7 +150,7 @@ export default function BcsManager() {
       };
 
       await supabase.from('bcs_subjects').insert([newSubject]);
-      await fetchSubjects(); // Refresh the list magically!
+      await fetchSubjects();
 
     } catch (error: any) {
       alert("Error creating custom course: " + error.message);
@@ -192,7 +194,6 @@ export default function BcsManager() {
     return <BookMarked size={20} color={color} />;
   };
 
-  // --- Hero Section Features Data ---
   const bcsFeatures = [
     { title: 'Daily Target Locker', icon: <Target size={24} />, color: 'text-rose-500', bg: 'bg-rose-100', link: '/bcs/targets' },
     { title: 'Mock Tests & Score', icon: <LineChart size={24} />, color: 'text-indigo-600', bg: 'bg-indigo-100', link: '/bcs/mock-tests' },
@@ -298,7 +299,6 @@ export default function BcsManager() {
       {/* ================= HERO SECTION (Features) ================= */}
       <h2 className="text-sm font-black text-slate-400 uppercase tracking-wider mb-4">All Modules</h2>
       <div className="mb-12 bg-white p-6 md:p-8 rounded-3xl border border-slate-200 shadow-sm">
-        {/* Feature Cards Grid */}
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
           {bcsFeatures.map((feat, idx) => (
             <Link key={idx} to={feat.link} className="bg-[#F8FAFC] border border-slate-200 p-4 rounded-2xl hover:border-[#02C2D5]/50 hover:shadow-md hover:-translate-y-1 transition-all group flex flex-col items-center text-center justify-center gap-3">
@@ -316,7 +316,6 @@ export default function BcsManager() {
         <h2 className="text-xl font-black flex items-center gap-2">
           <BookOpen className="text-[#02C2D5]" size={24} /> Syllabus & Question Banks
         </h2>
-        {/* THE FIXED BUTTON IS HERE! */}
         <button 
           onClick={handleAddCustomCourse}
           className="flex items-center gap-2 bg-[#020F33] text-white px-4 py-2 rounded-xl text-xs font-bold hover:bg-[#02C2D5] hover:text-[#020F33] transition-colors shadow-sm"
@@ -337,7 +336,6 @@ export default function BcsManager() {
       ) : (
         <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
           <SortableContext items={subjects.map(s => s.id)} strategy={verticalListSortingStrategy}>
-            {/* COMPACT GRID: 2 columns on mobile, 4 on tablet, 5 on large screens */}
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
               {subjects.map((subject) => (
                 <SortableItem key={subject.id} id={subject.id}>

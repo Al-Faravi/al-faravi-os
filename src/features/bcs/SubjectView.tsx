@@ -6,7 +6,8 @@ import {
   Database, ChevronDown, ChevronUp, Trash2, 
   PlayCircle, UploadCloud, LayoutTemplate, 
   MonitorPlay, ExternalLink, ShieldAlert,
-  Bold, Italic, List, ListOrdered, Baseline, Calculator, Sigma, AlignLeft, X, Move
+  Bold, Italic, List, ListOrdered, Baseline, 
+  Calculator, Sigma, AlignLeft, X, Menu, Edit2
 } from 'lucide-react';
 
 export default function SubjectView() {
@@ -14,6 +15,10 @@ export default function SubjectView() {
   const [subject, setSubject] = useState<any>(null);
   const [modules, setModules] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+
+  // Mobile Navigation & Responsive States
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [mobileActiveTab, setMobileActiveTab] = useState<'notes' | 'materials' | 'syllabus'>('notes');
 
   // Active Topic States
   const [activeTopic, setActiveTopic] = useState<any>(null);
@@ -70,7 +75,6 @@ export default function SubjectView() {
   const addModule = async () => {
     const title = prompt("Enter Module / Phase Name:");
     if (!title) return;
-    const { data: { user } } = await supabase.auth.getUser();
     await supabase.from('bcs_modules').insert([{ subject_id: id, title, order_index: modules.length }]);
     fetchSubjectData();
   };
@@ -129,6 +133,7 @@ export default function SubjectView() {
     setActiveTopic(topic);
     setPreviewResource(null);
     setShowCalculator(false);
+    setIsSidebarOpen(false); // Auto-close mobile drawer when topic selected
     
     // Parse Multi-Tab Notes JSON
     let parsedNotes = [];
@@ -190,7 +195,6 @@ export default function SubjectView() {
   const updateActiveNoteBody = (html: string) => {
     setNotes(prev => prev.map(n => n.id === activeNoteId ? { ...n, body: html } : n));
   };
-
 
   // ================= RESOURCES =================
   const handleFileUpload = async (selectedFile: File) => {
@@ -257,92 +261,158 @@ export default function SubjectView() {
     return { canEmbed: true, embedUrl: rawUrl };
   };
 
-  if (loading) return <div className="h-screen w-full flex items-center justify-center"><Loader2 className="animate-spin text-[#02C2D5]" size={40} /></div>;
+  // Reusable Syllabus Content (for both Desktop Sidebar & Mobile View)
+  const renderSyllabusList = () => (
+    <div className="flex-1 overflow-y-auto p-4 space-y-4 custom-scrollbar">
+      {modules.map((module, mIdx) => (
+        <div key={module.id} className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
+          <div className="bg-slate-100 border-b border-slate-200 p-3 flex justify-between items-center group">
+            <h2 className="text-xs font-black text-slate-700 flex items-center gap-2 uppercase tracking-wide">
+              <FolderOpen size={14} className="text-[#02C2D5] shrink-0" /> 
+              <span className="truncate">{module.title}</span>
+            </h2>
+            <div className="flex items-center gap-1 opacity-100 lg:opacity-0 lg:group-hover:opacity-100 transition-opacity shrink-0">
+              <button onClick={() => moveModule(mIdx, 'up')} className="text-slate-400 hover:text-[#02C2D5] p-0.5"><ChevronUp size={14}/></button>
+              <button onClick={() => moveModule(mIdx, 'down')} className="text-slate-400 hover:text-[#02C2D5] p-0.5"><ChevronDown size={14}/></button>
+              <button onClick={() => deleteModule(module.id)} className="text-slate-400 hover:text-rose-500 ml-1 p-0.5"><Trash2 size={12}/></button>
+            </div>
+          </div>
+
+          <div className="divide-y divide-slate-100">
+            {module.topics.map((topic: any, tIdx: number) => (
+              <div key={topic.id} 
+                onClick={() => {
+                  openTopicPanel(topic);
+                  if (mobileActiveTab === 'syllabus') setMobileActiveTab('notes');
+                }}
+                className={`p-3 flex justify-between items-center cursor-pointer transition-colors group ${activeTopic?.id === topic.id ? 'bg-[#02C2D5]/10 border-l-4 border-[#02C2D5]' : 'hover:bg-slate-50 border-l-4 border-transparent'}`}>
+                <div className="flex items-center gap-2 truncate pr-2">
+                  <LayoutTemplate size={14} className={activeTopic?.id === topic.id ? 'text-[#02C2D5] shrink-0' : 'text-slate-400 shrink-0'} />
+                  <span className={`text-xs font-bold truncate ${activeTopic?.id === topic.id ? 'text-[#020F33]' : 'text-slate-600'}`}>{topic.title}</span>
+                </div>
+                <div className="flex items-center opacity-100 lg:opacity-0 lg:group-hover:opacity-100 transition-opacity shrink-0" onClick={e => e.stopPropagation()}>
+                  <button onClick={() => moveTopic(mIdx, tIdx, 'up')} className="text-slate-400 hover:text-[#02C2D5] p-0.5"><ChevronUp size={12}/></button>
+                  <button onClick={() => moveTopic(mIdx, tIdx, 'down')} className="text-slate-400 hover:text-[#02C2D5] p-0.5"><ChevronDown size={12}/></button>
+                  <button onClick={() => deleteTopic(topic.id)} className="text-slate-400 hover:text-rose-500 p-0.5"><Trash2 size={12}/></button>
+                </div>
+              </div>
+            ))}
+            <button onClick={() => addTopic(module.id, module.topics.length)} className="w-full p-2.5 text-[10px] uppercase font-bold text-slate-400 hover:text-[#02C2D5] hover:bg-slate-50 flex items-center justify-center gap-1 transition-colors">
+              <Plus size={12} /> Add Chapter
+            </button>
+          </div>
+        </div>
+      ))}
+      <button onClick={addModule} className="w-full py-3 border border-dashed border-slate-300 rounded-xl text-slate-500 text-xs font-bold hover:border-[#02C2D5] hover:text-[#02C2D5] hover:bg-white transition-all flex items-center justify-center gap-2">
+        <Plus size={14} /> New Phase / Module
+      </button>
+    </div>
+  );
+
+  if (loading) return <div className="h-[100dvh] w-full flex items-center justify-center"><Loader2 className="animate-spin text-[#02C2D5]" size={40} /></div>;
   if (!subject) return <div className="text-center py-20 text-slate-500 font-bold">Subject not found.</div>;
 
   return (
-    <div className="h-[100vh] w-full flex overflow-hidden bg-white relative">
+    <div className="h-[100dvh] w-full flex flex-col lg:flex-row overflow-hidden bg-white relative">
       
-      {/* ================= LEFT SIDEBAR ================= */}
-      <div className="w-[320px] shrink-0 border-r border-slate-200 bg-slate-50 flex flex-col h-full overflow-hidden hidden md:flex z-10 relative">
-        
-        <div className="p-4 border-b border-slate-200 bg-white">
-          <Link to="/bcs" className="inline-flex items-center gap-2 text-xs font-bold text-slate-400 hover:text-[#020F33] transition-colors mb-3">
-            <ArrowLeft size={14} /> Back to Dashboard
-          </Link>
-          <h1 className="text-xl font-black text-[#020F33] leading-snug">{subject.title}</h1>
-          <p className="text-[10px] font-bold text-[#02C2D5] uppercase tracking-widest mt-1">Course Content</p>
+      {/* ================= MOBILE & TABLET TOP HEADER (10MS Style) ================= */}
+      <div className="lg:hidden flex items-center justify-between px-4 py-3 border-b border-slate-200 bg-white shrink-0 z-30 shadow-sm">
+        <div className="flex items-center gap-3 overflow-hidden">
+          <button 
+            onClick={() => setIsSidebarOpen(true)} 
+            className="p-2 -ml-2 text-slate-700 hover:text-[#02C2D5] active:scale-95 transition-transform"
+          >
+            <Menu size={22} />
+          </button>
+          <div className="overflow-hidden">
+            <h1 className="text-sm font-black text-[#020F33] truncate">{subject.title}</h1>
+            {activeTopic && (
+              <p className="text-[11px] font-bold text-[#02C2D5] truncate">{activeTopic.title}</p>
+            )}
+          </div>
         </div>
+        <Link 
+          to="/bcs" 
+          className="flex items-center gap-1 text-xs font-bold text-slate-600 hover:text-[#020F33] bg-slate-100 px-3 py-1.5 rounded-lg shrink-0"
+        >
+          <ArrowLeft size={14} /> Back
+        </Link>
+      </div>
 
-        <div className="flex-1 overflow-y-auto p-4 space-y-4">
-          {modules.map((module, mIdx) => (
-            <div key={module.id} className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
-              <div className="bg-slate-100 border-b border-slate-200 p-3 flex justify-between items-center group">
-                <h2 className="text-xs font-black text-slate-700 flex items-center gap-2 uppercase tracking-wide">
-                  <FolderOpen size={14} className="text-[#02C2D5]" /> {module.title}
-                </h2>
-                <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                  <button onClick={() => moveModule(mIdx, 'up')} className="text-slate-400 hover:text-[#02C2D5]"><ChevronUp size={14}/></button>
-                  <button onClick={() => moveModule(mIdx, 'down')} className="text-slate-400 hover:text-[#02C2D5]"><ChevronDown size={14}/></button>
-                  <button onClick={() => deleteModule(module.id)} className="text-slate-400 hover:text-rose-500 ml-1"><Trash2 size={12}/></button>
-                </div>
-              </div>
+      {/* ================= MOBILE SLIDE-OVER DRAWER OVERLAY ================= */}
+      {isSidebarOpen && (
+        <div 
+          className="fixed inset-0 bg-[#020F33]/60 backdrop-blur-sm z-40 lg:hidden animate-in fade-in duration-200" 
+          onClick={() => setIsSidebarOpen(false)} 
+        />
+      )}
 
-              <div className="divide-y divide-slate-100">
-                {module.topics.map((topic: any, tIdx: number) => (
-                  <div key={topic.id} 
-                    onClick={() => openTopicPanel(topic)}
-                    className={`p-3 flex justify-between items-center cursor-pointer transition-colors group ${activeTopic?.id === topic.id ? 'bg-[#02C2D5]/10 border-l-4 border-[#02C2D5]' : 'hover:bg-slate-50 border-l-4 border-transparent'}`}>
-                    <div className="flex items-center gap-2 truncate pr-2">
-                      <LayoutTemplate size={14} className={activeTopic?.id === topic.id ? 'text-[#02C2D5]' : 'text-slate-400'} />
-                      <span className={`text-xs font-bold truncate ${activeTopic?.id === topic.id ? 'text-[#020F33]' : 'text-slate-600'}`}>{topic.title}</span>
-                    </div>
-                    <div className="flex items-center opacity-0 group-hover:opacity-100 transition-opacity" onClick={e => e.stopPropagation()}>
-                      <button onClick={() => moveTopic(mIdx, tIdx, 'up')} className="text-slate-400 hover:text-[#02C2D5] p-0.5"><ChevronUp size={12}/></button>
-                      <button onClick={() => moveTopic(mIdx, tIdx, 'down')} className="text-slate-400 hover:text-[#02C2D5] p-0.5"><ChevronDown size={12}/></button>
-                      <button onClick={() => deleteTopic(topic.id)} className="text-slate-400 hover:text-rose-500 p-0.5"><Trash2 size={12}/></button>
-                    </div>
-                  </div>
-                ))}
-                <button onClick={() => addTopic(module.id, module.topics.length)} className="w-full p-2.5 text-[10px] uppercase font-bold text-slate-400 hover:text-[#02C2D5] hover:bg-slate-50 flex items-center justify-center gap-1 transition-colors">
-                  <Plus size={12} /> Add Chapter
-                </button>
-              </div>
-            </div>
-          ))}
-          <button onClick={addModule} className="w-full py-3 border border-dashed border-slate-300 rounded-xl text-slate-500 text-xs font-bold hover:border-[#02C2D5] hover:text-[#02C2D5] hover:bg-white transition-all flex items-center justify-center gap-2">
-            <Plus size={14} /> New Phase / Module
+      {/* ================= LEFT SIDEBAR (Drawer on Mobile, Fixed on Desktop) ================= */}
+      <div className={`fixed inset-y-0 left-0 z-50 w-[85%] max-w-[320px] lg:w-[320px] shrink-0 border-r border-slate-200 bg-slate-50 flex flex-col h-full overflow-hidden transform transition-transform duration-300 ease-in-out lg:relative lg:translate-x-0 ${isSidebarOpen ? 'translate-x-0 shadow-2xl' : '-translate-x-full'}`}>
+        
+        <div className="p-4 border-b border-slate-200 bg-white flex justify-between items-start">
+          <div className="overflow-hidden pr-2">
+            <Link to="/bcs" className="hidden lg:inline-flex items-center gap-2 text-xs font-bold text-slate-400 hover:text-[#020F33] transition-colors mb-3">
+              <ArrowLeft size={14} /> Back to Dashboard
+            </Link>
+            <h1 className="text-lg lg:text-xl font-black text-[#020F33] leading-snug truncate">{subject.title}</h1>
+            <p className="text-[10px] font-bold text-[#02C2D5] uppercase tracking-widest mt-1">Course Content</p>
+          </div>
+          <button 
+            onClick={() => setIsSidebarOpen(false)} 
+            className="lg:hidden p-1.5 text-slate-400 hover:text-rose-500 bg-slate-100 rounded-lg"
+          >
+            <X size={18} />
           </button>
         </div>
+
+        {renderSyllabusList()}
       </div>
 
 
       {/* ================= RIGHT SIDE: FULL SCREEN WORKSPACE ================= */}
       <div className="flex-1 flex flex-col h-full overflow-hidden bg-[#F8FAFC]">
         {!activeTopic ? (
-          <div className="flex-1 flex flex-col items-center justify-center text-slate-400">
+          <div className="flex-1 flex flex-col items-center justify-center text-slate-400 p-6 text-center">
             <MonitorPlay size={64} className="mb-4 opacity-50 text-[#02C2D5]" />
             <h2 className="text-xl font-bold text-slate-600 mb-2">Theater Learning Mode</h2>
-            <p className="text-sm">Select a topic from the syllabus on the left to start studying.</p>
+            <p className="text-sm max-w-xs">Select a topic from the syllabus to start studying.</p>
+            <button 
+              onClick={() => setIsSidebarOpen(true)}
+              className="lg:hidden mt-6 bg-[#020F33] text-white px-6 py-2.5 rounded-xl font-bold text-xs shadow-md hover:bg-[#02C2D5] hover:text-[#020F33] transition-colors"
+            >
+              Open Course Syllabus
+            </button>
           </div>
         ) : (
           <>
-            <div className="bg-white border-b border-slate-200 px-6 py-4 flex justify-between items-center shrink-0">
+            {/* Desktop Workspace Header */}
+            <div className="hidden lg:flex bg-white border-b border-slate-200 px-6 py-4 justify-between items-center shrink-0">
               <div>
                 <span className="text-[10px] font-bold text-[#02C2D5] uppercase tracking-wider">Active Workspace</span>
                 <h2 className="text-lg font-black text-[#020F33]">{activeTopic.title}</h2>
               </div>
+              {previewResource && (
+                <a 
+                  href={previewResource.url} 
+                  target="_blank" 
+                  rel="noopener noreferrer" 
+                  className="text-xs font-bold text-[#02C2D5] hover:underline flex items-center gap-1"
+                >
+                  <ExternalLink size={14} /> Open Original
+                </a>
+              )}
             </div>
 
-            <div className="flex-1 flex overflow-hidden relative">
+            <div className="flex-1 flex flex-col lg:flex-row overflow-hidden relative">
               
-              {/* ---------------- THEATER VIEWER ---------------- */}
-              <div className="flex-[2] xl:flex-[3] bg-[#0B1120] relative flex items-center justify-center overflow-hidden">
+              {/* ---------------- THEATER VIEWER (Top 16:9 on Mobile, Left Flex on Desktop) ---------------- */}
+              <div className="w-full h-[220px] sm:h-[300px] lg:h-full lg:flex-[2] xl:flex-[3] bg-[#0B1120] relative flex items-center justify-center overflow-hidden shrink-0">
                 {!previewResource ? (
-                  <div className="text-center text-slate-500">
-                    <PlayCircle size={48} className="mx-auto mb-4 opacity-30" />
-                    <p className="font-bold">No Resource Selected</p>
-                    <p className="text-xs mt-1">Select a video or PDF from the right panel to view it here.</p>
+                  <div className="text-center text-slate-500 p-4">
+                    <PlayCircle size={40} className="mx-auto mb-2 opacity-30 lg:w-12 lg:h-12" />
+                    <p className="font-bold text-sm lg:text-base">No Resource Selected</p>
+                    <p className="text-[11px] lg:text-xs mt-1">Select or add a video/PDF from the Materials section.</p>
                   </div>
                 ) : (
                   <>
@@ -350,14 +420,14 @@ export default function SubjectView() {
                       const { canEmbed, reason, embedUrl } = getEmbedInfo(previewResource.url, previewResource.resource_type);
                       if (!canEmbed) {
                         return (
-                          <div className="text-center p-8 max-w-md">
-                            <div className="w-16 h-16 bg-slate-800 rounded-full flex items-center justify-center mx-auto mb-4">
-                              <ShieldAlert size={32} className="text-slate-400" />
+                          <div className="text-center p-6 max-w-md">
+                            <div className="w-12 h-12 lg:w-16 lg:h-16 bg-slate-800 rounded-full flex items-center justify-center mx-auto mb-3">
+                              <ShieldAlert size={28} className="text-slate-400" />
                             </div>
-                            <h3 className="text-xl font-black text-white mb-2">External Content</h3>
-                            <p className="text-slate-400 text-sm mb-6">{reason}</p>
-                            <a href={previewResource.url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 bg-[#02C2D5] text-[#020F33] px-6 py-2.5 rounded-lg font-bold hover:bg-white transition-colors">
-                              <ExternalLink size={18} /> Open in New Tab
+                            <h3 className="text-base lg:text-xl font-black text-white mb-1">External Content</h3>
+                            <p className="text-slate-400 text-xs lg:text-sm mb-4">{reason}</p>
+                            <a href={previewResource.url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 bg-[#02C2D5] text-[#020F33] px-5 py-2 rounded-lg font-bold text-xs lg:text-sm hover:bg-white transition-colors">
+                              <ExternalLink size={16} /> Open in New Tab
                             </a>
                           </div>
                         );
@@ -366,14 +436,16 @@ export default function SubjectView() {
                         <>
                           {iframeLoading && (
                             <div className="absolute inset-0 flex flex-col items-center justify-center bg-[#0B1120] z-10">
-                              <Loader2 className="animate-spin text-[#02C2D5] mb-4" size={40} />
+                              <Loader2 className="animate-spin text-[#02C2D5] mb-2" size={36} />
                             </div>
                           )}
                           <iframe 
                             src={previewResource.resource_type === 'pdf' ? `${embedUrl}#toolbar=0` : embedUrl} 
                             onLoad={() => setIframeLoading(false)}
                             className="w-full h-full border-none bg-white" 
+                            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
                             allowFullScreen
+                            title="Resource Viewer"
                           />
                         </>
                       );
@@ -382,17 +454,46 @@ export default function SubjectView() {
                 )}
               </div>
 
+              {/* ---------------- MOBILE 10MS TAB SWITCHER (< lg) ---------------- */}
+              <div className="lg:hidden flex border-b border-slate-200 bg-white shrink-0 z-20">
+                <button 
+                  onClick={() => setMobileActiveTab('notes')}
+                  className={`flex-1 py-2.5 text-xs font-black border-b-2 transition-colors flex items-center justify-center gap-1.5 ${mobileActiveTab === 'notes' ? 'border-[#02C2D5] text-[#020F33] bg-[#02C2D5]/5' : 'border-transparent text-slate-500'}`}
+                >
+                  <AlignLeft size={14} /> Notes ({notes.length})
+                </button>
+                <button 
+                  onClick={() => setMobileActiveTab('materials')}
+                  className={`flex-1 py-2.5 text-xs font-black border-b-2 transition-colors flex items-center justify-center gap-1.5 ${mobileActiveTab === 'materials' ? 'border-[#02C2D5] text-[#020F33] bg-[#02C2D5]/5' : 'border-transparent text-slate-500'}`}
+                >
+                  <Database size={14} /> Materials ({topicResources.length})
+                </button>
+                <button 
+                  onClick={() => setMobileActiveTab('syllabus')}
+                  className={`flex-1 py-2.5 text-xs font-black border-b-2 transition-colors flex items-center justify-center gap-1.5 ${mobileActiveTab === 'syllabus' ? 'border-[#02C2D5] text-[#020F33] bg-[#02C2D5]/5' : 'border-transparent text-slate-500'}`}
+                >
+                  <FolderOpen size={14} /> Syllabus
+                </button>
+              </div>
+
               {/* ---------------- TOOLS PANEL (Resources & Notes) ---------------- */}
-              <div className="w-[400px] xl:w-[450px] shrink-0 bg-white border-l border-slate-200 flex flex-col overflow-hidden shadow-[-4px_0_15px_rgba(0,0,0,0.03)] relative z-20">
+              <div className="flex-1 lg:flex-none lg:w-[400px] xl:w-[450px] shrink-0 bg-white lg:border-l border-slate-200 flex flex-col overflow-hidden shadow-[-4px_0_15px_rgba(0,0,0,0.03)] relative z-20">
                 
-                {/* 1. Resources Area (FIXED HEIGHT WITH SCROLL) */}
-                <div className="flex flex-col border-b border-slate-200 bg-slate-50 shrink-0">
-                  <div className="p-4 max-h-[220px] overflow-y-auto custom-scrollbar">
+                {/* Mobile Syllabus Tab Content */}
+                {mobileActiveTab === 'syllabus' && (
+                  <div className="lg:hidden flex-1 flex flex-col overflow-hidden bg-slate-50">
+                    {renderSyllabusList()}
+                  </div>
+                )}
+
+                {/* 1. Resources Area (Visible on Desktop OR when Mobile Tab === 'materials') */}
+                <div className={`${mobileActiveTab === 'materials' ? 'flex flex-1 lg:flex-none' : 'hidden lg:flex'} flex-col border-b border-slate-200 bg-slate-50 shrink-0 overflow-hidden`}>
+                  <div className="p-4 flex-1 lg:max-h-[220px] overflow-y-auto custom-scrollbar">
                     <h3 className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-3 flex items-center gap-1">
                       <Database size={12}/> Attached Materials
                     </h3>
                     {topicResources.length === 0 ? (
-                      <p className="text-xs text-slate-400 font-medium p-2 text-center border border-dashed border-slate-200 rounded-lg">No resources yet.</p>
+                      <p className="text-xs text-slate-400 font-medium p-3 text-center border border-dashed border-slate-200 rounded-lg">No resources yet. Add a video, PDF, or Drive link below.</p>
                     ) : (
                       <div className="space-y-1.5">
                         {topicResources.map(res => (
@@ -404,8 +505,8 @@ export default function SubjectView() {
                               {res.resource_type === 'pdf' ? <FileText size={14} className="text-rose-500 shrink-0"/> : <PlayCircle size={14} className="text-indigo-500 shrink-0"/>}
                               <span className={`text-xs font-bold truncate ${previewResource?.id === res.id ? 'text-[#02C2D5]' : 'text-slate-700'}`}>{res.title}</span>
                             </div>
-                            <button onClick={(e) => { e.stopPropagation(); deleteResource(res.id); }} className="text-slate-300 hover:text-rose-500 opacity-0 group-hover:opacity-100 transition-opacity">
-                              <Trash2 size={12} />
+                            <button onClick={(e) => { e.stopPropagation(); deleteResource(res.id); }} className="text-slate-400 hover:text-rose-500 opacity-100 lg:opacity-0 lg:group-hover:opacity-100 transition-opacity p-1">
+                              <Trash2 size={13} />
                             </button>
                           </div>
                         ))}
@@ -414,52 +515,56 @@ export default function SubjectView() {
                   </div>
 
                   {/* Add Resource Form (Compact) */}
-                  <form onSubmit={handleAddResource} className="p-3 bg-white border-t border-slate-200 flex gap-2">
-                    <select value={resType} onChange={e => {setResType(e.target.value); setResUrl(''); setFile(null);}} className="bg-slate-50 border border-slate-200 rounded px-2 text-[10px] font-bold outline-none">
+                  <form onSubmit={handleAddResource} className="p-3 bg-white border-t border-slate-200 flex flex-wrap sm:flex-nowrap gap-2 shrink-0">
+                    <select value={resType} onChange={e => {setResType(e.target.value); setResUrl(''); setFile(null);}} className="bg-slate-50 border border-slate-200 rounded px-2 py-1.5 text-[10px] font-bold outline-none">
                       <option value="video_link">Video</option>
                       <option value="pdf">PDF</option>
-                      {/* ADDED DRIVE LINK OPTION HERE */}
                       <option value="drive_link">Drive Link</option>
                     </select>
                     {resType === 'pdf' ? (
-                      <label className="flex-1 flex items-center justify-center gap-1 border border-dashed border-slate-300 bg-slate-50 rounded px-2 cursor-pointer hover:border-[#02C2D5]">
+                      <label className="flex-1 flex items-center justify-center gap-1 border border-dashed border-slate-300 bg-slate-50 rounded px-2 py-1.5 cursor-pointer hover:border-[#02C2D5] min-w-[120px]">
                         {uploadingFile ? <Loader2 className="animate-spin" size={12} /> : <UploadCloud size={12} />}
                         <span className="text-[10px] font-bold text-slate-500 truncate">{file ? file.name : 'Choose File'}</span>
                         <input type="file" className="hidden" accept=".pdf" onChange={e => e.target.files && handleFileUpload(e.target.files[0])} />
                       </label>
                     ) : (
-                      <input type="url" required value={resUrl} onChange={e => setResUrl(e.target.value)} placeholder="Paste link URL..." className="flex-1 bg-slate-50 border border-slate-200 rounded px-2 text-xs outline-none focus:border-[#02C2D5]" />
+                      <input type="url" required value={resUrl} onChange={e => setResUrl(e.target.value)} placeholder="Paste link URL..." className="flex-1 bg-slate-50 border border-slate-200 rounded px-2 py-1.5 text-xs outline-none focus:border-[#02C2D5] min-w-[120px]" />
                     )}
-                    <input type="text" required value={resTitle} onChange={e => setResTitle(e.target.value)} placeholder="Title" className="w-20 bg-slate-50 border border-slate-200 rounded px-2 text-[10px] outline-none focus:border-[#02C2D5]" />
-                    <button type="submit" disabled={uploadingFile} className="bg-[#020F33] text-white px-2 rounded hover:bg-[#02C2D5]"><Plus size={14}/></button>
+                    <input type="text" required value={resTitle} onChange={e => setResTitle(e.target.value)} placeholder="Title" className="w-24 bg-slate-50 border border-slate-200 rounded px-2 py-1.5 text-[10px] outline-none focus:border-[#02C2D5]" />
+                    <button type="submit" disabled={uploadingFile} className="bg-[#020F33] text-white px-3 py-1.5 rounded hover:bg-[#02C2D5] hover:text-[#020F33] transition-colors"><Plus size={14}/></button>
                   </form>
                 </div>
 
-                {/* 2. RICH MULTI-TAB NOTES AREA */}
-                <div className="flex-1 flex flex-col bg-white overflow-hidden">
+                {/* 2. RICH MULTI-TAB NOTES AREA (Visible on Desktop OR when Mobile Tab === 'notes') */}
+                <div className={`${mobileActiveTab === 'notes' ? 'flex' : 'hidden lg:flex'} flex-1 flex-col bg-white overflow-hidden`}>
                   
                   {/* Tabs Row */}
-                  <div className="flex items-center bg-slate-100 overflow-x-auto border-b border-slate-200 custom-scrollbar">
+                  <div className="flex items-center bg-slate-100 overflow-x-auto border-b border-slate-200 custom-scrollbar shrink-0">
                     {notes.map(note => (
                       <div key={note.id} 
                         onClick={() => setActiveNoteId(note.id)}
                         onDoubleClick={() => renameNote(note.id)}
-                        className={`group flex items-center gap-2 px-4 py-2.5 cursor-pointer border-r border-slate-200 min-w-max transition-colors
+                        className={`group flex items-center gap-1.5 px-3.5 py-2.5 cursor-pointer border-r border-slate-200 min-w-max transition-colors
                           ${activeNoteId === note.id ? 'bg-white border-t-2 border-t-[#02C2D5] text-[#020F33]' : 'text-slate-500 hover:bg-slate-50 border-t-2 border-t-transparent'}`}
                       >
                         <span className="text-[11px] font-black">{note.title}</span>
+                        {activeNoteId === note.id && (
+                          <button onClick={(e) => { e.stopPropagation(); renameNote(note.id); }} className="text-slate-300 hover:text-[#02C2D5]" title="Rename Tab">
+                            <Edit2 size={10} />
+                          </button>
+                        )}
                         {notes.length > 1 && (
-                          <button onClick={(e) => deleteNote(note.id, e)} className="opacity-0 group-hover:opacity-100 text-slate-300 hover:text-rose-500">
-                            <Trash2 size={12} />
+                          <button onClick={(e) => deleteNote(note.id, e)} className="opacity-100 lg:opacity-0 lg:group-hover:opacity-100 text-slate-300 hover:text-rose-500">
+                            <Trash2 size={11} />
                           </button>
                         )}
                       </div>
                     ))}
-                    <button onClick={addNewNote} className="px-4 py-2.5 text-slate-400 hover:text-[#02C2D5] hover:bg-slate-50 transition-colors">
+                    <button onClick={addNewNote} className="px-3.5 py-2.5 text-slate-400 hover:text-[#02C2D5] hover:bg-slate-50 transition-colors" title="New Note Tab">
                       <Plus size={14} />
                     </button>
                     
-                    <div className="ml-auto px-3 shrink-0">
+                    <div className="ml-auto px-2.5 shrink-0">
                       <button onClick={saveTopicNotes} disabled={savingContent} className="text-[10px] font-bold bg-[#020F33] text-white px-3 py-1.5 rounded hover:bg-[#02C2D5] hover:text-[#020F33] transition-colors shadow-sm">
                         {savingContent ? 'Saving...' : 'Save Notes'}
                       </button>
@@ -481,7 +586,7 @@ export default function SubjectView() {
               
               {/* FLOATING CALCULATOR COMPONENT */}
               {showCalculator && (
-                <div className="absolute right-[420px] xl:right-[470px] bottom-10 bg-white/90 backdrop-blur-md border border-slate-200 shadow-2xl rounded-2xl p-4 w-64 z-50 animate-in slide-in-from-bottom-10 fade-in duration-200">
+                <div className="fixed lg:absolute right-4 bottom-6 lg:right-[420px] xl:right-[470px] lg:bottom-10 bg-white/95 backdrop-blur-md border border-slate-200 shadow-2xl rounded-2xl p-4 w-64 z-50 animate-in slide-in-from-bottom-10 fade-in duration-200">
                   <FloatingCalculator onClose={() => setShowCalculator(false)} />
                 </div>
               )}
@@ -551,6 +656,7 @@ function FloatingCalculator({ onClose }: { onClose: () => void }) {
 // ================= CUSTOM RICH TEXT EDITOR COMPONENT =================
 function RichEditor({ initialHtml, onChange, onToggleCalc }: { initialHtml: string, onChange: (html: string) => void, onToggleCalc: () => void }) {
   const editorRef = useRef<HTMLDivElement>(null);
+  const [showSymbols, setShowSymbols] = useState(false);
 
   useEffect(() => {
     if (editorRef.current && editorRef.current.innerHTML !== initialHtml) {
@@ -572,12 +678,13 @@ function RichEditor({ initialHtml, onChange, onToggleCalc }: { initialHtml: stri
     e.preventDefault();
     document.execCommand('insertText', false, sym);
     if(editorRef.current) onChange(editorRef.current.innerHTML);
+    setShowSymbols(false);
   };
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex flex-col flex-1 overflow-hidden">
       {/* Editor Toolbar */}
-      <div className="bg-slate-50 border-b border-slate-100 p-2 flex flex-wrap items-center gap-1 shadow-sm relative z-10">
+      <div className="bg-slate-50 border-b border-slate-100 p-2 flex flex-wrap items-center gap-1 shadow-sm relative z-10 shrink-0">
         
         {/* Formatting */}
         <button onMouseDown={(e) => handleFormat(e, 'bold')} className="p-1.5 hover:bg-slate-200 rounded text-slate-700 active:bg-slate-300" title="Bold"><Bold size={14}/></button>
@@ -589,6 +696,24 @@ function RichEditor({ initialHtml, onChange, onToggleCalc }: { initialHtml: stri
         <button onMouseDown={(e) => handleFormat(e, 'insertOrderedList')} className="p-1.5 hover:bg-slate-200 rounded text-slate-700 active:bg-slate-300" title="Numbered List"><ListOrdered size={14}/></button>
         <div className="w-px h-4 bg-slate-300 mx-1"></div>
         
+        {/* Font Size */}
+        <select 
+          onChange={(e) => {
+            document.execCommand('fontSize', false, e.target.value);
+            if(editorRef.current) {
+              editorRef.current.focus();
+              onChange(editorRef.current.innerHTML);
+            }
+          }} 
+          className="text-[10px] font-bold border border-slate-200 rounded px-1.5 py-1 bg-white outline-none text-slate-700"
+          defaultValue="3"
+        >
+          <option value="2">Small</option>
+          <option value="3">Normal</option>
+          <option value="5">Large</option>
+          <option value="6">Heading</option>
+        </select>
+
         {/* Color Picker (Fixed Focus Loss) */}
         <div className="relative group flex items-center">
           <button onMouseDown={(e) => e.preventDefault()} className="p-1.5 hover:bg-slate-200 rounded text-slate-700 flex items-center pointer-events-none relative z-10"><Baseline size={14}/></button>
@@ -596,19 +721,27 @@ function RichEditor({ initialHtml, onChange, onToggleCalc }: { initialHtml: stri
         </div>
         <div className="w-px h-4 bg-slate-300 mx-1"></div>
 
-        {/* Math Symbols Dropdown */}
-        <div className="relative group">
-          <button onMouseDown={(e) => e.preventDefault()} className="p-1.5 hover:bg-slate-200 rounded text-slate-700"><Sigma size={14}/></button>
-          <div className="absolute top-full left-0 mt-1 bg-white border shadow-lg rounded-lg p-2 hidden group-hover:grid grid-cols-4 gap-1 z-50 w-32">
-            {['+', '-', '×', '÷', '=', '≠', '≈', '>', '<', '±', '√', 'π', 'θ', '∑', '∫', '∞'].map(sym => (
-              <button key={sym} onMouseDown={(e) => insertSymbol(e, sym)} className="hover:bg-slate-100 rounded text-xs py-1 text-center font-black text-slate-700">
-                {sym}
-              </button>
-            ))}
-          </div>
+        {/* Math Symbols Dropdown (Works on both Mobile Tap and Desktop Hover) */}
+        <div className="relative">
+          <button 
+            onMouseDown={(e) => { e.preventDefault(); setShowSymbols(!showSymbols); }} 
+            className={`p-1.5 rounded text-slate-700 ${showSymbols ? 'bg-slate-200' : 'hover:bg-slate-200'}`}
+            title="Math Symbols"
+          >
+            <Sigma size={14}/>
+          </button>
+          {showSymbols && (
+            <div className="absolute top-full left-0 mt-1 bg-white border border-slate-200 shadow-xl rounded-lg p-2 grid grid-cols-4 gap-1 z-50 w-36">
+              {['+', '-', '×', '÷', '=', '≠', '≈', '>', '<', '±', '√', 'π', 'θ', '∑', '∫', '∞'].map(sym => (
+                <button key={sym} onMouseDown={(e) => insertSymbol(e, sym)} className="hover:bg-slate-100 rounded text-xs py-1.5 text-center font-black text-slate-700">
+                  {sym}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
 
-        {/* NEW: Floating Calculator Toggle */}
+        {/* Floating Calculator Toggle */}
         <button onClick={onToggleCalc} className="ml-auto p-1.5 bg-[#02C2D5]/10 hover:bg-[#02C2D5]/20 border border-[#02C2D5]/30 rounded-lg text-[#02C2D5] font-bold flex items-center gap-1.5 transition-colors" title="Open floating calculator">
           <Calculator size={14}/> <span className="text-[10px]">Open Calc</span>
         </button>
@@ -621,7 +754,7 @@ function RichEditor({ initialHtml, onChange, onToggleCalc }: { initialHtml: stri
         contentEditable
         onInput={(e) => onChange(e.currentTarget.innerHTML)}
         className="flex-1 overflow-y-auto p-4 lg:p-6 bg-[#FDFCF7] outline-none text-slate-800 text-sm leading-relaxed empty:before:content-[attr(data-placeholder)] empty:before:text-slate-400 empty:before:cursor-text custom-scrollbar"
-        style={{ minHeight: '300px' }}
+        style={{ minHeight: '200px' }}
         data-placeholder="Type your notes here. You can use Bold, Italic, Bullet lists, and change colors..."
       />
     </div>

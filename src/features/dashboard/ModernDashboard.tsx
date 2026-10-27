@@ -1,14 +1,14 @@
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { supabase } from '../../lib/supabase';
 import TaskManager from './TaskManager';
-import { StickyNotes } from '../../components/dashboard/StickyNotes';
 import { 
   Sun, Moon, Sunrise, BookOpen, Target, 
   Briefcase, FolderLock, TrendingUp, 
   Clock, Flame, Quote, Sparkles, PlayCircle, 
-  Bookmark, CheckCircle2, PauseCircle, LogOut,
-  GitBranch, Code2, Pin, StickyNote
+  PauseCircle, LogOut, GitBranch, Code2, 
+  Pin, StickyNote, Plus, Pencil, Trash2, 
+  Bold, Italic, Check
 } from 'lucide-react';
 
 // === Dynamic Motivational Quotes ===
@@ -25,6 +25,16 @@ const MOTIVATIONAL_QUOTES = [
 // Realistic tilt presets for corkboard notes
 const NOTE_TILTS = ['-rotate-2', 'rotate-1', 'rotate-2', '-rotate-1', 'rotate-3', '-rotate-3'];
 
+// Sticky Note Color Palette
+const COLOR_PALETTE = [
+  '#FEF3C7', // Warm Yellow
+  '#FCE7F3', // Soft Pink
+  '#DCFCE7', // Mint Green
+  '#E0E7FF', // Indigo Mist
+  '#FFEDD5', // Soft Orange
+  '#CFFAFE', // Sky Cyan
+];
+
 export default function ModernDashboard() {
   const navigate = useNavigate();
   
@@ -40,27 +50,100 @@ export default function ModernDashboard() {
   // --- Data States ---
   const [stats, setStats] = useState({ pendingTasks: 0, bcsCompleted: 0, lmsCompleted: 0, vaultItems: 0 });
   const [allCourses, setAllCourses] = useState<any[]>([]);
-  const [pinnedNotes, setPinnedNotes] = useState<any[]>([]);
+  
+  // --- Corkboard Notes & CRUD States ---
+  const [boardNotes, setBoardNotes] = useState<any[]>([]);
+  const [isEditingBoard, setIsEditingBoard] = useState(false);
+  const [savingNoteId, setSavingNoteId] = useState<string | null>(null);
 
-  // === Pinned Notes Fetcher (live sync with StickyNotes) ===
-  const fetchPinnedNotes = async () => {
+  // === Fetch Board Notes ===
+  const fetchBoardNotes = async () => {
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
-      // FIXED: Changed from 'sticky_notes' to 'dashboard_notes'
       const { data, error } = await supabase
         .from('dashboard_notes')
         .select('*')
         .eq('user_id', user.id)
-        .eq('is_pinned', true)
         .order('created_at', { ascending: false });
 
       if (error) throw error;
-      if (data) setPinnedNotes(data);
+      if (data) setBoardNotes(data);
     } catch (error) {
-      console.error("Error fetching pinned notes:", error);
+      console.error("Error fetching board notes:", error);
     }
+  };
+
+  // === Corkboard CRUD Handlers ===
+  const createBoardNote = async () => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      const newNote = {
+        content: '',
+        bg_color: '#FEF3C7',
+        is_pinned: true,
+        user_id: user.id,
+      };
+
+      const { data, error } = await supabase
+        .from('dashboard_notes')
+        .insert([newNote])
+        .select()
+        .single();
+
+      if (error) throw error;
+      if (data) {
+        setBoardNotes([data, ...boardNotes]);
+        setIsEditingBoard(true); // Automatically activate edit mode on new note creation
+        setTimeout(() => {
+          const el = document.getElementById(`board-note-${data.id}`);
+          el?.focus();
+        }, 100);
+      }
+    } catch (err) {
+      console.error('Error creating note on board:', err);
+    }
+  };
+
+  const updateBoardNoteContent = async (id: string, content: string) => {
+    setBoardNotes(prev => prev.map(n => n.id === id ? { ...n, content } : n));
+    setSavingNoteId(id);
+
+    try {
+      const { error } = await supabase
+        .from('dashboard_notes')
+        .update({ content })
+        .eq('id', id);
+
+      if (error) throw error;
+    } catch (err) {
+      console.error('Error updating note:', err);
+    } finally {
+      setTimeout(() => setSavingNoteId(null), 600);
+    }
+  };
+
+  const updateBoardNoteColor = async (id: string, bg_color: string) => {
+    setBoardNotes(prev => prev.map(n => n.id === id ? { ...n, bg_color } : n));
+    await supabase.from('dashboard_notes').update({ bg_color }).eq('id', id);
+  };
+
+  const deleteBoardNote = async (id: string) => {
+    if (!window.confirm('Delete this note from the board?')) return;
+    setBoardNotes(prev => prev.filter(n => n.id !== id));
+    await supabase.from('dashboard_notes').delete().eq('id', id);
+  };
+
+  const applyNoteFormat = (e: React.MouseEvent, id: string, format: 'bold' | 'italic') => {
+    e.preventDefault();
+    const el = document.getElementById(`board-note-${id}`);
+    if (!el) return;
+    document.execCommand(format, false);
+    el.focus();
+    updateBoardNoteContent(id, el.innerHTML);
   };
 
   useEffect(() => {
@@ -90,14 +173,10 @@ export default function ModernDashboard() {
 
     // 3. Load Data & Gamification
     fetchStatsAndStreak();
-    fetchPinnedNotes();
-
-    // 4. Live refresh when pinned/unpinned from StickyNotes
-    window.addEventListener('notes_updated', fetchPinnedNotes);
+    fetchBoardNotes();
 
     return () => {
       clearInterval(timer);
-      window.removeEventListener('notes_updated', fetchPinnedNotes);
     };
   }, []);
 
@@ -107,7 +186,6 @@ export default function ModernDashboard() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
-      // Real-time Cloud Streak Logic (Safe Metadata extraction)
       const metadata = user.user_metadata || {};
       const lastActive = metadata.last_active_date;
       const currentStreak = metadata.streak_count || 0;
@@ -119,9 +197,9 @@ export default function ModernDashboard() {
 
       if (lastActive !== today) {
         if (lastActive === yesterday) {
-          newStreak += 1; // Consecutive day login
+          newStreak += 1;
         } else {
-          newStreak = 1; // Streak broken
+          newStreak = 1;
         }
         await supabase.auth.updateUser({
           data: { last_active_date: today, streak_count: newStreak }
@@ -129,7 +207,6 @@ export default function ModernDashboard() {
       }
       setStreak(newStreak);
 
-      // Fetch Global Stats Safely (using count exact)
       const [tasksRes, bcsRes, lmsRes, vaultRes] = await Promise.allSettled([
         supabase.from('tasks').select('*', { count: 'exact', head: true }).eq('user_id', user.id).eq('is_completed', false),
         supabase.from('bcs_resources').select('*', { count: 'exact', head: true }).eq('user_id', user.id).eq('is_completed', true),
@@ -144,7 +221,6 @@ export default function ModernDashboard() {
         vaultItems: vaultRes.status === 'fulfilled' ? vaultRes.value.count || 0 : 0
       });
 
-      // Fetch All Courses for Tracker
       const { data: bcsProg } = await supabase.from('bcs_subjects').select('id, title, status, progress_pct, icon_color');
       const { data: lmsProg } = await supabase.from('lms_courses').select('id, title, status, progress_pct');
 
@@ -165,11 +241,9 @@ export default function ModernDashboard() {
     }
   };
 
-  // --- Course Grouping (Safeguarding against undefined statuses) ---
+  // --- Filtered Course Grouping (Only Active & Pending) ---
   const activeCourses = allCourses.filter(c => c.status === 'active');
   const pendingCourses = allCourses.filter(c => c.status === 'pending');
-  const watchLaterCourses = allCourses.filter(c => c.status === 'watch_later');
-  const completedCourses = allCourses.filter(c => c.status === 'completed');
 
   // --- Stat Cards Config ---
   const statCards = [
@@ -182,7 +256,7 @@ export default function ModernDashboard() {
   // --- Reusable Smart Course Component ---
   const CourseProgressItem = ({ course, isFocused = false }: { course: any, isFocused?: boolean }) => {
     const isLms = course.courseType === 'lms';
-    const link = isLms ? `/lms/course/${course.id}` : `/bcs/subject/${course.id}`; // Adjusted typical link structure
+    const link = isLms ? `/lms/course/${course.id}` : `/bcs/subject/${course.id}`;
     const color = isLms ? '#9333ea' : (course.icon_color || '#02C2D5');
     
     return (
@@ -255,7 +329,7 @@ export default function ModernDashboard() {
           </div>
         </div>
 
-        {/* --- 2. Snapshot Row: Compact Stats (Left) + Pinned Corkboard (Right) --- */}
+        {/* --- 2. Snapshot Row: Compact Stats (Left) + Interactive Corkboard (Right) --- */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 md:gap-6 mb-6 md:mb-8 items-stretch">
           
           {/* LEFT: Compact Stats Box */}
@@ -291,11 +365,11 @@ export default function ModernDashboard() {
             </div>
           </div>
 
-          {/* RIGHT: Pinned Notes — Realistic Corkboard with Wooden Frame */}
+          {/* RIGHT: Interactive Corkboard with Direct CRUD (+ and Pencil Icons) */}
           <div className="lg:col-span-8">
             <div className="h-full rounded-3xl p-2 md:p-2.5 bg-gradient-to-br from-[#A07B4F] via-[#8B6B42] to-[#6F5433] shadow-lg shadow-amber-900/20">
               <div 
-                className="relative rounded-2xl h-full min-h-[240px] overflow-hidden bg-[#DCC49A] shadow-[inset_0_2px_16px_rgba(0,0,0,0.25)]"
+                className="relative rounded-2xl h-full min-h-[250px] overflow-hidden bg-[#DCC49A] shadow-[inset_0_2px_16px_rgba(0,0,0,0.25)]"
                 style={{
                   backgroundImage: `
                     radial-gradient(rgba(101, 71, 33, 0.22) 1.2px, transparent 1.2px),
@@ -305,79 +379,166 @@ export default function ModernDashboard() {
                   backgroundPosition: '0 0, 6px 6px'
                 }}
               >
-                {/* Board Label Tag (নিজেও পিন করা) */}
+                {/* Board Label Tag (Top Left) */}
                 <div className="absolute top-3 left-4 z-20 -rotate-2 pointer-events-none">
                   <div className="relative bg-white/95 px-3 py-1.5 rounded-md shadow-md border border-black/5">
                     <div className="absolute -top-1.5 left-1/2 -translate-x-1/2 w-3 h-3 rounded-full bg-gradient-to-br from-slate-200 via-slate-400 to-slate-600 shadow-sm ring-1 ring-black/20"></div>
                     <p className="text-[9px] md:text-[10px] font-black text-[#020F33] uppercase tracking-widest flex items-center gap-1.5">
-                      <Pin size={11} className="text-red-500 fill-current" /> Pinned Notes
+                      <Pin size={11} className="text-red-500 fill-current" /> Notes Board
                     </p>
                   </div>
                 </div>
 
-                {pinnedNotes.length === 0 ? (
+                {/* Corner Action Controls: + (Add Note) & Pencil (Toggle CRUD Mode) */}
+                <div className="absolute top-3 right-4 z-30 flex items-center gap-2">
+                  <button
+                    onClick={createBoardNote}
+                    title="Add New Note"
+                    className="w-8 h-8 rounded-xl bg-white/90 hover:bg-white text-[#020F33] hover:text-[#02C2D5] shadow-md border border-black/10 flex items-center justify-center transition-all hover:scale-105 active:scale-95"
+                  >
+                    <Plus size={16} strokeWidth={2.5} />
+                  </button>
+                  <button
+                    onClick={() => setIsEditingBoard(!isEditingBoard)}
+                    title={isEditingBoard ? "Finish Editing" : "Edit Notes (CRUD Mode)"}
+                    className={`w-8 h-8 rounded-xl shadow-md border flex items-center justify-center transition-all hover:scale-105 active:scale-95 ${
+                      isEditingBoard 
+                        ? 'bg-[#020F33] text-[#02C2D5] border-[#02C2D5] ring-2 ring-[#02C2D5]/40' 
+                        : 'bg-white/90 hover:bg-white text-slate-700 border-black/10'
+                    }`}
+                  >
+                    <Pencil size={14} strokeWidth={2.5} />
+                  </button>
+                </div>
+
+                {boardNotes.length === 0 ? (
                   /* Empty Corkboard State */
-                  <div className="h-full min-h-[240px] flex flex-col items-center justify-center text-center px-6">
-                    <div className="relative w-24 h-24 mb-4">
+                  <div className="h-full min-h-[250px] flex flex-col items-center justify-center text-center px-6">
+                    <div className="relative w-20 h-20 mb-3">
                       <div className="absolute inset-0 border-2 border-dashed border-[#8B6B42]/40 rounded-lg rotate-3 bg-white/30"></div>
-                      <StickyNote size={34} className="absolute inset-0 m-auto text-[#8B6B42]/60" />
+                      <StickyNote size={30} className="absolute inset-0 m-auto text-[#8B6B42]/60" />
                     </div>
-                    <p className="text-sm font-black text-[#5C4526]">Nothing pinned yet!</p>
-                    <p className="text-xs text-[#8B6B42] mt-1 max-w-[260px] leading-relaxed">
-                      Pin important notes from the Sticky Notes section below — they'll appear here on your board.
+                    <p className="text-sm font-black text-[#5C4526]">No notes on the board yet!</p>
+                    <p className="text-xs text-[#8B6B42] mt-1 max-w-[240px] leading-relaxed">
+                      Click the <span className="font-bold text-[#020F33]">+</span> button in the top-right corner to pin a new note right here.
                     </p>
                   </div>
                 ) : (
-                  <div className="h-full flex items-center gap-5 md:gap-7 overflow-x-auto hide-scrollbar px-5 md:px-8 pt-14 pb-8">
-                    {pinnedNotes.map((note, i) => (
+                  <div className="h-full flex items-center gap-5 md:gap-7 overflow-x-auto hide-scrollbar px-5 md:px-8 pt-14 pb-6">
+                    {boardNotes.map((note, i) => (
                       <div
                         key={note.id}
-                        title="Click to view in Sticky Notes section"
-                        onClick={() => document.getElementById('sticky-notes-section')?.scrollIntoView({ behavior: 'smooth' })}
-                        className={`relative shrink-0 w-52 md:w-60 ${NOTE_TILTS[i % NOTE_TILTS.length]} hover:!rotate-0 hover:scale-[1.04] hover:z-30 transition-all duration-300 cursor-pointer group/note`}
+                        className={`relative shrink-0 w-56 md:w-64 transition-all duration-300 group/note ${
+                          isEditingBoard 
+                            ? 'rotate-0 z-20 scale-[1.02]' 
+                            : `${NOTE_TILTS[i % NOTE_TILTS.length]} hover:!rotate-0 hover:scale-[1.04] hover:z-30`
+                        }`}
                       >
                         {/* === Realistic Push Pin Assembly === */}
-                        {/* Soft shadow on paper */}
                         <div className="absolute top-2.5 left-1/2 -translate-x-1/2 w-11 h-3.5 bg-black/20 blur-[3px] rounded-[50%] z-10 pointer-events-none"></div>
-                        {/* Glossy pin head */}
                         <div className="absolute -top-2.5 left-1/2 -translate-x-1/2 z-30 pointer-events-none">
                           <div className="relative w-5 h-5 rounded-full bg-gradient-to-br from-[#FF8A8A] via-[#EF4444] to-[#991B1B] shadow-[0_3px_6px_rgba(0,0,0,0.4)] ring-1 ring-red-950/40">
-                            {/* glass highlight */}
                             <div className="absolute top-[3px] left-[4px] w-1.5 h-1.5 rounded-full bg-white/90 blur-[0.5px]"></div>
-                            {/* bottom shade */}
                             <div className="absolute bottom-[2px] right-[3px] w-2.5 h-1.5 rounded-full bg-red-950/30 blur-[1px]"></div>
                           </div>
-                          {/* needle hole on paper */}
                           <div className="absolute top-[19px] left-1/2 -translate-x-1/2 w-2 h-1 bg-black/40 rounded-full blur-[0.5px]"></div>
                         </div>
 
                         {/* === Paper Note === */}
                         <div
-                          className="relative rounded-lg p-4 pt-6 min-h-[140px] max-h-[175px] overflow-hidden shadow-[0_12px_24px_rgba(0,0,0,0.30),0_2px_6px_rgba(0,0,0,0.18)] group-hover/note:shadow-[0_18px_32px_rgba(0,0,0,0.35)] transition-shadow duration-300"
+                          className={`relative rounded-lg p-3.5 pt-5 min-h-[155px] max-h-[195px] flex flex-col justify-between overflow-hidden shadow-[0_12px_24px_rgba(0,0,0,0.30),0_2px_6px_rgba(0,0,0,0.18)] transition-shadow duration-300 ${
+                            isEditingBoard ? 'ring-2 ring-[#020F33]/20' : ''
+                          }`}
                           style={{ backgroundColor: note.bg_color || '#FEF3C7' }}
                         >
-                          {/* lined paper texture */}
+                          {/* Lined paper texture */}
                           <div
                             className="absolute inset-0 pointer-events-none opacity-40"
                             style={{ backgroundImage: 'repeating-linear-gradient(to bottom, transparent 0px, transparent 23px, rgba(0,0,0,0.07) 23px, rgba(0,0,0,0.07) 24px)' }}
                           />
-                          {/* top sheen */}
-                          <div className="absolute top-0 inset-x-0 h-12 bg-gradient-to-b from-white/50 to-transparent pointer-events-none" />
+                          <div className="absolute top-0 inset-x-0 h-10 bg-gradient-to-b from-white/50 to-transparent pointer-events-none" />
                           
-                          {/* Content */}
+                          {/* Edit Mode Mini Toolbar */}
+                          {isEditingBoard && (
+                            <div className="relative z-10 flex items-center justify-between pb-1.5 mb-1.5 border-b border-black/10 text-slate-700">
+                              <div className="flex items-center gap-1">
+                                <button
+                                  type="button"
+                                  onMouseDown={(e) => applyNoteFormat(e, note.id, 'bold')}
+                                  className="p-1 hover:bg-black/10 rounded transition"
+                                  title="Bold"
+                                >
+                                  <Bold size={12} />
+                                </button>
+                                <button
+                                  type="button"
+                                  onMouseDown={(e) => applyNoteFormat(e, note.id, 'italic')}
+                                  className="p-1 hover:bg-black/10 rounded transition"
+                                  title="Italic"
+                                >
+                                  <Italic size={12} />
+                                </button>
+                              </div>
+                              <div className="flex items-center gap-1.5">
+                                {savingNoteId === note.id && (
+                                  <span className="text-[9px] font-bold text-emerald-700 flex items-center gap-0.5">
+                                    <Check size={10} /> Saved
+                                  </span>
+                                )}
+                                <button
+                                  type="button"
+                                  onClick={() => deleteBoardNote(note.id)}
+                                  className="p-1 text-slate-500 hover:text-rose-600 hover:bg-black/10 rounded transition"
+                                  title="Delete Note"
+                                >
+                                  <Trash2 size={12} />
+                                </button>
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Note Body (Editable in CRUD mode, Clean Read-Only in Normal mode) */}
                           <div
-                            className="relative text-[13px] leading-relaxed text-slate-800 font-medium line-clamp-4 break-words"
-                            dangerouslySetInnerHTML={{ __html: note.content || '<span class="italic opacity-50">Empty note…</span>' }}
+                            id={`board-note-${note.id}`}
+                            contentEditable={isEditingBoard}
+                            suppressContentEditableWarning
+                            onBlur={(e) => isEditingBoard && updateBoardNoteContent(note.id, e.currentTarget.innerHTML)}
+                            dangerouslySetInnerHTML={{ 
+                              __html: note.content || (isEditingBoard ? '' : '<span class="italic opacity-50">Empty note…</span>') 
+                            }}
+                            className={`relative z-10 text-[13px] leading-relaxed text-slate-800 font-medium break-words outline-none flex-1 overflow-y-auto hide-scrollbar ${
+                              isEditingBoard 
+                                ? 'cursor-text empty:before:content-[\'Write_note...\'] empty:before:text-slate-400' 
+                                : 'line-clamp-4 cursor-default'
+                            }`}
                           />
                           
-                          {/* Date stamp */}
-                          {note.created_at && (
-                            <p className="absolute bottom-2 right-3 text-[9px] font-bold text-slate-600/70">
-                              {new Date(note.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}
-                            </p>
+                          {/* Bottom Footer: Color Picker in Edit Mode OR Date Stamp in Normal Mode */}
+                          {isEditingBoard ? (
+                            <div className="relative z-10 flex items-center justify-between pt-2 mt-1.5 border-t border-black/10">
+                              <div className="flex items-center gap-1.5">
+                                {COLOR_PALETTE.map((c) => (
+                                  <button
+                                    key={c}
+                                    type="button"
+                                    style={{ backgroundColor: c }}
+                                    onClick={() => updateBoardNoteColor(note.id, c)}
+                                    className={`w-3.5 h-3.5 rounded-full border border-black/20 transition ${
+                                      note.bg_color === c ? 'scale-125 ring-1 ring-black/50' : 'hover:scale-110'
+                                    }`}
+                                  />
+                                ))}
+                              </div>
+                            </div>
+                          ) : (
+                            note.created_at && (
+                              <p className="relative z-10 text-right text-[9px] font-bold text-slate-600/70 mt-1">
+                                {new Date(note.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}
+                              </p>
+                            )
                           )}
                           
-                          {/* bottom paper edge */}
+                          {/* Bottom paper edge */}
                           <div className="absolute bottom-0 inset-x-0 h-1.5 bg-gradient-to-t from-black/10 to-transparent pointer-events-none" />
                         </div>
                       </div>
@@ -392,20 +553,14 @@ export default function ModernDashboard() {
         {/* --- 3. Main Content Grid --- */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start flex-1 pb-10">
           
-          {/* Left Column: Task Manager & Sticky Notes */}
+          {/* Left Column: Task Manager Only (Bottom StickyNotes Box Removed) */}
           <div className="lg:col-span-7 xl:col-span-8 flex flex-col gap-6">
-            {/* Task Manager Container */}
-            <div className="bg-white rounded-3xl border border-[#E2E8F0] overflow-hidden shadow-sm h-[600px] lg:h-[650px] flex flex-col">
-               <TaskManager />
-            </div>
-            
-            {/* Quick Scratchpad Sticky Notes Container */}
-            <div id="sticky-notes-section" className="bg-white rounded-3xl border border-[#E2E8F0] overflow-hidden shadow-sm p-5 md:p-6 scroll-mt-6">
-               <StickyNotes />
+            <div className="bg-white rounded-3xl border border-[#E2E8F0] overflow-hidden shadow-sm h-[650px] lg:h-[720px] flex flex-col">
+              <TaskManager />
             </div>
           </div>
 
-          {/* Right Sidebar: Apps, Motivation & Progress */}
+          {/* Right Sidebar: Apps, Motivation & Clean Study Progress */}
           <div className="lg:col-span-5 xl:col-span-4 flex flex-col gap-5 md:gap-6">
             
             {/* Quick Access Menu */}
@@ -414,7 +569,6 @@ export default function ModernDashboard() {
                 <TrendingUp className="text-[#02C2D5]" size={20} /> Quick Apps
               </h3>
               
-              {/* Standard Apps Grid */}
               <div className="grid grid-cols-3 sm:grid-cols-3 lg:grid-cols-3 gap-3">
                 {[
                   { name: 'BCS Prep', to: '/bcs', icon: <BookOpen size={24} className="text-[#02C2D5]" />, hover: 'hover:border-[#02C2D5] hover:bg-[#02C2D5]/5' },
@@ -451,13 +605,13 @@ export default function ModernDashboard() {
               </div>
             </div>
             
-            {/* Categorized Course Tracker Widget */}
-            <div className="bg-white border border-[#E2E8F0] rounded-3xl p-5 md:p-6 shadow-sm flex flex-col gap-5 flex-1 min-h-[300px]">
+            {/* Clean Study Progress Widget (Only Active Learning & Pending) */}
+            <div className="bg-white border border-[#E2E8F0] rounded-3xl p-5 md:p-6 shadow-sm flex flex-col gap-5 flex-1">
               <h3 className="text-lg font-bold text-[#020F33] flex items-center gap-2">
                 <Target className="text-[#02C2D5]" size={20} /> Study Progress
               </h3>
               
-              <div className="overflow-y-auto pr-2 hide-scrollbar flex flex-col gap-6">
+              <div className="overflow-y-auto pr-1 hide-scrollbar flex flex-col gap-6">
                 
                 {/* 1. FOCUS BOX: Active Learning */}
                 <div>
@@ -466,7 +620,7 @@ export default function ModernDashboard() {
                   </h4>
                   {activeCourses.length === 0 ? (
                     <div className="bg-[#F8FAFC] border border-dashed border-[#CBD5E1] p-6 rounded-2xl text-center">
-                      <p className="text-xs font-bold text-[#475569]">No active courses. Time to start learning!</p>
+                      <p className="text-xs font-bold text-[#475569]">No active courses right now.</p>
                     </div>
                   ) : (
                     <div className="flex flex-col gap-3">
@@ -476,40 +630,18 @@ export default function ModernDashboard() {
                 </div>
 
                 {/* 2. SECONDARY BOX: Pending Courses */}
-                {pendingCourses.length > 0 && (
-                  <div className="bg-[#F8FAFC] border border-[#E2E8F0] p-4 rounded-2xl">
-                    <h4 className="text-[10px] font-black text-[#475569] uppercase tracking-wider mb-3 flex items-center gap-1.5 border-b border-[#E2E8F0] pb-2">
-                      <PauseCircle size={14} /> Pending
-                    </h4>
-                    <div className="flex flex-col">
+                <div>
+                  <h4 className="text-[10px] font-black text-[#475569] uppercase tracking-wider mb-3 flex items-center gap-1.5 border-b border-[#E2E8F0] pb-2">
+                    <PauseCircle size={14} /> Pending
+                  </h4>
+                  {pendingCourses.length === 0 ? (
+                    <p className="text-xs text-slate-400 font-medium py-2">No pending courses in queue.</p>
+                  ) : (
+                    <div className="bg-[#F8FAFC] border border-[#E2E8F0] p-4 rounded-2xl flex flex-col">
                       {pendingCourses.map(course => <CourseProgressItem key={`${course.courseType}-${course.id}`} course={course} />)}
                     </div>
-                  </div>
-                )}
-
-                {/* 3. SECONDARY BOX: Watch Later */}
-                {watchLaterCourses.length > 0 && (
-                  <div className="bg-amber-50/50 border border-amber-100 p-4 rounded-2xl">
-                    <h4 className="text-[10px] font-black text-amber-600 uppercase tracking-wider mb-3 flex items-center gap-1.5 border-b border-amber-100 pb-2">
-                      <Bookmark size={14} /> Watch Later
-                    </h4>
-                    <div className="flex flex-col">
-                      {watchLaterCourses.map(course => <CourseProgressItem key={`${course.courseType}-${course.id}`} course={course} />)}
-                    </div>
-                  </div>
-                )}
-
-                {/* 4. SECONDARY BOX: Completed */}
-                {completedCourses.length > 0 && (
-                  <div className="bg-[#A3D803]/5 border border-[#A3D803]/20 p-4 rounded-2xl">
-                    <h4 className="text-[10px] font-black text-[#719900] uppercase tracking-wider mb-3 flex items-center gap-1.5 border-b border-[#A3D803]/20 pb-2">
-                      <CheckCircle2 size={14} /> Mastered
-                    </h4>
-                    <div className="flex flex-col">
-                      {completedCourses.map(course => <CourseProgressItem key={`${course.courseType}-${course.id}`} course={course} />)}
-                    </div>
-                  </div>
-                )}
+                  )}
+                </div>
 
               </div>
             </div>

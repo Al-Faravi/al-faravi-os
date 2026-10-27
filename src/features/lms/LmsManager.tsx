@@ -2,7 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { supabase } from '../../lib/supabase';
 import { Target, Plus, Loader2, GripVertical, BookOpen, PlayCircle, X } from 'lucide-react';
-import { DndContext, closestCenter, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
+// Updated dnd-kit imports for smooth mobile touch scrolling:
+import { DndContext, closestCenter, MouseSensor, TouchSensor, useSensor, useSensors } from '@dnd-kit/core';
 import { SortableContext, verticalListSortingStrategy, arrayMove } from '@dnd-kit/sortable';
 import { SortableItem } from '../../components/ui/SortableItem';
 
@@ -25,8 +26,10 @@ export default function LmsManager() {
   const [newPlatform, setNewPlatform] = useState('YouTube');
   const [isSaving, setIsSaving] = useState(false);
 
+  // --- MOBILE SCROLLING FIX (250ms press-and-hold delay for touch) ---
   const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 8 } })
+    useSensor(MouseSensor, { activationConstraint: { distance: 8 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 250, tolerance: 5 } })
   );
 
   useEffect(() => {
@@ -68,7 +71,7 @@ export default function LmsManager() {
       setNewTitle('');
       setNewPlatform('YouTube');
       setShowAddModal(false);
-      fetchCourses(); // রিফ্রেশ করে নতুন কোর্সটি নিয়ে আসা
+      fetchCourses(); // রিফ্রেশ করে নতুন কোর্সটি নিয়ে আসা
     } catch (error) {
       console.error("Error creating course:", error);
       alert("Failed to create course!");
