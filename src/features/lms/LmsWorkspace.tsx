@@ -78,31 +78,40 @@ export default function LmsWorkspace() {
     }
   };
 
-  // ================= MODULE & TOPIC CRUD =================
+  // ================= MODULE & TOPIC CRUD (WITH ERROR ALERTS) =================
   const addModule = async () => {
     if (!id) return;
     const title = prompt("Enter Module / Phase Name:");
     if (!title) return;
-    await supabase.from('lms_modules').insert([{ course_id: id, title, order_index: modules.length }]);
+    
+    const { error } = await supabase.from('lms_modules').insert([{ course_id: id, title, order_index: modules.length }]);
+    if (error) alert("Error adding module: " + error.message);
+    
     fetchCourseData();
   };
 
   const addTopic = async (moduleId: string, currentTopicCount: number) => {
     const title = prompt("Enter Topic / Chapter Name:");
     if (!title) return;
-    await supabase.from('lms_topics').insert([{ module_id: moduleId, title, order_index: currentTopicCount }]);
+    
+    const { error } = await supabase.from('lms_topics').insert([{ module_id: moduleId, title, order_index: currentTopicCount }]);
+    if (error) alert("Error adding topic: " + error.message);
+    
     fetchCourseData();
   };
 
   const deleteModule = async (moduleId: string) => {
     if (!window.confirm("Delete this entire module and all its topics?")) return;
-    await supabase.from('lms_modules').delete().eq('id', moduleId);
+    const { error } = await supabase.from('lms_modules').delete().eq('id', moduleId);
+    if (error) alert("Error deleting module: " + error.message);
     fetchCourseData();
   };
 
   const deleteTopic = async (topicId: string) => {
     if (!window.confirm("Delete this topic?")) return;
-    await supabase.from('lms_topics').delete().eq('id', topicId);
+    const { error } = await supabase.from('lms_topics').delete().eq('id', topicId);
+    if (error) alert("Error deleting topic: " + error.message);
+    
     if (activeTopic?.id === topicId) setActiveTopic(null);
     fetchCourseData();
   };
@@ -166,7 +175,9 @@ export default function LmsWorkspace() {
   const saveTopicNotes = async () => {
     setSavingContent(true);
     const stringifiedNotes = JSON.stringify(notes);
-    await supabase.from('lms_topics').update({ content: stringifiedNotes }).eq('id', activeTopic.id);
+    const { error } = await supabase.from('lms_topics').update({ content: stringifiedNotes }).eq('id', activeTopic.id);
+    if (error) alert("Error saving notes: " + error.message);
+    
     const updatedModules = modules.map(m => ({
       ...m, topics: m.topics.map((t: any) => t.id === activeTopic.id ? { ...t, content: stringifiedNotes } : t)
     }));
@@ -221,7 +232,13 @@ export default function LmsWorkspace() {
     const { data: { user } } = await supabase.auth.getUser();
     
     const newRes = { user_id: user?.id, course_id: id, topic_id: activeTopic.id, title: resTitle, resource_type: resType, url: resUrl };
-    const { data } = await supabase.from('lms_resources').insert([newRes]).select().single();
+    const { data, error } = await supabase.from('lms_resources').insert([newRes]).select().single();
+    
+    if (error) {
+      alert("Error adding resource: " + error.message);
+      return;
+    }
+    
     if (data) {
       setTopicResources([...topicResources, data]);
       setPreviewResource(data);
@@ -231,6 +248,7 @@ export default function LmsWorkspace() {
   };
 
   const deleteResource = async (resId: string) => {
+    if (!window.confirm("Delete this resource?")) return;
     await supabase.from('lms_resources').delete().eq('id', resId);
     if (previewResource?.id === resId) setPreviewResource(null);
     const { data } = await supabase.from('lms_resources').select('*').eq('topic_id', activeTopic.id).order('created_at');
