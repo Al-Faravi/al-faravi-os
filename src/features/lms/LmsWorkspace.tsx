@@ -11,7 +11,6 @@ import {
 } from 'lucide-react';
 
 export default function LmsWorkspace() {
-  // === FIX: Safely extract ID from route params ===
   const params = useParams();
   const id = params.id || params.courseId;
 
@@ -78,7 +77,7 @@ export default function LmsWorkspace() {
     }
   };
 
-  // ================= MODULE & TOPIC CRUD (WITH ERROR ALERTS) =================
+  // ================= MODULE & TOPIC CRUD =================
   const addModule = async () => {
     if (!id) return;
     const title = prompt("Enter Module / Phase Name:");
@@ -255,18 +254,31 @@ export default function LmsWorkspace() {
     if (data) setTopicResources(data);
   };
 
+  // --- SMART PREVIEW HELPERS (FIXED FOR X-FRAME-OPTIONS) ---
   const getEmbedInfo = (rawUrl: string, type: string) => {
+    if (!rawUrl) return { canEmbed: false, reason: 'Invalid URL', embedUrl: '' };
+
     if (type === 'video_link' && (rawUrl.includes('youtube.com') || rawUrl.includes('youtu.be'))) {
       const ytMatch = rawUrl.match(/(?:youtu\.be\/|youtube\.com\/(?:embed\/|v\/|watch\?v=|watch\?.+&v=))((\w|-){11})/);
-      if (ytMatch && ytMatch[1]) return { canEmbed: true, embedUrl: `https://www.youtube.com/embed/${ytMatch[1]}` };
+      if (ytMatch && ytMatch[1]) {
+        return { 
+          canEmbed: true, 
+          embedUrl: `https://www.youtube.com/embed/${ytMatch[1]}` 
+        };
+      } else {
+        return { canEmbed: false, reason: 'Invalid YouTube URL format.', embedUrl: rawUrl };
+      }
     }
+    
     if (type === 'video_link' && rawUrl.includes('facebook.com')) {
-      return { canEmbed: false, reason: 'Facebook blocks inline viewing.', embedUrl: rawUrl };
+      return { canEmbed: false, reason: 'Facebook blocks inline viewing. Please open securely via the button below.', embedUrl: rawUrl };
     }
-    if (type === 'drive_link') {
+    
+    if (type === 'drive_link' || (type === 'video_link' && rawUrl.includes('drive.google.com'))) {
       const driveEmbedUrl = rawUrl.replace(/\/view.*$/, '/preview').replace(/\/edit.*$/, '/preview');
       return { canEmbed: true, embedUrl: driveEmbedUrl };
     }
+    
     return { canEmbed: true, embedUrl: rawUrl };
   };
 
@@ -636,7 +648,7 @@ function RichEditor({ initialHtml, onChange, onToggleCalc }: { initialHtml: stri
         <button onMouseDown={(e) => handleFormat(e, 'italic')} className="p-1.5 hover:bg-slate-200 rounded text-slate-700 active:bg-slate-300"><Italic size={14}/></button>
         <div className="w-px h-4 bg-slate-300 mx-1"></div>
         <button onMouseDown={(e) => handleFormat(e, 'insertUnorderedList')} className="p-1.5 hover:bg-slate-200 rounded text-slate-700 active:bg-slate-300"><List size={14}/></button>
-        <button onMouseDown={(e) => handleFormat(e, 'insertOrderedList')} className="p-1.5 hover:bg-slate-200 rounded text-slate-700 active:bg-slate-300"><ListOrdered size={14}/></button>
+        <button onMouseDown={(e) => handleFormat(e, 'insertOrderedList')} className="p-1.5 hover:bg-slate-200 rounded text-slate-700 active:bg-slate-300"><List Ordered size={14}/></button>
         <div className="w-px h-4 bg-slate-300 mx-1"></div>
         <select onChange={(e) => { document.execCommand('fontSize', false, e.target.value); if(editorRef.current) { editorRef.current.focus(); onChange(editorRef.current.innerHTML); } }} className="text-[10px] font-bold border border-slate-200 rounded px-1.5 py-1 bg-white outline-none text-slate-700" defaultValue="3">
           <option value="2">Small</option><option value="3">Normal</option><option value="5">Large</option><option value="6">Heading</option>
