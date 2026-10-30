@@ -1,368 +1,638 @@
-import { useState, useEffect } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import React, { useState, useEffect, useRef } from 'react';
+import { Link, useParams } from 'react-router-dom';
 import { supabase } from '../../lib/supabase';
 import { 
-  ArrowLeft, Columns, MonitorPlay, FileText, 
-  PlayCircle, File, CheckCircle2, Save, Loader2, Plus,
-  X, Link as LinkIcon, Target, Layout, Trash2, Menu, Circle, CheckCircle, Video, Edit3
+  ArrowLeft, Loader2, Plus, FolderOpen, FileText, 
+  Database, ChevronDown, ChevronUp, Trash2, 
+  PlayCircle, UploadCloud, LayoutTemplate, 
+  MonitorPlay, ExternalLink, ShieldAlert,
+  Bold, Italic, List, ListOrdered, Baseline, 
+  Calculator, Sigma, AlignLeft, X, Menu, Edit2
 } from 'lucide-react';
 
-interface Content { id: string; module_id: string; title: string; content_type: string; file_path_or_url: string; is_completed: boolean; }
-interface Module { id: string; title: string; contents: Content[]; }
-interface NoteFile { id: string; title: string; content: string; }
-
 export default function LmsWorkspace() {
-  const { courseId } = useParams();
-  const [loading, setLoading] = useState(true);
-  
+  const { id } = useParams();
   const [course, setCourse] = useState<any>(null);
-  const [modules, setModules] = useState<Module[]>([]);
+  const [modules, setModules] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  // Mobile Navigation & Responsive States
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [mobileActiveTab, setMobileActiveTab] = useState<'notes' | 'materials' | 'syllabus'>('notes');
+
+  // Active Topic States
+  const [activeTopic, setActiveTopic] = useState<any>(null);
+  const [topicResources, setTopicResources] = useState<any[]>([]);
+  const [savingContent, setSavingContent] = useState(false);
+
+  // Multi-Tab Notes States
+  const [notes, setNotes] = useState<any[]>([]);
+  const [activeNoteId, setActiveNoteId] = useState<string>('');
   
-  const [viewMode, setViewMode] = useState<'split' | 'media' | 'notes'>('split');
-  const [showMobileSidebar, setShowMobileSidebar] = useState(false);
-  const [activeContent, setActiveContent] = useState<Content | null>(null);
-  
-  const [notesList, setNotesList] = useState<NoteFile[]>([]);
-  const [activeNote, setActiveNote] = useState<NoteFile | null>(null);
-  const [noteContent, setNoteContent] = useState('');
-  const [isSavingNote, setIsSavingNote] = useState(false);
-  const [showNoteModal, setShowNoteModal] = useState(false);
-  const [nTitle, setNTitle] = useState('');
+  // Floating Calculator State
+  const [showCalculator, setShowCalculator] = useState(false);
 
-  // Modals States (Create & Edit)
-  const [showModuleModal, setShowModuleModal] = useState(false);
-  const [mTitle, setMTitle] = useState('');
-  const [editingModuleId, setEditingModuleId] = useState<string | null>(null); // For Update
+  // Viewer State (In-App Player)
+  const [previewResource, setPreviewResource] = useState<any>(null);
+  const [iframeLoading, setIframeLoading] = useState(true);
 
-  const [showContentModal, setShowContentModal] = useState<string | null>(null); // holds module_id
-  const [cTitle, setCTitle] = useState('');
-  const [cType, setCType] = useState('youtube');
-  const [cUrl, setCUrl] = useState('');
-  const [isSavingResource, setIsSavingResource] = useState(false);
-  const [editingContentId, setEditingContentId] = useState<string | null>(null); // For Update
-
-  useEffect(() => { if (courseId) fetchWorkspaceData(); }, [courseId]);
+  // New Resource States
+  const [uploadingFile, setUploadingFile] = useState(false);
+  const [resType, setResType] = useState('video_link');
+  const [resTitle, setResTitle] = useState('');
+  const [resUrl, setResUrl] = useState('');
+  const [file, setFile] = useState<File | null>(null);
 
   useEffect(() => {
-    if (activeContent) { fetchNotesForContent(activeContent.id); } 
-    else { setNotesList([]); setActiveNote(null); setNoteContent(''); }
-  }, [activeContent]);
+    fetchCourseData();
+  }, [id]);
 
-  const fetchWorkspaceData = async () => {
+  const fetchCourseData = async () => {
     setLoading(true);
     try {
-      const { data: courseData } = await supabase.from('lms_courses').select('*').eq('id', courseId).maybeSingle();
-      setCourse(courseData || { title: 'Workspace', status: 'pending', progress_pct: 0 });
+      const { data: c } = await supabase.from('lms_courses').select('*').eq('id', id).single();
+      if (c) setCourse(c);
 
-      const { data: modulesData } = await supabase.from('lms_modules').select('*').eq('course_id', courseId).order('created_at', { ascending: true });
-      
-      if (modulesData && modulesData.length > 0) {
-        const moduleIds = modulesData.map(m => m.id);
-        const { data: contentsData } = await supabase.from('lms_contents').select('*').in('module_id', moduleIds).order('created_at', { ascending: true });
-        
-        const structuredModules = modulesData.map(mod => ({
-          ...mod, contents: (contentsData || []).filter(c => c.module_id === mod.id)
+      const { data: mods } = await supabase.from('lms_modules').select('*').eq('course_id', id).order('order_index');
+      if (mods && mods.length > 0) {
+        const { data: tops } = await supabase.from('lms_topics').select('*').in('module_id', mods.map(m => m.id)).order('order_index');
+        const assembledModules = mods.map(m => ({
+          ...m,
+          topics: (tops || []).filter(t => t.module_id === m.id)
         }));
-        setModules(structuredModules);
-        
-        // Only set active content if there isn't one already or if it was deleted
-        if (!activeContent || !contentsData?.find(c => c.id === activeContent.id)) {
-            if(structuredModules[0]?.contents[0]) {
-               setActiveContent(structuredModules[0].contents[0]);
-            } else {
-               setActiveContent(null);
-            }
-        }
+        setModules(assembledModules);
       } else {
-         setModules([]);
-         setActiveContent(null);
+        setModules([]);
       }
-    } catch (error) { console.error(error); } finally { setLoading(false); }
-  };
-
-  const fetchNotesForContent = async (contentId: string) => {
-    try {
-      const { data } = await supabase.from('lms_notes').select('*').eq('content_id', contentId).order('created_at', { ascending: true });
-      setNotesList(data || []);
-      if (data && data.length > 0) { setActiveNote(data[0]); setNoteContent(data[0].content || ''); } 
-      else { setActiveNote(null); setNoteContent(''); }
-    } catch (error) { console.error(error); }
-  };
-
-  const handleStatusChange = async (newStatus: string) => {
-    setCourse((prev: any) => ({ ...prev, status: newStatus }));
-    try { await supabase.from('lms_courses').update({ status: newStatus }).eq('id', courseId); } 
-    catch (error) { console.error(error); }
-  };
-
-  const toggleContentCompletion = async (contentId: string, currentStatus: boolean) => {
-    const newStatus = !currentStatus;
-    const newModules = modules.map(mod => ({
-      ...mod, contents: mod.contents.map(c => c.id === contentId ? { ...c, is_completed: newStatus } : c)
-    }));
-    setModules(newModules);
-    if (activeContent?.id === contentId) setActiveContent({ ...activeContent, is_completed: newStatus });
-
-    let total = 0; let completed = 0;
-    newModules.forEach(mod => { mod.contents.forEach(c => { total++; if (c.is_completed) completed++; }); });
-    const pct = total === 0 ? 0 : Math.round((completed / total) * 100);
-    setCourse((prev: any) => ({ ...prev, progress_pct: pct }));
-
-    try {
-      await supabase.from('lms_contents').update({ is_completed: newStatus }).eq('id', contentId);
-      await supabase.from('lms_courses').update({ progress_pct: pct }).eq('id', courseId);
-      if (pct > 0 && pct < 100 && course.status === 'pending') handleStatusChange('active');
-      else if (pct === 100) handleStatusChange('completed');
-    } catch (error) { console.error(error); }
-  };
-
-  // --- MODULE CRUD ---
-  const handleSaveModule = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!mTitle || !courseId) return;
-    try {
-      if (editingModuleId) {
-        // UPDATE Module
-        await supabase.from('lms_modules').update({ title: mTitle }).eq('id', editingModuleId);
-      } else {
-        // CREATE Module
-        const { data: { user } } = await supabase.auth.getUser();
-        await supabase.from('lms_modules').insert([{ course_id: courseId, user_id: user?.id, title: mTitle }]);
-      }
-      setMTitle(''); setEditingModuleId(null); setShowModuleModal(false); fetchWorkspaceData();
-    } catch (error) { alert("Error saving module"); }
-  };
-
-  const openEditModule = (mod: Module) => {
-      setMTitle(mod.title); setEditingModuleId(mod.id); setShowModuleModal(true);
-  };
-
-  const handleDeleteModule = async (moduleId: string) => {
-      if(!window.confirm("Are you sure you want to delete this module and all its resources?")) return;
-      try {
-          await supabase.from('lms_modules').delete().eq('id', moduleId);
-          fetchWorkspaceData();
-      } catch (error) { alert("Error deleting module"); }
-  };
-
-  // --- CONTENT/RESOURCE CRUD ---
-  const handleSaveContent = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!cTitle || !cUrl) return;
-    setIsSavingResource(true);
-    try {
-      if (editingContentId) {
-          // UPDATE Content
-          await supabase.from('lms_contents').update({ title: cTitle, content_type: cType, file_path_or_url: cUrl }).eq('id', editingContentId);
-      } else {
-          // CREATE Content
-          if(!showContentModal) return; // need module id
-          const { data: { user } } = await supabase.auth.getUser();
-          await supabase.from('lms_contents').insert([{ module_id: showContentModal, user_id: user?.id, title: cTitle, content_type: cType, file_path_or_url: cUrl }]);
-      }
-      
-      setCTitle(''); setCUrl(''); setEditingContentId(null); setShowContentModal(null); fetchWorkspaceData();
-    } catch (error) { alert("Error saving resource"); } 
-    finally { setIsSavingResource(false); }
-  };
-
-  const openEditContent = (content: Content) => {
-      setCTitle(content.title); setCUrl(content.file_path_or_url); setCType(content.content_type); 
-      setEditingContentId(content.id); setShowContentModal(content.module_id);
-  };
-
-  const handleDeleteContent = async (contentId: string) => {
-      if(!window.confirm("Delete this resource?")) return;
-      try {
-          await supabase.from('lms_contents').delete().eq('id', contentId);
-          fetchWorkspaceData();
-      } catch(error) { alert("Error deleting resource"); }
-  }
-
-
-  // --- Note Logic ---
-  const handleCreateNote = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!nTitle || !activeContent) return;
-    try {
-      const { data: { user } } = await supabase.auth.getUser();
-      const { data, error } = await supabase.from('lms_notes').insert([{ content_id: activeContent.id, user_id: user?.id, title: nTitle, content: '' }]).select().single();
-      if (error) throw error;
-      setNotesList([...notesList, data]); setActiveNote(data); setNoteContent(''); setNTitle(''); setShowNoteModal(false);
-    } catch (error: any) { alert(error.message); }
-  };
-
-  const handleSaveNote = async () => {
-    if (!activeNote) return;
-    setIsSavingNote(true);
-    try {
-      await supabase.from('lms_notes').update({ content: noteContent }).eq('id', activeNote.id);
-      setNotesList(notesList.map(n => n.id === activeNote.id ? { ...n, content: noteContent } : n));
-    } catch (error: any) { alert(error.message); } finally { setIsSavingNote(false); }
-  };
-
-
-  const getSafeEmbedUrl = (url: string, type: string) => {
-    if (!url) return '';
-    if (type === 'youtube' || url.includes('youtu')) {
-      const match = url.match(/^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|&v=|shorts\/)([^#&?]*).*/);
-      if (match && match[2].length === 11) return `https://www.youtube.com/embed/${match[2]}`;
+    } catch (error) {
+      console.error(error);
+    } finally {
+      setLoading(false);
     }
-    return url;
   };
 
-  const SidebarContent = () => (
-    <>
-      <div className="p-4 border-b border-[#E2E8F0] flex justify-between items-center bg-[#F8FAFC] sticky top-0 z-10">
-        <h2 className="font-bold flex items-center gap-2 text-[#020F33]"><Layout size={18} className="text-purple-600"/> Modules</h2>
-        <button onClick={() => { setMTitle(''); setEditingModuleId(null); setShowModuleModal(true); }} className="hover:text-white p-1.5 rounded-lg transition-colors text-purple-600 bg-purple-100 hover:bg-purple-600">
-          <Plus size={18} />
-        </button>
-      </div>
-      <div className="p-3 pb-20 overflow-y-auto flex-1">
-        {modules.map(mod => (
-          <div key={mod.id} className="mb-5">
-            <div className="flex justify-between items-center mb-2 px-2 border-b border-[#E2E8F0] pb-2 group">
-              <h3 className="text-sm font-bold text-[#020F33] uppercase flex-1">{mod.title}</h3>
-              <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                 <button onClick={() => openEditModule(mod)} className="text-[#475569] hover:text-blue-500 bg-[#E2E8F0]/50 hover:bg-blue-100 rounded-md p-1"><Edit3 size={14} /></button>
-                 <button onClick={() => handleDeleteModule(mod.id)} className="text-[#475569] hover:text-red-500 bg-[#E2E8F0]/50 hover:bg-red-100 rounded-md p-1"><Trash2 size={14} /></button>
-                 <button onClick={() => { setCTitle(''); setCUrl(''); setCType('youtube'); setEditingContentId(null); setShowContentModal(mod.id); }} className="text-[#475569] hover:text-purple-600 bg-[#E2E8F0]/50 hover:bg-purple-100 rounded-md p-1"><Plus size={14} /></button>
-              </div>
-            </div>
-            <div className="space-y-1">
-              {mod.contents.map(content => (
-                <div key={content.id} className={`flex items-start gap-2 p-2 rounded-xl transition-all group/item ${activeContent?.id === content.id ? 'bg-[#020F33] text-white shadow-md' : 'hover:bg-[#F8FAFC]'}`}>
-                  <button onClick={() => toggleContentCompletion(content.id, content.is_completed)} className={`mt-1 shrink-0 ${content.is_completed ? 'text-[#A3D803]' : (activeContent?.id === content.id ? 'text-slate-400' : 'text-[#CBD5E1] hover:text-purple-500')}`}>
-                    {content.is_completed ? <CheckCircle size={18} /> : <Circle size={18} />}
-                  </button>
-                  <button onClick={() => { setActiveContent(content); setShowMobileSidebar(false); }} className="flex-1 text-left flex items-start gap-2">
-                    {content.content_type === 'pdf' ? <File size={16} className="shrink-0 mt-0.5 opacity-70"/> : <Video size={16} className="shrink-0 mt-0.5 opacity-70"/>}
-                    <span className={`text-sm font-medium leading-snug line-clamp-2 ${content.is_completed && activeContent?.id !== content.id ? 'line-through text-slate-400' : ''}`}>{content.title}</span>
-                  </button>
-                  
-                  {/* Resource Actions (Edit/Delete) */}
-                  <div className="flex flex-col gap-1 opacity-0 group-hover/item:opacity-100 shrink-0">
-                     <button onClick={() => openEditContent(content)} className="text-slate-400 hover:text-blue-400 p-0.5"><Edit3 size={12}/></button>
-                     <button onClick={() => handleDeleteContent(content.id)} className="text-slate-400 hover:text-red-400 p-0.5"><Trash2 size={12}/></button>
-                  </div>
-                </div>
-              ))}
+  // ================= MODULE & TOPIC CRUD =================
+  const addModule = async () => {
+    const title = prompt("Enter Module / Phase Name:");
+    if (!title) return;
+    await supabase.from('lms_modules').insert([{ course_id: id, title, order_index: modules.length }]);
+    fetchCourseData();
+  };
+
+  const addTopic = async (moduleId: string, currentTopicCount: number) => {
+    const title = prompt("Enter Topic / Chapter Name:");
+    if (!title) return;
+    await supabase.from('lms_topics').insert([{ module_id: moduleId, title, order_index: currentTopicCount }]);
+    fetchCourseData();
+  };
+
+  const deleteModule = async (moduleId: string) => {
+    if (!window.confirm("Delete this entire module and all its topics?")) return;
+    await supabase.from('lms_modules').delete().eq('id', moduleId);
+    fetchCourseData();
+  };
+
+  const deleteTopic = async (topicId: string) => {
+    if (!window.confirm("Delete this topic?")) return;
+    await supabase.from('lms_topics').delete().eq('id', topicId);
+    if (activeTopic?.id === topicId) setActiveTopic(null);
+    fetchCourseData();
+  };
+
+  const moveModule = async (index: number, direction: 'up'|'down') => {
+    if (direction === 'up' && index === 0) return;
+    if (direction === 'down' && index === modules.length - 1) return;
+    const newModules = [...modules];
+    const targetIndex = direction === 'up' ? index - 1 : index + 1;
+    const temp = newModules[index];
+    newModules[index] = newModules[targetIndex];
+    newModules[targetIndex] = temp;
+    setModules(newModules); 
+    const updates = newModules.map((m, i) => ({ id: m.id, order_index: i }));
+    await supabase.from('lms_modules').upsert(updates);
+  };
+
+  const moveTopic = async (moduleIndex: number, topicIndex: number, direction: 'up'|'down') => {
+    const mod = modules[moduleIndex];
+    if (direction === 'up' && topicIndex === 0) return;
+    if (direction === 'down' && topicIndex === mod.topics.length - 1) return;
+    const newTopics = [...mod.topics];
+    const targetIndex = direction === 'up' ? topicIndex - 1 : topicIndex + 1;
+    const temp = newTopics[topicIndex];
+    newTopics[topicIndex] = newTopics[targetIndex];
+    newTopics[targetIndex] = temp;
+    const newModules = [...modules];
+    newModules[moduleIndex].topics = newTopics;
+    setModules(newModules);
+    const updates = newTopics.map((t, i) => ({ id: t.id, order_index: i }));
+    await supabase.from('lms_topics').upsert(updates);
+  };
+
+  // ================= ACTIVE TOPIC WORKSPACE =================
+  const openTopicPanel = async (topic: any) => {
+    setActiveTopic(topic);
+    setPreviewResource(null);
+    setShowCalculator(false);
+    setIsSidebarOpen(false);
+    
+    let parsedNotes = [];
+    try {
+      parsedNotes = JSON.parse(topic.content);
+      if (!Array.isArray(parsedNotes)) throw new Error();
+    } catch {
+      parsedNotes = [{ id: Date.now().toString(), title: 'Main Note', body: topic.content || '' }];
+    }
+    setNotes(parsedNotes);
+    setActiveNoteId(parsedNotes[0]?.id);
+    
+    const { data } = await supabase.from('lms_resources').select('*').eq('topic_id', topic.id).order('created_at');
+    if (data) {
+      setTopicResources(data);
+      if (data.length > 0) {
+        setPreviewResource(data[0]);
+        setIframeLoading(true);
+      }
+    }
+  };
+
+  const saveTopicNotes = async () => {
+    setSavingContent(true);
+    const stringifiedNotes = JSON.stringify(notes);
+    await supabase.from('lms_topics').update({ content: stringifiedNotes }).eq('id', activeTopic.id);
+    const updatedModules = modules.map(m => ({
+      ...m, topics: m.topics.map((t: any) => t.id === activeTopic.id ? { ...t, content: stringifiedNotes } : t)
+    }));
+    setModules(updatedModules);
+    setSavingContent(false);
+  };
+
+  const addNewNote = () => {
+    const newNote = { id: Date.now().toString(), title: `Note ${notes.length + 1}`, body: '' };
+    setNotes([...notes, newNote]);
+    setActiveNoteId(newNote.id);
+  };
+
+  const renameNote = (id: string) => {
+    const currentName = notes.find(n => n.id === id)?.title;
+    const newName = prompt("Rename note tab:", currentName);
+    if (newName) setNotes(notes.map(n => n.id === id ? { ...n, title: newName } : n));
+  };
+
+  const deleteNote = (id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!window.confirm("Delete this note tab?")) return;
+    const filtered = notes.filter(n => n.id !== id);
+    setNotes(filtered);
+    if (activeNoteId === id) setActiveNoteId(filtered[0]?.id || '');
+  };
+
+  const updateActiveNoteBody = (html: string) => {
+    setNotes(prev => prev.map(n => n.id === activeNoteId ? { ...n, body: html } : n));
+  };
+
+  const handleFileUpload = async (selectedFile: File) => {
+    setUploadingFile(true);
+    try {
+      const fileExt = selectedFile.name.split('.').pop();
+      const fileName = `${Math.random()}.${fileExt}`;
+      const { error: uploadError } = await supabase.storage.from('bcs_vault').upload(`lms_materials/${fileName}`, selectedFile);
+      if (uploadError) throw uploadError;
+      const { data: { publicUrl } } = supabase.storage.from('bcs_vault').getPublicUrl(`lms_materials/${fileName}`);
+      setResUrl(publicUrl);
+      setFile(selectedFile);
+    } catch (error: any) {
+      alert('Error: ' + error.message);
+    } finally {
+      setUploadingFile(false);
+    }
+  };
+
+  const handleAddResource = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!resTitle || !resUrl) return;
+    const { data: { user } } = await supabase.auth.getUser();
+    
+    const newRes = { user_id: user?.id, course_id: id, topic_id: activeTopic.id, title: resTitle, resource_type: resType, url: resUrl };
+    const { data } = await supabase.from('lms_resources').insert([newRes]).select().single();
+    if (data) {
+      setTopicResources([...topicResources, data]);
+      setPreviewResource(data);
+      setIframeLoading(true);
+    }
+    setResTitle(''); setResUrl(''); setFile(null);
+  };
+
+  const deleteResource = async (resId: string) => {
+    await supabase.from('lms_resources').delete().eq('id', resId);
+    if (previewResource?.id === resId) setPreviewResource(null);
+    const { data } = await supabase.from('lms_resources').select('*').eq('topic_id', activeTopic.id).order('created_at');
+    if (data) setTopicResources(data);
+  };
+
+  const getEmbedInfo = (rawUrl: string, type: string) => {
+    if (type === 'video_link' && (rawUrl.includes('youtube.com') || rawUrl.includes('youtu.be'))) {
+      const ytMatch = rawUrl.match(/(?:youtu\.be\/|youtube\.com\/(?:embed\/|v\/|watch\?v=|watch\?.+&v=))((\w|-){11})/);
+      if (ytMatch && ytMatch[1]) return { canEmbed: true, embedUrl: `https://www.youtube.com/embed/${ytMatch[1]}` };
+    }
+    if (type === 'video_link' && rawUrl.includes('facebook.com')) {
+      return { canEmbed: false, reason: 'Facebook blocks inline viewing.', embedUrl: rawUrl };
+    }
+    if (type === 'drive_link') {
+      const driveEmbedUrl = rawUrl.replace(/\/view.*$/, '/preview').replace(/\/edit.*$/, '/preview');
+      return { canEmbed: true, embedUrl: driveEmbedUrl };
+    }
+    return { canEmbed: true, embedUrl: rawUrl };
+  };
+
+  const renderSyllabusList = () => (
+    <div className="flex-1 overflow-y-auto p-4 space-y-4 custom-scrollbar">
+      {modules.map((module, mIdx) => (
+        <div key={module.id} className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
+          <div className="bg-slate-100 border-b border-slate-200 p-3 flex justify-between items-center group">
+            <h2 className="text-xs font-black text-slate-700 flex items-center gap-2 uppercase tracking-wide">
+              <FolderOpen size={14} className="text-[#9333EA] shrink-0" /> 
+              <span className="truncate">{module.title}</span>
+            </h2>
+            <div className="flex items-center gap-1 opacity-100 lg:opacity-0 lg:group-hover:opacity-100 transition-opacity shrink-0">
+              <button onClick={() => moveModule(mIdx, 'up')} className="text-slate-400 hover:text-[#9333EA] p-0.5"><ChevronUp size={14}/></button>
+              <button onClick={() => moveModule(mIdx, 'down')} className="text-slate-400 hover:text-[#9333EA] p-0.5"><ChevronDown size={14}/></button>
+              <button onClick={() => deleteModule(module.id)} className="text-slate-400 hover:text-rose-500 ml-1 p-0.5"><Trash2 size={12}/></button>
             </div>
           </div>
-        ))}
-      </div>
-    </>
+
+          <div className="divide-y divide-slate-100">
+            {module.topics.map((topic: any, tIdx: number) => (
+              <div key={topic.id} 
+                onClick={() => {
+                  openTopicPanel(topic);
+                  if (mobileActiveTab === 'syllabus') setMobileActiveTab('notes');
+                }}
+                className={`p-3 flex justify-between items-center cursor-pointer transition-colors group ${activeTopic?.id === topic.id ? 'bg-[#9333EA]/10 border-l-4 border-[#9333EA]' : 'hover:bg-slate-50 border-l-4 border-transparent'}`}>
+                <div className="flex items-center gap-2 truncate pr-2">
+                  <LayoutTemplate size={14} className={activeTopic?.id === topic.id ? 'text-[#9333EA] shrink-0' : 'text-slate-400 shrink-0'} />
+                  <span className={`text-xs font-bold truncate ${activeTopic?.id === topic.id ? 'text-[#020F33]' : 'text-slate-600'}`}>{topic.title}</span>
+                </div>
+                <div className="flex items-center opacity-100 lg:opacity-0 lg:group-hover:opacity-100 transition-opacity shrink-0" onClick={e => e.stopPropagation()}>
+                  <button onClick={() => moveTopic(mIdx, tIdx, 'up')} className="text-slate-400 hover:text-[#9333EA] p-0.5"><ChevronUp size={12}/></button>
+                  <button onClick={() => moveTopic(mIdx, tIdx, 'down')} className="text-slate-400 hover:text-[#9333EA] p-0.5"><ChevronDown size={12}/></button>
+                  <button onClick={() => deleteTopic(topic.id)} className="text-slate-400 hover:text-rose-500 p-0.5"><Trash2 size={12}/></button>
+                </div>
+              </div>
+            ))}
+            <button onClick={() => addTopic(module.id, module.topics.length)} className="w-full p-2.5 text-[10px] uppercase font-bold text-slate-400 hover:text-[#9333EA] hover:bg-slate-50 flex items-center justify-center gap-1 transition-colors">
+              <Plus size={12} /> Add Topic
+            </button>
+          </div>
+        </div>
+      ))}
+      <button onClick={addModule} className="w-full py-3 border border-dashed border-slate-300 rounded-xl text-slate-500 text-xs font-bold hover:border-[#9333EA] hover:text-[#9333EA] hover:bg-white transition-all flex items-center justify-center gap-2">
+        <Plus size={14} /> New Module
+      </button>
+    </div>
   );
 
-  if (loading) return <div className="h-screen flex items-center justify-center bg-[#F8FAFC]"><Loader2 className="animate-spin text-purple-500" size={40} /></div>;
+  if (loading) return <div className="h-[100dvh] w-full flex items-center justify-center"><Loader2 className="animate-spin text-[#9333EA]" size={40} /></div>;
+  if (!course) return <div className="text-center py-20 text-slate-500 font-bold">Course not found.</div>;
 
   return (
-    <div className="h-screen flex flex-col bg-[#F8FAFC] text-[#020F33] overflow-hidden relative">
+    <div className="h-[100dvh] w-full flex flex-col lg:flex-row overflow-hidden bg-white relative">
       
-      {/* --- ADD/EDIT MODULE MODAL --- */}
-      {showModuleModal && (
-        <div className="fixed inset-0 z-[1000] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-          <div className="bg-white p-6 rounded-2xl w-full max-w-md shadow-2xl">
-            <div className="flex justify-between items-center mb-5"><h3 className="font-bold text-lg">{editingModuleId ? 'Edit Module' : 'Create New Module'}</h3><button onClick={() => setShowModuleModal(false)} className="text-slate-400 hover:text-red-500"><X size={20}/></button></div>
-            <form onSubmit={handleSaveModule} className="space-y-4">
-              <input type="text" value={mTitle} onChange={(e)=>setMTitle(e.target.value)} placeholder="e.g. Chapter 1: Basic" className="w-full border border-[#E2E8F0] focus:border-purple-500 rounded-xl p-3 outline-none" required/>
-              <button type="submit" className="w-full bg-[#020F33] text-white font-bold py-3 rounded-xl hover:bg-purple-600 transition-colors">{editingModuleId ? 'Save Changes' : 'Create Module'}</button>
-            </form>
+      {/* ================= MOBILE & TABLET TOP HEADER (10MS Style) ================= */}
+      <div className="lg:hidden flex items-center justify-between px-4 py-3 border-b border-slate-200 bg-white shrink-0 z-30 shadow-sm">
+        <div className="flex items-center gap-3 overflow-hidden">
+          <button onClick={() => setIsSidebarOpen(true)} className="p-2 -ml-2 text-slate-700 hover:text-[#9333EA] active:scale-95 transition-transform">
+            <Menu size={22} />
+          </button>
+          <div className="overflow-hidden">
+            <h1 className="text-sm font-black text-[#020F33] truncate max-w-[220px] leading-tight">{course.title}</h1>
+            {activeTopic && (
+              <p className="text-[11px] font-bold text-[#9333EA] truncate">{activeTopic.title}</p>
+            )}
           </div>
         </div>
-      )}
-
-      {/* --- ADD/EDIT CONTENT MODAL --- */}
-      {showContentModal && (
-        <div className="fixed inset-0 z-[1000] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-          <div className="bg-white p-6 rounded-2xl w-full max-w-md shadow-2xl">
-            <div className="flex justify-between items-center mb-5"><h3 className="font-bold text-lg">{editingContentId ? 'Edit Resource' : 'Add Resource'}</h3><button onClick={() => setShowContentModal(null)} className="text-slate-400 hover:text-red-500"><X size={20}/></button></div>
-            <form onSubmit={handleSaveContent} className="space-y-4">
-              <input type="text" value={cTitle} onChange={(e)=>setCTitle(e.target.value)} placeholder="Resource Title" className="w-full border border-[#E2E8F0] focus:border-purple-500 rounded-xl p-3 outline-none" required/>
-              <select value={cType} onChange={(e)=>setCType(e.target.value)} className="w-full border border-[#E2E8F0] focus:border-purple-500 rounded-xl p-3 outline-none"><option value="youtube">YouTube Video</option><option value="video">Direct Video URL</option><option value="pdf">PDF Link</option></select>
-              <input type="url" value={cUrl} onChange={(e)=>setCUrl(e.target.value)} placeholder="Link URL..." className="w-full border border-[#E2E8F0] focus:border-purple-500 rounded-xl p-3 outline-none" required/>
-              <button type="submit" disabled={isSavingResource} className="w-full bg-[#020F33] text-white font-bold py-3 rounded-xl hover:bg-purple-600 transition-colors disabled:opacity-50">{isSavingResource ? 'Saving...' : editingContentId ? 'Update Resource' : 'Save Resource'}</button>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* --- ADD NOTE MODAL --- */}
-      {showNoteModal && (
-        <div className="fixed inset-0 z-[1000] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-          <div className="bg-white p-6 rounded-2xl w-full max-w-md shadow-2xl">
-            <div className="flex justify-between items-center mb-5"><h3 className="font-bold text-lg">New Note File</h3><button onClick={() => setShowNoteModal(false)} className="text-slate-400 hover:text-red-500"><X size={20}/></button></div>
-            <form onSubmit={handleCreateNote} className="space-y-4">
-              <input type="text" value={nTitle} onChange={(e)=>setNTitle(e.target.value)} placeholder="Note Title (e.g. Physics Formula)" className="w-full border border-[#E2E8F0] focus:border-purple-500 rounded-xl p-3 outline-none" required/>
-              <button type="submit" className="w-full bg-[#020F33] text-white font-bold py-3 rounded-xl hover:bg-purple-600 transition-colors">Create Note</button>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {showMobileSidebar && (
-        <div className="fixed inset-0 z-50 flex lg:hidden">
-          <div className="fixed inset-0 bg-[#020F33]/60 backdrop-blur-sm" onClick={() => setShowMobileSidebar(false)}></div>
-          <aside className="relative w-4/5 max-w-sm bg-white h-full shadow-2xl flex flex-col animate-in slide-in-from-left-full"><button onClick={() => setShowMobileSidebar(false)} className="absolute top-4 right-4 p-2 bg-rose-50 text-rose-500 rounded-full z-20"><X size={16} /></button><SidebarContent /></aside>
-        </div>
-      )}
-
-      <header className="bg-white border-b border-[#E2E8F0] px-3 md:px-6 py-3 flex flex-col md:flex-row md:items-center justify-between shrink-0 z-10 shadow-sm gap-3">
-        <div className="flex items-center gap-2 md:gap-4 flex-1 min-w-0">
-          <Link to="/lms" className="p-2 bg-[#F8FAFC] hover:bg-[#E2E8F0] rounded-xl transition-colors shrink-0"><ArrowLeft size={18} className="text-[#475569]" /></Link>
-          <button onClick={() => setShowMobileSidebar(true)} className="lg:hidden p-2 bg-[#F8FAFC] text-[#020F33] rounded-xl border border-[#E2E8F0] shrink-0"><Menu size={18} /></button>
-          <div className="min-w-0 flex-1">
-            <h1 className="font-bold text-sm md:text-lg leading-tight flex items-center gap-2 truncate"><span className="truncate">{course?.title || 'Workspace'}</span></h1>
-            <div className="flex items-center gap-2 mt-1 max-w-[200px]"><div className="flex-1 h-1.5 bg-[#F8FAFC] rounded-full overflow-hidden border border-[#E2E8F0]"><div className="h-full transition-all duration-500 bg-purple-500" style={{ width: `${course?.progress_pct || 0}%` }}></div></div><span className="text-[10px] font-black text-[#475569]">{course?.progress_pct || 0}%</span></div>
-          </div>
-        </div>
-        
-        <div className="flex items-center gap-2 overflow-x-auto hide-scrollbar shrink-0 ml-10 md:ml-2">
-          <select value={course?.status || 'pending'} onChange={(e) => handleStatusChange(e.target.value)} className={`text-xs md:text-sm font-bold px-3 py-1.5 md:py-2 rounded-lg border focus:outline-none transition-colors shrink-0 ${course?.status === 'active' ? 'bg-purple-50 text-purple-600 border-purple-200' : course?.status === 'completed' ? 'bg-[#A3D803]/10 text-[#719900] border-[#A3D803]/20' : course?.status === 'watch_later' ? 'bg-amber-50 text-amber-600 border-amber-200' : 'bg-[#F8FAFC] text-[#475569] border-[#E2E8F0]'}`}>
-            <option value="pending">⏳ Pending</option><option value="active">🔥 Active (Learning)</option><option value="watch_later">📌 Watch Later</option><option value="completed">✅ Mastered</option>
-          </select>
-          <div className="flex bg-[#F8FAFC] p-1 rounded-lg border border-[#E2E8F0] shrink-0">
-            <button onClick={() => setViewMode('media')} className={`px-2 py-1 md:py-1.5 rounded-md text-xs font-bold ${viewMode === 'media' ? 'bg-[#020F33] text-white' : 'text-[#475569]'}`}><MonitorPlay size={14} /></button>
-            <button onClick={() => setViewMode('split')} className={`px-2 py-1 md:py-1.5 rounded-md text-xs font-bold ${viewMode === 'split' ? 'bg-[#020F33] text-white' : 'text-[#475569]'}`}><Columns size={14} /></button>
-            <button onClick={() => setViewMode('notes')} className={`px-2 py-1 md:py-1.5 rounded-md text-xs font-bold ${viewMode === 'notes' ? 'bg-[#020F33] text-white' : 'text-[#475569]'}`}><FileText size={14} /></button>
-          </div>
-        </div>
-      </header>
-
-      <div className="flex-1 flex overflow-hidden">
-        <aside className="w-80 bg-white border-r border-[#E2E8F0] flex-col overflow-hidden shrink-0 hidden lg:flex"><SidebarContent /></aside>
-        <main className={`flex-1 flex overflow-hidden bg-[#F8FAFC] p-2 md:p-4 gap-2 md:gap-4 ${viewMode === 'split' ? 'flex-col lg:flex-row' : 'flex-col'}`}>
-          {(viewMode === 'split' || viewMode === 'media') && (
-            <div className={`flex flex-col bg-black rounded-2xl overflow-hidden shadow-lg border border-[#E2E8F0] shrink-0 lg:shrink relative ${viewMode === 'split' ? 'h-2/5 lg:h-full lg:w-1/2' : 'h-full w-full'}`}>
-              {activeContent && (
-                <div className="absolute top-4 right-4 z-10"><button onClick={() => toggleContentCompletion(activeContent.id, activeContent.is_completed)} className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold shadow-lg transition-all backdrop-blur-md border ${activeContent.is_completed ? 'bg-[#A3D803]/20 text-[#A3D803] border-[#A3D803]' : 'bg-black/50 text-white border-white/20 hover:bg-black/70'}`}>{activeContent.is_completed ? <CheckCircle2 size={14}/> : <Circle size={14}/>} {activeContent.is_completed ? 'Completed' : 'Mark as Done'}</button></div>
-              )}
-              {activeContent?.content_type === 'youtube' || activeContent?.content_type === 'video' ? (
-                <iframe className="w-full h-full min-h-[200px]" src={getSafeEmbedUrl(activeContent.file_path_or_url, activeContent.content_type)} allowFullScreen></iframe>
-              ) : activeContent?.content_type === 'pdf' ? (
-                <iframe className="w-full h-full bg-white min-h-[300px]" src={activeContent.file_path_or_url}></iframe>
-              ) : (
-                <div className="flex-1 flex flex-col items-center justify-center text-white p-6"><Target size={48} className="opacity-20 mb-4" /><p className="font-bold text-center">Select material from modules</p></div>
-              )}
-            </div>
-          )}
-
-          {(viewMode === 'split' || viewMode === 'notes') && (
-            <div className={`flex flex-col bg-white rounded-2xl overflow-hidden shadow-lg border border-[#E2E8F0] ${viewMode === 'split' ? 'h-3/5 lg:h-full lg:w-1/2' : 'h-full w-full'}`}>
-              <div className="p-3 md:p-4 border-b border-[#E2E8F0] flex justify-between items-center bg-[#F8FAFC]">
-                <h3 className="font-bold flex items-center gap-2 text-[#020F33] text-sm md:text-base truncate pr-2"><FileText size={16} className="text-purple-500 shrink-0" /> <span className="truncate">{activeNote ? activeNote.title : 'Notes Editor'}</span></h3>
-                {activeNote && <button onClick={handleSaveNote} disabled={isSavingNote} className="px-3 py-1.5 md:px-4 md:py-2 rounded-lg text-xs md:text-sm font-bold flex items-center gap-2 bg-[#020F33] hover:bg-purple-600 text-white transition-colors shrink-0">{isSavingNote ? <Loader2 size={14} className="animate-spin" /> : <><Save size={14} /> <span className="hidden sm:inline">Save</span></>}</button>}
-              </div>
-              <textarea value={noteContent} onChange={(e) => setNoteContent(e.target.value)} disabled={!activeNote} placeholder={activeNote ? "Write your notes here..." : "Select or create a note file below..."} className="flex-1 w-full p-4 md:p-6 resize-none focus:outline-none focus:ring-inset focus:ring-2 focus:ring-purple-500 text-[#020F33] text-sm md:text-base leading-relaxed disabled:bg-slate-50 disabled:opacity-50" />
-              <div className="bg-[#F8FAFC] border-t border-[#E2E8F0] p-2 flex items-center gap-2 overflow-x-auto hide-scrollbar">
-                <button onClick={() => setShowNoteModal(true)} disabled={!activeContent} className="shrink-0 flex items-center gap-1.5 px-3 py-1.5 md:px-4 md:py-2 bg-[#020F33] text-white text-xs font-bold rounded-xl hover:bg-purple-600 transition-colors disabled:opacity-50"><Plus size={14} /> New Note</button>
-                {notesList.map(note => (<div key={note.id} onClick={() => { setActiveNote(note); setNoteContent(note.content); }} className={`shrink-0 flex items-center gap-1.5 px-3 py-1.5 md:py-2 border rounded-xl text-xs font-bold transition-all cursor-pointer group ${activeNote?.id === note.id ? 'bg-purple-100 border-purple-400 text-[#020F33]' : 'bg-white border-[#E2E8F0] text-[#475569]'}`}><FileText size={12} className={activeNote?.id === note.id ? 'text-purple-600' : 'text-[#94A3B8]'} /> {note.title}</div>))}
-              </div>
-            </div>
-          )}
-        </main>
+        <Link to="/lms" className="flex items-center gap-1 text-xs font-bold text-slate-600 hover:text-[#020F33] bg-slate-100 px-3 py-1.5 rounded-lg shrink-0">
+          <ArrowLeft size={14} /> Back
+        </Link>
       </div>
+
+      {/* ================= MOBILE SLIDE-OVER DRAWER OVERLAY ================= */}
+      {isSidebarOpen && (
+        <div className="fixed inset-0 bg-[#020F33]/60 backdrop-blur-sm z-40 lg:hidden animate-in fade-in duration-200" onClick={() => setIsSidebarOpen(false)} />
+      )}
+
+      {/* ================= LEFT SIDEBAR ================= */}
+      <div className={`fixed inset-y-0 left-0 z-50 w-[85%] max-w-[320px] lg:w-[320px] shrink-0 border-r border-slate-200 bg-slate-50 flex flex-col h-full overflow-hidden transform transition-transform duration-300 ease-in-out lg:relative lg:translate-x-0 ${isSidebarOpen ? 'translate-x-0 shadow-2xl' : '-translate-x-full'}`}>
+        <div className="p-4 border-b border-slate-200 bg-white flex justify-between items-start">
+          <div className="overflow-hidden pr-2">
+            <Link to="/lms" className="hidden lg:inline-flex items-center gap-2 text-xs font-bold text-slate-400 hover:text-[#020F33] transition-colors mb-3">
+              <ArrowLeft size={14} /> Back to LMS Hub
+            </Link>
+            <h1 className="text-lg lg:text-xl font-black text-[#020F33] leading-snug truncate">{course.title}</h1>
+            <p className="text-[10px] font-bold text-[#9333EA] uppercase tracking-widest mt-1">Course Content</p>
+          </div>
+          <button onClick={() => setIsSidebarOpen(false)} className="lg:hidden p-1.5 text-slate-400 hover:text-rose-500 bg-slate-100 rounded-lg">
+            <X size={18} />
+          </button>
+        </div>
+        {renderSyllabusList()}
+      </div>
+
+      {/* ================= RIGHT SIDE: FULL SCREEN WORKSPACE ================= */}
+      <div className="flex-1 flex flex-col h-full overflow-hidden bg-[#F8FAFC]">
+        {!activeTopic ? (
+          <div className="flex-1 flex flex-col items-center justify-center text-slate-400 p-6 text-center">
+            <MonitorPlay size={64} className="mb-4 opacity-50 text-[#9333EA]" />
+            <h2 className="text-xl font-bold text-slate-600 mb-2">LMS Theater Mode</h2>
+            <p className="text-sm max-w-xs">Select a topic from the syllabus to start studying.</p>
+            <button onClick={() => setIsSidebarOpen(true)} className="lg:hidden mt-6 bg-[#020F33] text-white px-6 py-2.5 rounded-xl font-bold text-xs shadow-md hover:bg-[#9333EA] hover:text-white transition-colors">
+              Open Course Syllabus
+            </button>
+          </div>
+        ) : (
+          <>
+            <div className="hidden lg:flex bg-white border-b border-slate-200 px-6 py-4 justify-between items-center shrink-0">
+              <div>
+                <span className="text-[10px] font-bold text-[#9333EA] uppercase tracking-wider">Active Workspace</span>
+                <h2 className="text-lg font-black text-[#020F33]">{activeTopic.title}</h2>
+              </div>
+              {previewResource && (
+                <a href={previewResource.url} target="_blank" rel="noopener noreferrer" className="text-xs font-bold text-[#9333EA] hover:underline flex items-center gap-1">
+                  <ExternalLink size={14} /> Open Original
+                </a>
+              )}
+            </div>
+
+            <div className="flex-1 flex flex-col lg:flex-row overflow-hidden relative">
+              {/* ---------------- THEATER VIEWER ---------------- */}
+              <div className="w-full h-[220px] sm:h-[300px] lg:h-full lg:flex-[2] xl:flex-[3] bg-[#0B1120] relative flex items-center justify-center overflow-hidden shrink-0 border-b lg:border-b-0">
+                {!previewResource ? (
+                  <div className="text-center text-slate-500 p-4">
+                    <PlayCircle size={40} className="mx-auto mb-2 opacity-30 lg:w-12 lg:h-12" />
+                    <p className="font-bold text-sm lg:text-base">No Resource Selected</p>
+                    <p className="text-[11px] lg:text-xs mt-1">Select or add a video/PDF from the Materials section.</p>
+                  </div>
+                ) : (
+                  <>
+                    {(() => {
+                      const { canEmbed, reason, embedUrl } = getEmbedInfo(previewResource.url, previewResource.resource_type);
+                      if (!canEmbed) {
+                        return (
+                          <div className="text-center p-6 max-w-md">
+                            <div className="w-12 h-12 lg:w-16 lg:h-16 bg-slate-800 rounded-full flex items-center justify-center mx-auto mb-3">
+                              <ShieldAlert size={28} className="text-slate-400" />
+                            </div>
+                            <h3 className="text-base lg:text-xl font-black text-white mb-1">External Content</h3>
+                            <p className="text-slate-400 text-xs lg:text-sm mb-4">{reason}</p>
+                            <a href={previewResource.url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 bg-[#9333EA] text-white px-5 py-2 rounded-lg font-bold text-xs lg:text-sm hover:bg-white hover:text-[#020F33] transition-colors">
+                              <ExternalLink size={16} /> Open in New Tab
+                            </a>
+                          </div>
+                        );
+                      }
+                      return (
+                        <>
+                          {iframeLoading && (
+                            <div className="absolute inset-0 flex flex-col items-center justify-center bg-[#0B1120] z-10">
+                              <Loader2 className="animate-spin text-[#9333EA] mb-2" size={36} />
+                            </div>
+                          )}
+                          <iframe 
+                            src={previewResource.resource_type === 'pdf' ? `${embedUrl}#toolbar=0` : embedUrl} 
+                            onLoad={() => setIframeLoading(false)}
+                            className="w-full h-full border-none bg-white" 
+                            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                            allowFullScreen
+                            title="Resource Viewer"
+                          />
+                        </>
+                      );
+                    })()}
+                  </>
+                )}
+              </div>
+
+              {/* ---------------- MOBILE 10MS TAB SWITCHER ---------------- */}
+              <div className="lg:hidden flex border-b border-slate-200 bg-white shrink-0 z-20">
+                <button 
+                  onClick={() => setMobileActiveTab('notes')}
+                  className={`flex-1 py-2.5 text-xs font-black border-b-2 transition-colors flex items-center justify-center gap-1.5 ${mobileActiveTab === 'notes' ? 'border-[#9333EA] text-[#020F33] bg-[#9333EA]/5' : 'border-transparent text-slate-500'}`}
+                >
+                  <AlignLeft size={14} /> Notes ({notes.length})
+                </button>
+                <button 
+                  onClick={() => setMobileActiveTab('materials')}
+                  className={`flex-1 py-2.5 text-xs font-black border-b-2 transition-colors flex items-center justify-center gap-1.5 ${mobileActiveTab === 'materials' ? 'border-[#9333EA] text-[#020F33] bg-[#9333EA]/5' : 'border-transparent text-slate-500'}`}
+                >
+                  <Database size={14} /> Materials ({topicResources.length})
+                </button>
+                <button 
+                  onClick={() => setMobileActiveTab('syllabus')}
+                  className={`flex-1 py-2.5 text-xs font-black border-b-2 transition-colors flex items-center justify-center gap-1.5 ${mobileActiveTab === 'syllabus' ? 'border-[#9333EA] text-[#020F33] bg-[#9333EA]/5' : 'border-transparent text-slate-500'}`}
+                >
+                  <FolderOpen size={14} /> Syllabus
+                </button>
+              </div>
+
+              {/* ---------------- TOOLS PANEL (Resources & Notes) ---------------- */}
+              <div className="flex-1 lg:flex-none lg:w-[400px] xl:w-[450px] shrink-0 bg-white lg:border-l border-slate-200 flex flex-col overflow-hidden shadow-[-4px_0_15px_rgba(0,0,0,0.03)] relative z-20">
+                
+                {mobileActiveTab === 'syllabus' && (
+                  <div className="lg:hidden flex-1 flex flex-col overflow-hidden bg-slate-50">
+                    {renderSyllabusList()}
+                  </div>
+                )}
+
+                {/* Resources Area */}
+                <div className={`${mobileActiveTab === 'materials' ? 'flex flex-1 lg:flex-none' : 'hidden lg:flex'} flex-col border-b border-slate-200 bg-slate-50 shrink-0 overflow-hidden`}>
+                  <div className="p-4 flex-1 lg:max-h-[220px] overflow-y-auto custom-scrollbar">
+                    <h3 className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-3 flex items-center gap-1">
+                      <Database size={12}/> Attached Materials
+                    </h3>
+                    {topicResources.length === 0 ? (
+                      <p className="text-xs text-slate-400 font-medium p-3 text-center border border-dashed border-slate-200 rounded-lg">No resources yet.</p>
+                    ) : (
+                      <div className="space-y-1.5">
+                        {topicResources.map(res => (
+                          <div key={res.id} 
+                            onClick={() => { setPreviewResource(res); setIframeLoading(true); }}
+                            className={`flex justify-between items-center p-2.5 border rounded-lg cursor-pointer group transition-all
+                              ${previewResource?.id === res.id ? 'bg-[#9333EA]/10 border-[#9333EA]' : 'bg-white border-slate-200 hover:border-[#9333EA]/50'}`}>
+                            <div className="flex items-center gap-2 overflow-hidden">
+                              {res.resource_type === 'pdf' ? <FileText size={14} className="text-rose-500 shrink-0"/> : <PlayCircle size={14} className="text-indigo-500 shrink-0"/>}
+                              <span className={`text-xs font-bold truncate ${previewResource?.id === res.id ? 'text-[#9333EA]' : 'text-slate-700'}`}>{res.title}</span>
+                            </div>
+                            <button onClick={(e) => { e.stopPropagation(); deleteResource(res.id); }} className="text-slate-400 hover:text-rose-500 opacity-100 lg:opacity-0 lg:group-hover:opacity-100 transition-opacity p-1">
+                              <Trash2 size={13} />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Add Resource Form */}
+                  <form onSubmit={handleAddResource} className="p-3 bg-white border-t border-slate-200 flex flex-wrap sm:flex-nowrap gap-2 shrink-0">
+                    <select value={resType} onChange={e => {setResType(e.target.value); setResUrl(''); setFile(null);}} className="bg-slate-50 border border-slate-200 rounded px-2 py-1.5 text-[10px] font-bold outline-none">
+                      <option value="video_link">Video</option>
+                      <option value="pdf">PDF</option>
+                      <option value="drive_link">Drive Link</option>
+                    </select>
+                    {resType === 'pdf' ? (
+                      <label className="flex-1 flex items-center justify-center gap-1 border border-dashed border-slate-300 bg-slate-50 rounded px-2 py-1.5 cursor-pointer hover:border-[#9333EA] min-w-[120px]">
+                        {uploadingFile ? <Loader2 className="animate-spin" size={12} /> : <UploadCloud size={12} />}
+                        <span className="text-[10px] font-bold text-slate-500 truncate">{file ? file.name : 'Choose File'}</span>
+                        <input type="file" className="hidden" accept=".pdf" onChange={e => e.target.files && handleFileUpload(e.target.files[0])} />
+                      </label>
+                    ) : (
+                      <input type="url" required value={resUrl} onChange={e => setResUrl(e.target.value)} placeholder="Paste link URL..." className="flex-1 bg-slate-50 border border-slate-200 rounded px-2 py-1.5 text-xs outline-none focus:border-[#9333EA] min-w-[120px]" />
+                    )}
+                    <input type="text" required value={resTitle} onChange={e => setResTitle(e.target.value)} placeholder="Title" className="w-24 bg-slate-50 border border-slate-200 rounded px-2 py-1.5 text-[10px] outline-none focus:border-[#9333EA]" />
+                    <button type="submit" disabled={uploadingFile} className="bg-[#020F33] text-white px-3 py-1.5 rounded hover:bg-[#9333EA] transition-colors"><Plus size={14}/></button>
+                  </form>
+                </div>
+
+                {/* RICH MULTI-TAB NOTES AREA */}
+                <div className={`${mobileActiveTab === 'notes' ? 'flex' : 'hidden lg:flex'} flex-1 flex-col bg-white overflow-hidden`}>
+                  <div className="flex items-center bg-slate-100 overflow-x-auto border-b border-slate-200 custom-scrollbar shrink-0">
+                    {notes.map(note => (
+                      <div key={note.id} 
+                        onClick={() => setActiveNoteId(note.id)}
+                        onDoubleClick={() => renameNote(note.id)}
+                        className={`group flex items-center gap-1.5 px-3.5 py-2.5 cursor-pointer border-r border-slate-200 min-w-max transition-colors
+                          ${activeNoteId === note.id ? 'bg-white border-t-2 border-t-[#9333EA] text-[#020F33]' : 'text-slate-500 hover:bg-slate-50 border-t-2 border-t-transparent'}`}
+                      >
+                        <span className="text-[11px] font-black">{note.title}</span>
+                        {activeNoteId === note.id && (
+                          <button onClick={(e) => { e.stopPropagation(); renameNote(note.id); }} className="text-slate-300 hover:text-[#9333EA]">
+                            <Edit2 size={10} />
+                          </button>
+                        )}
+                        {notes.length > 1 && (
+                          <button onClick={(e) => deleteNote(note.id, e)} className="opacity-100 lg:opacity-0 lg:group-hover:opacity-100 text-slate-300 hover:text-rose-500">
+                            <Trash2 size={11} />
+                          </button>
+                        )}
+                      </div>
+                    ))}
+                    <button onClick={addNewNote} className="px-3.5 py-2.5 text-slate-400 hover:text-[#9333EA] hover:bg-slate-50 transition-colors">
+                      <Plus size={14} />
+                    </button>
+                    
+                    <div className="ml-auto px-2.5 shrink-0">
+                      <button onClick={saveTopicNotes} disabled={savingContent} className="text-[10px] font-bold bg-[#020F33] text-white px-3 py-1.5 rounded hover:bg-[#9333EA] shadow-sm">
+                        {savingContent ? 'Saving...' : 'Save Notes'}
+                      </button>
+                    </div>
+                  </div>
+
+                  {notes.map(note => note.id === activeNoteId && (
+                    <RichEditor 
+                      key={note.id} 
+                      initialHtml={note.body} 
+                      onChange={updateActiveNoteBody} 
+                      onToggleCalc={() => setShowCalculator(!showCalculator)} 
+                    />
+                  ))}
+                </div>
+
+              </div>
+              
+              {/* FLOATING CALCULATOR */}
+              {showCalculator && (
+                <div className="fixed lg:absolute right-4 bottom-6 lg:right-[420px] xl:right-[470px] lg:bottom-10 bg-white/95 backdrop-blur-md border border-slate-200 shadow-2xl rounded-2xl p-4 w-64 z-50 animate-in slide-in-from-bottom-10 fade-in duration-200">
+                  <FloatingCalculator onClose={() => setShowCalculator(false)} />
+                </div>
+              )}
+
+            </div>
+          </>
+        )}
+      </div>
+      
+    </div>
+  );
+}
+
+// ================= FLOATING CALCULATOR UI =================
+function FloatingCalculator({ onClose }: { onClose: () => void }) {
+  const [calcInput, setCalcInput] = useState('');
+  const handleBtn = (btn: string) => {
+    if (btn === 'C') setCalcInput('');
+    else if (btn === '=') {
+      try {
+        const sanitized = calcInput.replace(/[^0-9+\-*/().]/g, '');
+        if (sanitized) setCalcInput(Function(`"use strict"; return (${sanitized})`)().toString());
+      } catch(e) { setCalcInput('Error'); }
+    } else setCalcInput(prev => prev === 'Error' ? btn : prev + btn);
+  };
+  const buttons = ['C', '(', ')', '/', '7', '8', '9', '*', '4', '5', '6', '-', '1', '2', '3', '+', '0', '.', '='];
+  return (
+    <div>
+      <div className="flex justify-between items-center mb-3">
+        <h4 className="text-xs font-black text-slate-500 flex items-center gap-1"><Calculator size={14}/> Calculator</h4>
+        <button onClick={onClose} className="text-slate-400 hover:text-rose-500"><X size={14}/></button>
+      </div>
+      <div className="bg-slate-100 rounded-xl p-3 mb-3 text-right text-lg font-black text-[#020F33] overflow-hidden truncate h-12 flex items-center justify-end">{calcInput || '0'}</div>
+      <div className="grid grid-cols-4 gap-2">
+        {buttons.map(btn => (
+          <button key={btn} onClick={() => handleBtn(btn)} className={`py-2 rounded-lg font-bold text-sm active:scale-95 ${btn === '=' ? 'col-span-2 bg-[#9333EA] text-white' : btn === 'C' ? 'text-rose-500 bg-rose-50' : ['/','*','-','+'].includes(btn) ? 'text-indigo-500 bg-indigo-50' : 'bg-white border text-slate-700 shadow-sm'}`}>{btn}</button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ================= CUSTOM RICH TEXT EDITOR COMPONENT =================
+function RichEditor({ initialHtml, onChange, onToggleCalc }: { initialHtml: string, onChange: (html: string) => void, onToggleCalc: () => void }) {
+  const editorRef = useRef<HTMLDivElement>(null);
+  const [showSymbols, setShowSymbols] = useState(false);
+
+  useEffect(() => {
+    if (editorRef.current && editorRef.current.innerHTML !== initialHtml) editorRef.current.innerHTML = initialHtml;
+  }, []);
+
+  const handleFormat = (e: React.MouseEvent, cmd: string, val: string | undefined = undefined) => {
+    e.preventDefault(); 
+    document.execCommand(cmd, false, val);
+    if(editorRef.current) { editorRef.current.focus(); onChange(editorRef.current.innerHTML); }
+  };
+
+  const insertSymbol = (e: React.MouseEvent, sym: string) => {
+    e.preventDefault(); document.execCommand('insertText', false, sym);
+    if(editorRef.current) onChange(editorRef.current.innerHTML);
+    setShowSymbols(false);
+  };
+
+  return (
+    <div className="flex flex-col flex-1 overflow-hidden">
+      <div className="bg-slate-50 border-b border-slate-100 p-2 flex flex-wrap items-center gap-1 shadow-sm relative z-10 shrink-0">
+        <button onMouseDown={(e) => handleFormat(e, 'bold')} className="p-1.5 hover:bg-slate-200 rounded text-slate-700 active:bg-slate-300"><Bold size={14}/></button>
+        <button onMouseDown={(e) => handleFormat(e, 'italic')} className="p-1.5 hover:bg-slate-200 rounded text-slate-700 active:bg-slate-300"><Italic size={14}/></button>
+        <div className="w-px h-4 bg-slate-300 mx-1"></div>
+        <button onMouseDown={(e) => handleFormat(e, 'insertUnorderedList')} className="p-1.5 hover:bg-slate-200 rounded text-slate-700 active:bg-slate-300"><List size={14}/></button>
+        <button onMouseDown={(e) => handleFormat(e, 'insertOrderedList')} className="p-1.5 hover:bg-slate-200 rounded text-slate-700 active:bg-slate-300"><ListOrdered size={14}/></button>
+        <div className="w-px h-4 bg-slate-300 mx-1"></div>
+        <select onChange={(e) => { document.execCommand('fontSize', false, e.target.value); if(editorRef.current) { editorRef.current.focus(); onChange(editorRef.current.innerHTML); } }} className="text-[10px] font-bold border border-slate-200 rounded px-1.5 py-1 bg-white outline-none text-slate-700" defaultValue="3">
+          <option value="2">Small</option><option value="3">Normal</option><option value="5">Large</option><option value="6">Heading</option>
+        </select>
+        <div className="relative group flex items-center">
+          <button onMouseDown={(e) => e.preventDefault()} className="p-1.5 hover:bg-slate-200 rounded text-slate-700 flex items-center pointer-events-none relative z-10"><Baseline size={14}/></button>
+          <input type="color" onMouseDown={(e) => e.preventDefault()} onChange={(e) => handleFormat(e as any, 'foreColor', e.target.value)} className="absolute opacity-0 inset-0 w-full h-full cursor-pointer z-20" />
+        </div>
+        <div className="w-px h-4 bg-slate-300 mx-1"></div>
+        <div className="relative">
+          <button onMouseDown={(e) => { e.preventDefault(); setShowSymbols(!showSymbols); }} className={`p-1.5 rounded text-slate-700 ${showSymbols ? 'bg-slate-200' : 'hover:bg-slate-200'}`}><Sigma size={14}/></button>
+          {showSymbols && (
+            <div className="absolute top-full left-0 mt-1 bg-white border border-slate-200 shadow-xl rounded-lg p-2 grid grid-cols-4 gap-1 z-50 w-36">
+              {['+', '-', '×', '÷', '=', '≠', '≈', '>', '<', '±', '√', 'π', 'θ', '∑', '∫', '∞'].map(sym => (
+                <button key={sym} onMouseDown={(e) => insertSymbol(e, sym)} className="hover:bg-slate-100 rounded text-xs py-1.5 text-center font-black text-slate-700">{sym}</button>
+              ))}
+            </div>
+          )}
+        </div>
+        <button onClick={onToggleCalc} className="ml-auto p-1.5 bg-[#9333EA]/10 hover:bg-[#9333EA]/20 border border-[#9333EA]/30 rounded-lg text-[#9333EA] font-bold flex items-center gap-1.5"><Calculator size={14}/> <span className="text-[10px]">Open Calc</span></button>
+      </div>
+      <div ref={editorRef} contentEditable onInput={(e) => onChange(e.currentTarget.innerHTML)} className="flex-1 overflow-y-auto p-4 lg:p-6 bg-[#FDFCF7] outline-none text-slate-800 text-sm leading-relaxed empty:before:content-[attr(data-placeholder)] empty:before:text-slate-400 empty:before:cursor-text custom-scrollbar" style={{ minHeight: '200px' }} data-placeholder="Type your LMS notes here..." />
     </div>
   );
 }
