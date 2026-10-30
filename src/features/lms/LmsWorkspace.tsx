@@ -11,7 +11,10 @@ import {
 } from 'lucide-react';
 
 export default function LmsWorkspace() {
-  const { id } = useParams();
+  // === FIX: Safely extract ID from route params ===
+  const params = useParams();
+  const id = params.id || params.courseId;
+
   const [course, setCourse] = useState<any>(null);
   const [modules, setModules] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -44,10 +47,14 @@ export default function LmsWorkspace() {
   const [file, setFile] = useState<File | null>(null);
 
   useEffect(() => {
-    fetchCourseData();
+    if (id) {
+      fetchCourseData();
+    }
   }, [id]);
 
   const fetchCourseData = async () => {
+    if (!id) return;
+
     setLoading(true);
     try {
       const { data: c } = await supabase.from('lms_courses').select('*').eq('id', id).single();
@@ -73,6 +80,7 @@ export default function LmsWorkspace() {
 
   // ================= MODULE & TOPIC CRUD =================
   const addModule = async () => {
+    if (!id) return;
     const title = prompt("Enter Module / Phase Name:");
     if (!title) return;
     await supabase.from('lms_modules').insert([{ course_id: id, title, order_index: modules.length }]);
@@ -209,7 +217,7 @@ export default function LmsWorkspace() {
 
   const handleAddResource = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!resTitle || !resUrl) return;
+    if (!resTitle || !resUrl || !id) return;
     const { data: { user } } = await supabase.auth.getUser();
     
     const newRes = { user_id: user?.id, course_id: id, topic_id: activeTopic.id, title: resTitle, resource_type: resType, url: resUrl };
