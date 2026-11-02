@@ -149,7 +149,39 @@ export default function AlHikmahWorkspace() {
 
   return (
     <div className="min-h-[100dvh] bg-[#FDFCF7] flex flex-col font-sans overflow-hidden relative pb-24">
-      {/* ... (Top Navbars remain unchanged) ... */}
+      {/* ================= MOBILE & TABLET TOP HEADER ================= */}
+      <div className="lg:hidden flex flex-col bg-white border-b border-emerald-100/50 z-30 shadow-sm shrink-0">
+        <div className="flex items-center justify-between px-4 py-3">
+          <div className="flex items-center gap-3">
+            <button onClick={() => setIsSidebarOpen(true)} className="p-1.5 -ml-1.5 text-emerald-700 hover:bg-emerald-50 rounded-lg">
+              <Menu size={22} />
+            </button>
+            <div className="flex items-center gap-2">
+              <Moon size={18} className="text-emerald-500 fill-emerald-500/20" /> 
+              <h1 className="text-base font-black text-emerald-950 leading-tight">Al-Hikmah</h1>
+            </div>
+          </div>
+          <Link to="/" className="text-xs font-bold text-emerald-600 bg-emerald-50 px-3 py-1.5 rounded-lg flex items-center gap-1">
+            <ArrowLeft size={14} /> Back
+          </Link>
+        </div>
+        
+        <div className="flex overflow-x-auto hide-scrollbar px-2 pb-2 gap-1 bg-[#FDFCF7] border-t border-emerald-50">
+          {[
+            { id: 'quran', name: 'Al-Quran', icon: <Book size={14} /> },
+            { id: 'hadith', name: 'Hadith', icon: <BookOpen size={14} /> },
+            { id: 'hifz', name: 'Hifz Tracker', icon: <BarChart2 size={14} /> },
+            { id: 'library', name: 'Library', icon: <ScrollText size={14} /> },
+            { id: 'journal', name: 'Journal', icon: <PenTool size={14} /> },
+          ].map(tab => (
+            <button key={tab.id} onClick={() => setActiveTab(tab.id as any)} className={`flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold shrink-0 transition-all ${activeTab === tab.id ? 'bg-emerald-600 text-white shadow-sm' : 'text-emerald-700/70 hover:bg-emerald-100/50'}`}>
+              {tab.icon} {tab.name}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* ================= DESKTOP TOP NAVBAR ================= */}
       <div className="hidden lg:flex bg-white border-b border-emerald-100/50 px-6 py-4 justify-between items-center sticky top-0 z-30 shadow-sm shrink-0">
         <div className="flex items-center gap-4">
           <Link to="/" className="w-10 h-10 rounded-full bg-emerald-50 text-emerald-600 flex items-center justify-center hover:bg-emerald-100 transition-colors">
@@ -162,26 +194,45 @@ export default function AlHikmahWorkspace() {
             <p className="text-[10px] font-bold text-emerald-600/70 uppercase tracking-widest mt-0.5">Deen & Knowledge Workspace</p>
           </div>
         </div>
+        <div className="flex bg-emerald-50/50 border border-emerald-100 rounded-2xl p-1">
+          {[
+            { id: 'quran', name: 'Al-Quran', icon: <Book size={14} /> },
+            { id: 'hadith', name: 'Hadith', icon: <BookOpen size={14} /> },
+            { id: 'hifz', name: 'Hifz Tracker', icon: <BarChart2 size={14} /> },
+            { id: 'library', name: 'Library', icon: <ScrollText size={14} /> },
+            { id: 'journal', name: 'Journal', icon: <PenTool size={14} /> },
+          ].map(tab => (
+            <button key={tab.id} onClick={() => setActiveTab(tab.id as any)} className={`flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs font-bold transition-all ${activeTab === tab.id ? 'bg-emerald-600 text-white shadow-md' : 'text-emerald-700/60 hover:text-emerald-700 hover:bg-emerald-100/50'}`}>
+              {tab.icon} {tab.name}
+            </button>
+          ))}
+        </div>
       </div>
 
+      {/* ================= MAIN CONTENT AREA ================= */}
       <div className="flex-1 flex overflow-hidden relative">
         {activeTab === 'quran' && (
           <div className="flex-1 flex h-full relative">
             
-            {/* Sidebar Surahs */}
-            <div className={`hidden lg:flex w-80 bg-white border-r border-emerald-100/50 flex-col h-full shrink-0`}>
-              <div className="p-4 border-b border-emerald-50">
-                <div className="bg-[#FDFCF7] border border-emerald-100 rounded-xl px-3 py-2 flex items-center gap-2">
+            {/* Sidebar Surahs (Desktop & Mobile Drawer) */}
+            {isSidebarOpen && (
+              <div className="fixed inset-0 bg-emerald-950/40 backdrop-blur-sm z-40 lg:hidden" onClick={() => setIsSidebarOpen(false)} />
+            )}
+            
+            <div className={`fixed inset-y-0 left-0 z-50 w-72 md:w-80 bg-white border-r border-emerald-100/50 flex flex-col h-full transform transition-transform duration-300 ease-in-out lg:relative lg:translate-x-0 ${isSidebarOpen ? 'translate-x-0 shadow-2xl' : '-translate-x-full'}`}>
+              <div className="p-4 border-b border-emerald-50 lg:border-none flex justify-between items-center bg-white">
+                <div className="bg-[#FDFCF7] border border-emerald-100 rounded-xl px-3 py-2 flex items-center gap-2 flex-1">
                   <Search size={16} className="text-emerald-300" />
                   <input type="text" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} placeholder="Search Surah..." className="bg-transparent border-none outline-none text-sm w-full text-emerald-900" />
                 </div>
+                <button onClick={() => setIsSidebarOpen(false)} className="lg:hidden ml-2 p-2 text-emerald-400 hover:bg-emerald-50 rounded-lg"><X size={20}/></button>
               </div>
               <div className="flex-1 overflow-y-auto custom-scrollbar p-2">
                 {loadingSurahs ? (
                   <div className="flex justify-center p-10"><Loader2 className="animate-spin text-emerald-400" /></div>
                 ) : (
                   filteredSurahs.map(surah => (
-                    <div key={surah.id} onClick={() => setSelectedSurah(surah)} className={`p-2.5 rounded-xl flex items-center justify-between cursor-pointer group transition-colors border ${selectedSurah?.id === surah.id ? 'bg-emerald-50 border-emerald-200' : 'border-transparent hover:bg-emerald-50/50'}`}>
+                    <div key={surah.id} onClick={() => { setSelectedSurah(surah); setIsSidebarOpen(false); }} className={`p-2.5 rounded-xl flex items-center justify-between cursor-pointer group transition-colors border ${selectedSurah?.id === surah.id ? 'bg-emerald-50 border-emerald-200' : 'border-transparent hover:bg-emerald-50/50'}`}>
                       <div className="flex items-center gap-3">
                         <div className={`w-7 h-7 rounded-lg flex items-center justify-center text-xs font-bold shrink-0 ${selectedSurah?.id === surah.id ? 'bg-emerald-600 text-white' : 'bg-emerald-100/50 text-emerald-600'}`}>{surah.id}</div>
                         <div className="overflow-hidden">
@@ -218,6 +269,7 @@ export default function AlHikmahWorkspace() {
                           const ayahKey = `${ayah.surah_id}-${ayah.ayah_number}`;
                           const isPlaying = playingAyah === ayahKey;
                           const inTargetQueue = targetQueue.some(a => a.id === ayah.id);
+                          const isMemorized = localMemorized[ayahKey];
                           
                           let displayArabicText = ayah.text_arabic;
                           if (ayah.surah_id !== 1 && ayah.ayah_number === 1 && displayArabicText.startsWith("بِسْمِ ٱللَّهِ ٱلرَّحْمَٰنِ ٱلرَّحِيمِ ")) {
@@ -225,7 +277,7 @@ export default function AlHikmahWorkspace() {
                           }
 
                           return (
-                            <div key={ayah.id} id={`ayah-${ayahKey}`} className={`bg-white p-4 rounded-2xl border transition-all shadow-sm flex flex-col gap-3 ${isPlaying ? 'border-emerald-400 ring-2 ring-emerald-50' : 'border-emerald-100/50'} ${inTargetQueue ? 'bg-indigo-50/30 border-indigo-200' : ''}`}>
+                            <div key={ayah.id} id={`ayah-${ayahKey}`} className={`bg-white p-4 rounded-2xl border transition-all shadow-sm flex flex-col gap-3 ${isPlaying ? 'border-emerald-400 ring-2 ring-emerald-50' : 'border-emerald-100/50 hover:border-emerald-200'} ${inTargetQueue ? 'bg-indigo-50/30 border-indigo-200' : ''}`}>
                               <div className="flex justify-between items-start gap-4">
                                 <div className={`w-6 h-6 shrink-0 rounded-full border-2 border-[#FDFCF7] flex items-center justify-center text-[10px] font-black ${isPlaying ? 'bg-emerald-600 text-white' : 'bg-emerald-100 text-emerald-600'}`}>
                                   {ayah.ayah_number}
@@ -235,15 +287,19 @@ export default function AlHikmahWorkspace() {
                                 </p>
                               </div>
                               <div className="w-full h-px bg-emerald-50/80 my-1"></div>
-                              <div className="flex flex-col sm:flex-row justify-between gap-3">
-                                <p className="text-sm text-emerald-800 leading-relaxed font-medium">{ayah.text_bengali}</p>
-                                <div className="flex gap-1.5 shrink-0">
+                              <div className="flex flex-col sm:flex-row justify-between gap-3 sm:items-end">
+                                <p className="text-sm text-emerald-800 leading-relaxed font-medium flex-1">{ayah.text_bengali}</p>
+                                <div className="flex flex-wrap gap-1.5 shrink-0">
                                   <button onClick={() => { if(playingAyah === ayahKey) stopAudio(); else playSingleAudio(ayah.surah_id, ayah.ayah_number, false); }} className="text-[10px] font-bold px-2.5 py-1.5 rounded-lg flex items-center gap-1 bg-emerald-50 text-emerald-600 hover:bg-emerald-100">
                                     {playingAyah === ayahKey && !isQueuePlaying ? <PauseCircle size={12}/> : <PlayCircle size={12}/>} Play
                                   </button>
                                   <button onClick={() => toggleQueueAyah(ayah)} className={`text-[10px] font-bold px-2.5 py-1.5 rounded-lg flex items-center gap-1 transition-all ${inTargetQueue ? 'bg-indigo-600 text-white' : 'bg-slate-50 text-slate-500 hover:bg-slate-100'}`}>
                                     {inTargetQueue ? <CheckCircle2 size={12}/> : <PlusCircle size={12}/>} 
-                                    {inTargetQueue ? 'Added to Target' : 'Target Hifz'}
+                                    {inTargetQueue ? 'Targeted' : 'Target Hifz'}
+                                  </button>
+                                  <button onClick={() => setLocalMemorized(prev => ({...prev, [ayahKey]: !prev[ayahKey]}))} className={`text-[10px] font-bold px-2.5 py-1.5 rounded-lg flex items-center gap-1 transition-all ${isMemorized ? 'bg-emerald-600 text-white' : 'bg-slate-50 text-slate-500 hover:bg-slate-100 lg:opacity-0 lg:group-hover:opacity-100'}`}>
+                                    {isMemorized ? <BookmarkCheck size={12}/> : <Bookmark size={12}/>} 
+                                    {isMemorized ? 'Memorized' : 'Mark Hifz'}
                                   </button>
                                 </div>
                               </div>
@@ -271,11 +327,11 @@ export default function AlHikmahWorkspace() {
                 
                 <div className="flex items-center justify-between gap-4">
                   <div className="flex-1 flex items-center gap-2">
-                    <div className="bg-indigo-50 text-indigo-700 px-3 py-1.5 rounded-lg text-xs font-bold">
-                      {targetQueue.length} Ayahs Selected
+                    <div className="bg-indigo-50 text-indigo-700 px-3 py-1.5 rounded-lg text-xs font-bold shrink-0">
+                      {targetQueue.length} Ayahs
                     </div>
                     {isQueuePlaying && (
-                      <div className="text-[10px] font-bold text-emerald-600 animate-pulse bg-emerald-50 px-2 py-1 rounded">
+                      <div className="text-[10px] font-bold text-emerald-600 animate-pulse bg-emerald-50 px-2 py-1 rounded truncate">
                         Playing: {currentQueueIndex + 1}/{targetQueue.length}
                       </div>
                     )}
@@ -298,16 +354,24 @@ export default function AlHikmahWorkspace() {
                     </div>
                     <button 
                       onClick={toggleQueuePlayback}
-                      className={`flex items-center gap-1.5 px-5 py-2 rounded-xl text-xs font-black transition-all shadow-md ${isQueuePlaying ? 'bg-rose-500 text-white hover:bg-rose-600' : 'bg-indigo-600 text-white hover:bg-indigo-700'}`}
+                      className={`flex items-center gap-1.5 px-4 lg:px-5 py-2 rounded-xl text-xs font-black transition-all shadow-md shrink-0 ${isQueuePlaying ? 'bg-rose-500 text-white hover:bg-rose-600' : 'bg-indigo-600 text-white hover:bg-indigo-700'}`}
                     >
                       {isQueuePlaying ? <PauseCircle size={14} /> : <PlayCircle size={14} />}
-                      {isQueuePlaying ? `Stop (Loop ${currentLoop}/${loopLimit})` : 'Start Takrar'}
+                      {isQueuePlaying ? `Stop (${currentLoop}/${loopLimit})` : 'Start'}
                     </button>
                   </div>
                 </div>
               </div>
             )}
             
+          </div>
+        )}
+
+        {activeTab !== 'quran' && (
+          <div className="flex-1 flex flex-col items-center justify-center text-emerald-300 bg-[#FDFCF7]">
+            <Moon size={64} className="mb-4 opacity-20" />
+            <h2 className="text-xl font-bold text-emerald-700 capitalize">{activeTab} Module</h2>
+            <p className="text-sm text-emerald-600/60 mt-2 text-center max-w-xs px-4">Database connected. Full UI & Logic will be built here next.</p>
           </div>
         )}
       </div>
