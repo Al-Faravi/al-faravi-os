@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { supabase } from '../../lib/supabase';
 import { 
   Book, BookOpen, ScrollText, PenTool, 
-  BarChart2, ArrowLeft, Search, Bookmark, 
+  BarChart2, ArrowLeft, Search, Bookmark, BookmarkCheck,
   PlayCircle, PauseCircle, CheckCircle2, 
   Moon, Loader2, Menu, X, ListMusic
 } from 'lucide-react';
@@ -28,6 +28,9 @@ export default function AlHikmahWorkspace() {
   const [isContinuousPlay, setIsContinuousPlay] = useState(false);
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
+  // --- Local UI State for Memorized (Temporarily visual) ---
+  const [localMemorized, setLocalMemorized] = useState<Record<string, boolean>>({});
+
   // ১. পেজ লোড হলে ডাটাবেস থেকে ১১৪টি সূরা নিয়ে আসা
   useEffect(() => {
     const fetchSurahs = async () => {
@@ -50,7 +53,6 @@ export default function AlHikmahWorkspace() {
       const { data } = await supabase.from('quran_ayahs').select('*').eq('surah_id', selectedSurah.id).order('ayah_number', { ascending: true });
         
       if (data) {
-        // ফ্রন্টএন্ডে ডুপ্লিকেট আটকানোর এক্সট্রা লেয়ার
         const uniqueAyahs = Array.from(new Map(data.map(item => [item.ayah_number, item])).values());
         setAyahs(uniqueAyahs);
       }
@@ -59,7 +61,7 @@ export default function AlHikmahWorkspace() {
     fetchAyahs();
   }, [selectedSurah]);
 
-  // ৩. স্মার্ট অডিও কন্ট্রোলার (Singular & Continuous Mode)
+  // ৩. স্মার্ট অডিও কন্ট্রোলার
   const stopAudio = () => {
     if (audioRef.current) {
       audioRef.current.pause();
@@ -70,7 +72,7 @@ export default function AlHikmahWorkspace() {
   };
 
   const playAudio = (surahId: number, ayahNum: number, continuous: boolean) => {
-    stopAudio(); // আগের অডিও থামিয়ে দাও
+    stopAudio(); 
 
     const sId = String(surahId).padStart(3, '0');
     const aId = String(ayahNum).padStart(3, '0');
@@ -83,12 +85,9 @@ export default function AlHikmahWorkspace() {
     
     audio.play();
     
-    // অডিও শেষ হলে কী করবে?
     audio.onended = () => {
       if (continuous && selectedSurah && ayahNum < selectedSurah.total_ayahs) {
-        // কন্টিনিউয়াস মোড হলে পরের আয়াতটি প্লে করো
         playAudio(surahId, ayahNum + 1, true);
-        // স্ক্রল করে পরের আয়াতটি সামনে আনার লজিক
         const nextAyahEl = document.getElementById(`ayah-${surahId}-${ayahNum + 1}`);
         if (nextAyahEl) nextAyahEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
       } else {
@@ -112,6 +111,10 @@ export default function AlHikmahWorkspace() {
     } else if (selectedSurah) {
       playAudio(selectedSurah.id, 1, true);
     }
+  };
+
+  const handleToggleMemorized = (ayahKey: string) => {
+    setLocalMemorized(prev => ({ ...prev, [ayahKey]: !prev[ayahKey] }));
   };
 
   const filteredSurahs = surahs.filter(s => 
@@ -147,7 +150,6 @@ export default function AlHikmahWorkspace() {
           </Link>
         </div>
         
-        {/* Mobile Horizontal Tabs */}
         <div className="flex overflow-x-auto hide-scrollbar px-2 pb-2 gap-1 bg-[#FDFCF7] border-t border-emerald-50">
           {tabs.map(tab => (
             <button key={tab.id} onClick={() => setActiveTab(tab.id as any)} className={`flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold shrink-0 transition-all ${activeTab === tab.id ? 'bg-emerald-600 text-white shadow-sm' : 'text-emerald-700/70 hover:bg-emerald-100/50'}`}>
@@ -186,11 +188,6 @@ export default function AlHikmahWorkspace() {
         {activeTab === 'quran' && (
           <div className="flex-1 flex h-full">
             
-            {/* Mobile Drawer Overlay */}
-            {isSidebarOpen && (
-              <div className="fixed inset-0 bg-emerald-950/40 backdrop-blur-sm z-40 lg:hidden" onClick={() => setIsSidebarOpen(false)} />
-            )}
-
             {/* 1. Surah List Sidebar (Off-canvas on mobile) */}
             <div className={`fixed inset-y-0 left-0 z-50 w-72 md:w-80 bg-white border-r border-emerald-100/50 flex flex-col h-full transform transition-transform duration-300 ease-in-out lg:relative lg:translate-x-0 ${isSidebarOpen ? 'translate-x-0 shadow-2xl' : '-translate-x-full'}`}>
               <div className="p-4 border-b border-emerald-50 lg:border-none flex justify-between items-center bg-white">
@@ -201,24 +198,24 @@ export default function AlHikmahWorkspace() {
                 <button onClick={() => setIsSidebarOpen(false)} className="lg:hidden ml-2 p-2 text-emerald-400 hover:bg-emerald-50 rounded-lg"><X size={20}/></button>
               </div>
               
-              <div className="flex-1 overflow-y-auto custom-scrollbar p-2 space-y-1">
+              <div className="flex-1 overflow-y-auto custom-scrollbar p-2 space-y-0.5">
                 {loadingSurahs ? (
                   <div className="flex justify-center p-10"><Loader2 className="animate-spin text-emerald-400" /></div>
                 ) : (
                   filteredSurahs.map(surah => (
                     <div key={surah.id} 
                       onClick={() => { setSelectedSurah(surah); setIsSidebarOpen(false); }}
-                      className={`p-3 rounded-xl flex items-center justify-between cursor-pointer group transition-colors border ${selectedSurah?.id === surah.id ? 'bg-emerald-50 border-emerald-200' : 'border-transparent hover:bg-emerald-50/50'}`}>
+                      className={`p-2.5 rounded-xl flex items-center justify-between cursor-pointer group transition-colors border ${selectedSurah?.id === surah.id ? 'bg-emerald-50 border-emerald-200' : 'border-transparent hover:bg-emerald-50/50'}`}>
                       <div className="flex items-center gap-3">
-                        <div className={`w-8 h-8 rounded-lg flex items-center justify-center text-xs font-bold shrink-0 ${selectedSurah?.id === surah.id ? 'bg-emerald-600 text-white' : 'bg-emerald-100/50 text-emerald-600'}`}>
+                        <div className={`w-7 h-7 rounded-lg flex items-center justify-center text-xs font-bold shrink-0 ${selectedSurah?.id === surah.id ? 'bg-emerald-600 text-white' : 'bg-emerald-100/50 text-emerald-600'}`}>
                           {surah.id}
                         </div>
                         <div className="overflow-hidden">
                           <h4 className="text-sm font-bold text-emerald-950 truncate">{surah.name_english}</h4>
-                          <p className="text-[10px] text-emerald-600/60 uppercase font-semibold truncate">{surah.revelation_type} • {surah.total_ayahs} Ayahs</p>
+                          <p className="text-[9px] text-emerald-600/60 uppercase font-bold truncate">{surah.revelation_type} • {surah.total_ayahs} Ayahs</p>
                         </div>
                       </div>
-                      <span className="text-lg text-emerald-800/80 font-arabic shrink-0 ml-2">{surah.name_arabic}</span>
+                      <span className="text-base text-emerald-800/80 font-arabic shrink-0 ml-2">{surah.name_arabic}</span>
                     </div>
                   ))
                 )}
@@ -230,30 +227,29 @@ export default function AlHikmahWorkspace() {
               {selectedSurah && (
                 <>
                   {/* Surah Header + Play All Button */}
-                  <div className="px-4 lg:px-8 py-4 lg:py-6 border-b border-emerald-100/50 bg-white flex flex-col md:flex-row justify-between items-start md:items-center gap-4 z-10 shadow-sm shrink-0">
+                  <div className="px-4 lg:px-6 py-3 lg:py-4 border-b border-emerald-100/50 bg-white flex flex-col md:flex-row justify-between items-start md:items-center gap-3 z-10 shadow-sm shrink-0">
                     <div>
-                      <h2 className="text-xl lg:text-2xl font-black text-emerald-950 flex items-center gap-2">
+                      <h2 className="text-lg lg:text-xl font-black text-emerald-950 flex items-center gap-2">
                         {selectedSurah.name_english} 
-                        <span className="font-arabic font-normal opacity-80 text-2xl lg:text-3xl pt-1">{selectedSurah.name_arabic}</span>
+                        <span className="font-arabic font-normal opacity-80 text-xl lg:text-2xl pt-1">{selectedSurah.name_arabic}</span>
                       </h2>
-                      <p className="text-xs font-bold text-emerald-600/60 mt-1">{selectedSurah.name_bengali} • {selectedSurah.total_ayahs} Ayahs • {selectedSurah.revelation_type}</p>
+                      <p className="text-[10px] font-bold text-emerald-600/60 mt-0.5">{selectedSurah.name_bengali} • {selectedSurah.total_ayahs} Ayahs • {selectedSurah.revelation_type}</p>
                     </div>
                     
-                    {/* Play Full Surah Button */}
                     <button 
                       onClick={toggleFullSurah}
-                      className={`flex items-center gap-2 w-full md:w-auto justify-center px-6 py-2.5 rounded-xl text-sm font-bold transition-all shadow-sm ${isContinuousPlay ? 'bg-rose-50 text-rose-600 border border-rose-200 hover:bg-rose-100' : 'bg-emerald-600 text-white hover:bg-emerald-700'}`}
+                      className={`flex items-center gap-2 w-full md:w-auto justify-center px-4 py-2 rounded-xl text-xs font-bold transition-all shadow-sm ${isContinuousPlay ? 'bg-rose-50 text-rose-600 border border-rose-200 hover:bg-rose-100' : 'bg-emerald-600 text-white hover:bg-emerald-700'}`}
                     >
-                      {isContinuousPlay ? <PauseCircle size={18} /> : <ListMusic size={18} />} 
+                      {isContinuousPlay ? <PauseCircle size={16} /> : <ListMusic size={16} />} 
                       {isContinuousPlay ? 'Stop Playing Surah' : 'Play Full Surah'}
                     </button>
                   </div>
 
-                  {/* Ayahs Scrollable List */}
-                  <div className="flex-1 overflow-y-auto p-3 lg:p-8 custom-scrollbar relative">
+                  {/* Ayahs Scrollable List (Compact View) */}
+                  <div className="flex-1 overflow-y-auto p-3 lg:p-6 custom-scrollbar relative">
                     {selectedSurah.id !== 9 && (
-                      <div className="flex justify-center mb-6 lg:mb-8">
-                        <h2 className="text-2xl lg:text-3xl font-arabic text-emerald-800 opacity-90 py-2 lg:py-4" style={{ fontFamily: 'KFGQPC Uthman Taha Naskh, Traditional Arabic, serif' }}>
+                      <div className="flex justify-center mb-4 lg:mb-6">
+                        <h2 className="text-2xl font-arabic text-emerald-800 opacity-90 py-2" style={{ fontFamily: 'KFGQPC Uthman Taha Naskh, Traditional Arabic, serif' }}>
                           بِسْمِ اللَّهِ الرَّحْمَٰنِ الرَّحِيمِ
                         </h2>
                       </div>
@@ -262,10 +258,11 @@ export default function AlHikmahWorkspace() {
                     {loadingAyahs ? (
                       <div className="flex justify-center p-20"><Loader2 className="animate-spin text-emerald-400" size={32} /></div>
                     ) : (
-                      <div className="max-w-4xl mx-auto space-y-4 lg:space-y-6 pb-20">
+                      <div className="max-w-4xl mx-auto space-y-3 pb-20">
                         {ayahs.map(ayah => {
                           const ayahKey = `${ayah.surah_id}-${ayah.ayah_number}`;
                           const isPlaying = playingAyah === ayahKey;
+                          const isMemorized = localMemorized[ayahKey];
                           
                           let displayArabicText = ayah.text_arabic;
                           if (ayah.surah_id !== 1 && ayah.ayah_number === 1 && displayArabicText.startsWith("بِسْمِ ٱللَّهِ ٱلرَّحْمَٰنِ ٱلرَّحِيمِ ")) {
@@ -273,35 +270,40 @@ export default function AlHikmahWorkspace() {
                           }
 
                           return (
-                            <div key={ayah.id} id={`ayah-${ayahKey}`} className={`bg-white p-5 lg:p-8 rounded-2xl border transition-all duration-300 shadow-sm relative group ${isPlaying ? 'border-emerald-400 ring-4 ring-emerald-50 scale-[1.01]' : 'border-emerald-100/50 hover:border-emerald-200'}`}>
+                            <div key={ayah.id} id={`ayah-${ayahKey}`} className={`bg-white p-4 lg:p-5 rounded-2xl border transition-all duration-300 shadow-sm relative group flex flex-col gap-3 ${isPlaying ? 'border-emerald-400 ring-2 ring-emerald-50' : 'border-emerald-100/50 hover:border-emerald-200'} ${isMemorized ? 'bg-emerald-50/30' : ''}`}>
                               
-                              <div className={`absolute -left-2 lg:-left-4 top-4 lg:top-6 w-7 h-7 lg:w-8 lg:h-8 rounded-full border-2 lg:border-4 border-[#FDFCF7] flex items-center justify-center text-[9px] lg:text-[10px] font-black transition-colors ${isPlaying ? 'bg-emerald-600 text-white' : 'bg-emerald-100 text-emerald-600'}`}>
-                                {ayah.ayah_number}
-                              </div>
-                              
-                              <div className="flex flex-col gap-4 lg:gap-6">
-                                <p className="text-2xl lg:text-4xl text-right font-arabic leading-[2.2] lg:leading-[2.2] text-emerald-950" style={{ fontFamily: 'KFGQPC Uthman Taha Naskh, Traditional Arabic, serif' }}>
+                              <div className="flex justify-between items-start gap-4">
+                                <div className={`w-6 h-6 shrink-0 rounded-full border-2 border-[#FDFCF7] flex items-center justify-center text-[10px] font-black transition-colors ${isPlaying ? 'bg-emerald-600 text-white' : 'bg-emerald-100 text-emerald-600'}`}>
+                                  {ayah.ayah_number}
+                                </div>
+                                <p className="text-2xl lg:text-3xl text-right font-arabic leading-[1.8] text-emerald-950 flex-1" style={{ fontFamily: 'KFGQPC Uthman Taha Naskh, Traditional Arabic, serif' }}>
                                   {displayArabicText}
                                 </p>
-                                
-                                <div className="w-full h-px bg-emerald-50"></div>
-                                
+                              </div>
+                              
+                              <div className="w-full h-px bg-emerald-50/80 my-1"></div>
+                              
+                              <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-3">
                                 <div>
-                                  <p className="text-sm lg:text-base text-emerald-800 leading-relaxed font-medium">
+                                  <p className="text-sm text-emerald-800 leading-relaxed font-medium">
                                     {ayah.text_bengali}
                                   </p>
                                 </div>
-                              </div>
-                              
-                              <div className="mt-4 lg:mt-6 flex flex-wrap gap-2">
-                                <button onClick={() => toggleAyahAudio(ayah.surah_id, ayah.ayah_number)} className={`text-xs font-bold px-3 lg:px-4 py-2 rounded-xl flex items-center gap-1.5 transition-all ${isPlaying && !isContinuousPlay ? 'bg-emerald-600 text-white shadow-md' : 'bg-emerald-50 text-emerald-600 hover:bg-emerald-100'}`}>
-                                  {isPlaying && !isContinuousPlay ? <PauseCircle size={14}/> : <PlayCircle size={14}/>} 
-                                  {isPlaying && !isContinuousPlay ? 'Pause' : 'Play Ayah'}
-                                </button>
                                 
-                                <button className="text-xs font-bold bg-slate-50 text-slate-500 px-3 lg:px-4 py-2 rounded-xl flex items-center gap-1.5 hover:bg-slate-100 lg:opacity-0 lg:group-hover:opacity-100 transition-opacity">
-                                  <Bookmark size={14}/> Memorized
-                                </button>
+                                <div className="flex flex-wrap gap-1.5 shrink-0">
+                                  <button onClick={() => toggleAyahAudio(ayah.surah_id, ayah.ayah_number)} className={`text-[10px] font-bold px-2.5 py-1.5 rounded-lg flex items-center gap-1 transition-all ${isPlaying && !isContinuousPlay ? 'bg-emerald-600 text-white shadow-md' : 'bg-emerald-50 text-emerald-600 hover:bg-emerald-100'}`}>
+                                    {isPlaying && !isContinuousPlay ? <PauseCircle size={12}/> : <PlayCircle size={12}/>} 
+                                    {isPlaying && !isContinuousPlay ? 'Pause' : 'Play'}
+                                  </button>
+                                  
+                                  <button 
+                                    onClick={() => handleToggleMemorized(ayahKey)}
+                                    className={`text-[10px] font-bold px-2.5 py-1.5 rounded-lg flex items-center gap-1 transition-all ${isMemorized ? 'bg-emerald-600 text-white' : 'bg-slate-50 text-slate-500 hover:bg-slate-100 lg:opacity-0 lg:group-hover:opacity-100'}`}
+                                  >
+                                    {isMemorized ? <BookmarkCheck size={12}/> : <Bookmark size={12}/>} 
+                                    {isMemorized ? 'Memorized' : 'Mark Hifz'}
+                                  </button>
+                                </div>
                               </div>
                             </div>
                           );
@@ -315,8 +317,16 @@ export default function AlHikmahWorkspace() {
           </div>
         )}
 
+        {/* === HIFZ TRACKER PLACEHOLDER === */}
+        {activeTab === 'hifz' && (
+           <div className="flex-1 p-8 overflow-y-auto">
+             <h2 className="text-2xl font-black text-emerald-950 mb-6">Hifz & Revision Tracker</h2>
+             <p className="text-emerald-600">Database connected. Hifz logging UI will be built here next.</p>
+           </div>
+        )}
+
         {/* অন্যান্য ট্যাবের জন্য Placeholder */}
-        {activeTab !== 'quran' && (
+        {activeTab !== 'quran' && activeTab !== 'hifz' && (
           <div className="flex-1 flex flex-col items-center justify-center text-emerald-300 bg-[#FDFCF7]">
             <Moon size={64} className="mb-4 opacity-20" />
             <h2 className="text-xl font-bold text-emerald-700 capitalize">{activeTab} Module</h2>
