@@ -5,9 +5,12 @@ import {
   BarChart2, ArrowLeft, Search, Bookmark, 
   PlayCircle, CheckCircle2, ChevronRight, Moon
 } from 'lucide-react';
+import QuranSeeder from './QuranSeeder';
 
 export default function AlHikmahWorkspace() {
   const [activeTab, setActiveTab] = useState<'quran' | 'hadith' | 'hifz' | 'library' | 'journal'>('quran');
+
+  <QuranSeeder />
 
   // ডামি ডাটা (UI দেখার জন্য, পরে ডাটাবেস থেকে আসবে)
   const dummySurahs = [
