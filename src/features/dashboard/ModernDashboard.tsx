@@ -261,7 +261,8 @@ export default function ModernDashboard() {
     { name: 'Vault', to: '/vault', icon: <FolderLock size={18} />, tint: 'text-slate-600 bg-slate-100 border-slate-200', hover: 'hover:border-slate-400' },
     { name: 'Dev Hub', to: '/github', icon: <GitBranch size={18} />, tint: 'text-slate-900 bg-slate-100 border-slate-200', hover: 'hover:border-slate-900' },
     { name: 'Snippets', to: '/snippets', icon: <Code2 size={18} />, tint: 'text-indigo-600 bg-indigo-50 border-indigo-100', hover: 'hover:border-indigo-400' },
-    { name: 'Job Tracker', to: '/jobs', icon: <Briefcase size={18} />, tint: 'text-emerald-600 bg-emerald-50 border-emerald-100', hover: 'hover:border-emerald-400' }
+    { name: 'Job Tracker', to: '/jobs', icon: <Briefcase size={18} />, tint: 'text-emerald-600 bg-emerald-50 border-emerald-100', hover: 'hover:border-emerald-400' },
+    { name: 'Al-Hikmah', to: '/al-hikmah', icon: <Moon size={20} className="text-emerald-600" />, bg: 'bg-emerald-50 hover:bg-emerald-100' },
   ];
 
   // --- Reusable Smart Course Component ---

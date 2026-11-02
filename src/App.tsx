@@ -22,6 +22,7 @@ import SubjectView from './features/bcs/SubjectView';
 import FamilyManager from './features/family/FamilyManager';
 import GithubHub from './features/github/GithubHub';
 import Settings from './features/dashboard/Settings';
+import AlHikmahWorkspace from './features/alhikmah/AlHikmahWorkspace';
 
 // Developer Tools
 import SnippetVault from './features/developer/SnippetVault';
@@ -150,6 +151,8 @@ export default function App() {
           
           {/* Vault / Storage */}
           <Route path="/vault" element={<VaultManager />} />
+
+          <Route path="/al-hikmah" element={<AlHikmahWorkspace />} />
           
           {/* Main Modules */}
           <Route path="/finance" element={<FinanceManager />} />
