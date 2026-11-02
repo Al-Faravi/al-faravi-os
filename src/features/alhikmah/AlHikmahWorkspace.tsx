@@ -3,14 +3,12 @@ import { Link } from 'react-router-dom';
 import { 
   Book, BookOpen, ScrollText, PenTool, 
   BarChart2, ArrowLeft, Search, Bookmark, 
-  PlayCircle, CheckCircle2, ChevronRight, Moon
+  PlayCircle, CheckCircle2, Moon
 } from 'lucide-react';
 import QuranSeeder from './QuranSeeder';
 
 export default function AlHikmahWorkspace() {
   const [activeTab, setActiveTab] = useState<'quran' | 'hadith' | 'hifz' | 'library' | 'journal'>('quran');
-
-  <QuranSeeder />
 
   // ডামি ডাটা (UI দেখার জন্য, পরে ডাটাবেস থেকে আসবে)
   const dummySurahs = [
@@ -95,6 +93,7 @@ export default function AlHikmahWorkspace() {
 
             {/* Ayah Reading Area */}
             <div className="flex-1 flex flex-col bg-[#FDFCF7]">
+              
               <div className="px-8 py-6 border-b border-emerald-100/50 bg-white flex justify-between items-center">
                 <div>
                   <h2 className="text-2xl font-black text-emerald-950">Surah Al-Mulk</h2>
@@ -106,6 +105,10 @@ export default function AlHikmahWorkspace() {
               </div>
 
               <div className="flex-1 overflow-y-auto p-8 custom-scrollbar">
+                
+                {/* === QURAN SEEDER (Temporary for Migration) === */}
+                <QuranSeeder />
+
                 {/* Dummy Ayah 1 */}
                 <div className="bg-white p-6 rounded-2xl border border-emerald-100/50 shadow-sm mb-6 group relative">
                   <div className="absolute -left-3 top-6 w-6 h-6 rounded-full bg-emerald-100 border-4 border-[#FDFCF7] flex items-center justify-center text-[9px] font-black text-emerald-600">1</div>
@@ -117,7 +120,7 @@ export default function AlHikmahWorkspace() {
                     <div className="w-full h-px bg-emerald-50"></div>
                     <div>
                       <p className="text-sm text-emerald-800 leading-relaxed font-medium mb-1">
-                        পুণ্যময় তিনি, যাঁর হাতে রাজত্ব। তিনি সবকিছুর ওপর সর্বশক্তিমান।
+                        পুণ্যময় তিনি, যাঁর হাতে রাজত্ব। তিনি সবকিছুর ওপর সর্বশক্তিমান।
                       </p>
                       <p className="text-xs text-emerald-600/60 italic">
                         Blessed is He in whose hand is dominion, and He is over all things competent.
@@ -130,6 +133,7 @@ export default function AlHikmahWorkspace() {
                     <button className="text-[10px] font-bold bg-slate-50 text-slate-500 px-3 py-1.5 rounded-lg flex items-center gap-1 hover:bg-slate-100"><PenTool size={12}/> Add Note</button>
                   </div>
                 </div>
+
               </div>
             </div>
           </div>
