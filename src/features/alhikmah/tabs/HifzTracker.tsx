@@ -18,19 +18,18 @@ export default function HifzTracker() {
   const [searchQuery, setSearchQuery] = useState('');
   const [stats, setStats] = useState({ memorized: 0, needsRevision: 0 });
 
-  // --- Voice Recording (Tasmee') States (Surah Level) ---
+  // --- Voice Recording (Tasmee') States ---
   const [isTasmeePanelOpen, setIsTasmeePanelOpen] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
+  const [isUploading, setIsUploading] = useState(false); // To show loading state while saving to DB
   
-  // Key = Surah ID
-  const [surahRecordings, setSurahRecordings] = useState<Record<number, { id: string, name: string, url: string, date: string }[]>>({});
+  const [surahRecordings, setSurahRecordings] = useState<Record<number, any[]>>({});
   const [playingRecord, setPlayingRecord] = useState<string | null>(null);
   
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
   const audioPlaybackRef = useRef<HTMLAudioElement | null>(null);
 
-  // ১. Fetch Hifz Data
   const fetchHifzData = async () => {
     setLoading(true);
     const { data: { user } } = await supabase.auth.getUser();
@@ -55,27 +54,44 @@ export default function HifzTracker() {
     fetchHifzData();
   }, []);
 
-  // ২. Fetch Ayahs for Selected Surah
+  // Fetch Ayahs & Recordings for Selected Surah
   useEffect(() => {
-    const fetchSpecificAyahs = async () => {
+    const fetchSpecificSurahData = async () => {
       if (!selectedSurah) {
         setIsTasmeePanelOpen(false);
         return;
       }
       setLoading(true);
+      
+      const { data: { user } } = await supabase.auth.getUser();
+      
+      // Fetch Ayahs
       const ayahNumbers = hifzRecords.filter(t => t.surah_id === selectedSurah.id).map(t => parseInt(t.ayah_range));
       const { data: ayahsData } = await supabase.from('quran_ayahs').select('*').eq('surah_id', selectedSurah.id).in('ayah_number', ayahNumbers).order('ayah_number', { ascending: true });
-
       if (ayahsData) {
         const uniqueAyahs = Array.from(new Map(ayahsData.map(item => [item.ayah_number, item])).values());
         setDisplayAyahs(uniqueAyahs);
       }
+
+      // Fetch Real Recordings from DB
+      if (user) {
+        const { data: recordingsData } = await supabase
+          .from('tasmee_recordings')
+          .select('*')
+          .eq('user_id', user.id)
+          .eq('surah_id', selectedSurah.id)
+          .order('created_at', { ascending: false });
+          
+        if (recordingsData) {
+          setSurahRecordings(prev => ({ ...prev, [selectedSurah.id]: recordingsData }));
+        }
+      }
+
       setLoading(false);
     };
-    fetchSpecificAyahs();
+    fetchSpecificSurahData();
   }, [selectedSurah, hifzRecords]);
 
-  // ৩. SRS Logic (Update Revision Date)
   const updateRevision = async (ayahNumber: number, quality: 'perfect' | 'good' | 'hard') => {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user || !selectedSurah) return;
@@ -98,7 +114,7 @@ export default function HifzTracker() {
     }));
   };
 
-  // ================= TASMEE' (VOICE RECORDING) SURAH LEVEL =================
+  // ================= TASMEE' REAL DATABASE CRUD =================
 
   const startRecording = async () => {
     if (!selectedSurah) return;
@@ -112,23 +128,52 @@ export default function HifzTracker() {
         if (event.data.size > 0) audioChunksRef.current.push(event.data);
       };
 
-      mediaRecorder.onstop = () => {
+      mediaRecorder.onstop = async () => {
         const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
-        const audioUrl = URL.createObjectURL(audioBlob);
+        stream.getTracks().forEach(track => track.stop());
         
-        const newRecord = {
-          id: Date.now().toString(),
+        setIsUploading(true);
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) { setIsUploading(false); return; }
+
+        // 1. Upload to Supabase Storage
+        const fileName = `${user.id}/${selectedSurah.id}/${Date.now()}.webm`;
+        const { data: uploadData, error: uploadError } = await supabase.storage
+          .from('tasmee_audio')
+          .upload(fileName, audioBlob);
+          
+        if (uploadError) {
+          alert("Error uploading audio.");
+          setIsUploading(false);
+          return;
+        }
+
+        // 2. Get Public URL
+        const { data: { publicUrl } } = supabase.storage.from('tasmee_audio').getPublicUrl(fileName);
+
+        // 3. Save Metadata to Database
+        const newRecordData = {
+          user_id: user.id,
+          surah_id: selectedSurah.id,
           name: `${selectedSurah.name_english} Revision`,
-          url: audioUrl,
-          date: new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit', month: 'short', day: 'numeric'})
+          audio_url: publicUrl,
+          file_path: fileName
         };
 
-        setSurahRecordings(prev => ({
-          ...prev,
-          [selectedSurah.id]: [newRecord, ...(prev[selectedSurah.id] || [])]
-        }));
+        const { data: dbData, error: dbError } = await supabase
+          .from('tasmee_recordings')
+          .insert([newRecordData])
+          .select()
+          .single();
+
+        if (dbData) {
+          setSurahRecordings(prev => ({
+            ...prev,
+            [selectedSurah.id]: [dbData, ...(prev[selectedSurah.id] || [])]
+          }));
+        }
         
-        stream.getTracks().forEach(track => track.stop());
+        setIsUploading(false);
       };
 
       mediaRecorder.start();
@@ -146,9 +191,7 @@ export default function HifzTracker() {
   };
 
   const playRecord = (url: string, recordId: string) => {
-    if (audioPlaybackRef.current) {
-      audioPlaybackRef.current.pause();
-    }
+    if (audioPlaybackRef.current) audioPlaybackRef.current.pause();
     if (playingRecord === recordId) {
       setPlayingRecord(null);
       return;
@@ -160,26 +203,41 @@ export default function HifzTracker() {
     audio.onended = () => setPlayingRecord(null);
   };
 
-  const updateRecordName = (surahId: number, recordId: string) => {
+  const updateRecordName = async (surahId: number, recordId: string) => {
     const newName = prompt("Enter new name for this recording:");
     if (newName && newName.trim() !== "") {
+      
+      // Update local state instantly
       setSurahRecordings(prev => ({
         ...prev,
         [surahId]: prev[surahId].map(rec => rec.id === recordId ? { ...rec, name: newName } : rec)
       }));
+
+      // Update Database
+      await supabase.from('tasmee_recordings').update({ name: newName }).eq('id', recordId);
     }
   };
 
-  const deleteRecord = (surahId: number, recordId: string) => {
-    if (window.confirm("Are you sure you want to delete this recording?")) {
-      setSurahRecordings(prev => ({
-        ...prev,
-        [surahId]: prev[surahId].filter(rec => rec.id !== recordId)
-      }));
+  const deleteRecord = async (surahId: number, recordId: string, filePath: string) => {
+    if (window.confirm("Are you sure you want to delete this recording permanently?")) {
+      
+      // Stop audio if playing
       if (playingRecord === recordId) {
         audioPlaybackRef.current?.pause();
         setPlayingRecord(null);
       }
+
+      // 1. Remove from local state instantly
+      setSurahRecordings(prev => ({
+        ...prev,
+        [surahId]: prev[surahId].filter(rec => rec.id !== recordId)
+      }));
+
+      // 2. Delete from Database
+      await supabase.from('tasmee_recordings').delete().eq('id', recordId);
+
+      // 3. Delete from Storage
+      await supabase.storage.from('tasmee_audio').remove([filePath]);
     }
   };
 
@@ -229,7 +287,6 @@ export default function HifzTracker() {
       {/* ================= 2. MAIN CONTENT ================= */}
       <div className="flex-1 flex flex-col bg-[#FDFCF7] h-full overflow-hidden relative min-w-0">
         
-        {/* Header */}
         <div className="shrink-0 px-4 py-3 lg:px-6 lg:py-4 border-b border-emerald-100/50 bg-white flex items-center gap-3 z-10 shadow-sm">
           <button onClick={() => setIsSidebarOpen(true)} className="lg:hidden p-1.5 -ml-1.5 text-emerald-700 hover:bg-emerald-50 rounded-lg"><Menu size={20}/></button>
           <h2 className="text-lg lg:text-xl font-black text-emerald-950 flex items-center gap-2">
@@ -292,7 +349,7 @@ export default function HifzTracker() {
                 </div>
               </div>
 
-              {/* TASMEE' RECORDING PANEL (SURAH LEVEL) */}
+              {/* TASMEE' RECORDING PANEL */}
               {isTasmeePanelOpen && (
                 <div className="bg-white border border-indigo-100 p-4 lg:p-5 rounded-2xl mb-6 shadow-sm animate-in slide-in-from-top-2">
                   <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-4 pb-4 border-b border-slate-100">
@@ -300,11 +357,14 @@ export default function HifzTracker() {
                       <h4 className="text-sm font-black text-indigo-950 flex items-center gap-1.5">
                         <Mic size={16} className="text-indigo-500"/> Record Your Revision
                       </h4>
-                      <p className="text-[10px] text-slate-500 mt-1">Record yourself reciting this surah to check mistakes later.</p>
+                      <p className="text-[10px] text-slate-500 mt-1">Record yourself reciting this surah, synced securely to your database.</p>
                     </div>
                     
-                    {/* Record Action Button */}
-                    {!isRecording ? (
+                    {isUploading ? (
+                      <div className="flex items-center gap-2 px-4 py-2 bg-slate-100 text-slate-500 rounded-xl text-xs font-black w-full sm:w-auto justify-center">
+                        <Loader2 size={14} className="animate-spin"/> Saving to Cloud...
+                      </div>
+                    ) : !isRecording ? (
                       <button onClick={startRecording} className="flex items-center gap-2 px-4 py-2 bg-rose-50 text-rose-600 hover:bg-rose-100 border border-rose-100 rounded-xl text-xs font-black transition-colors w-full sm:w-auto justify-center">
                         <span className="w-2 h-2 rounded-full bg-rose-500 animate-pulse"></span> Start Recording
                       </button>
@@ -315,33 +375,35 @@ export default function HifzTracker() {
                     )}
                   </div>
 
-                  {/* List of Recordings for this Surah */}
+                  {/* REAL DB Recordings List */}
                   <div className="space-y-2">
                     {surahRecordings[selectedSurah.id]?.length > 0 ? (
                       surahRecordings[selectedSurah.id].map(rec => {
                         const isPlaying = playingRecord === rec.id;
+                        const dateFormatted = new Date(rec.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+                        
                         return (
                           <div key={rec.id} className="flex items-center justify-between bg-slate-50 border border-slate-100 p-2.5 rounded-xl hover:border-indigo-100 transition-colors">
                             <div className="flex items-center gap-3 overflow-hidden">
-                              <button onClick={() => playRecord(rec.url, rec.id)} className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 transition-colors shadow-sm ${isPlaying ? 'bg-indigo-600 text-white' : 'bg-white text-indigo-600 border border-indigo-100 hover:bg-indigo-50'}`}>
+                              <button onClick={() => playRecord(rec.audio_url, rec.id)} className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 transition-colors shadow-sm ${isPlaying ? 'bg-indigo-600 text-white' : 'bg-white text-indigo-600 border border-indigo-100 hover:bg-indigo-50'}`}>
                                 {isPlaying ? <Pause size={14} className="fill-current"/> : <Play size={14} className="fill-current ml-0.5"/>}
                               </button>
                               <div className="flex flex-col min-w-0">
                                 <span className="text-xs font-bold text-slate-700 truncate">{rec.name}</span>
-                                <span className="text-[9px] font-bold text-slate-400">{rec.date}</span>
+                                <span className="text-[9px] font-bold text-slate-400">{dateFormatted}</span>
                               </div>
                             </div>
                             
                             <div className="flex items-center gap-1 shrink-0 ml-2">
                               <button onClick={() => updateRecordName(selectedSurah.id, rec.id)} className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"><Edit2 size={14}/></button>
-                              <button onClick={() => deleteRecord(selectedSurah.id, rec.id)} className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors"><Trash2 size={14}/></button>
+                              <button onClick={() => deleteRecord(selectedSurah.id, rec.id, rec.file_path)} className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors"><Trash2 size={14}/></button>
                             </div>
                           </div>
                         );
                       })
                     ) : (
                       <div className="text-center py-4 bg-slate-50 rounded-xl border border-dashed border-slate-200">
-                        <p className="text-xs font-bold text-slate-400">No recordings for this Surah yet.</p>
+                        <p className="text-xs font-bold text-slate-400">No recordings saved in cloud yet.</p>
                       </div>
                     )}
                   </div>
