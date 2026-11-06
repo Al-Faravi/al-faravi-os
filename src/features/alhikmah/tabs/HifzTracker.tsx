@@ -3,7 +3,7 @@ import { supabase } from '../../../lib/supabase';
 import { 
   BarChart2, CheckCircle2, AlertCircle, BookOpen, BrainCircuit, 
   Loader2, ArrowRight, Search, Menu, X, Smile, Meh, Frown, 
-  Mic, Square, Play, Pause, Trash2, Edit2
+  Mic, Square, Play, Pause, Trash2, Edit2, History
 } from 'lucide-react';
 
 export default function HifzTracker() {
@@ -18,9 +18,12 @@ export default function HifzTracker() {
   const [searchQuery, setSearchQuery] = useState('');
   const [stats, setStats] = useState({ memorized: 0, needsRevision: 0 });
 
-  // --- Voice Recording (Tasmee') States (CRUD) ---
-  const [recordingAyah, setRecordingAyah] = useState<string | null>(null);
-  const [recordings, setRecordings] = useState<Record<string, { id: string, name: string, url: string, date: string }[]>>({});
+  // --- Voice Recording (Tasmee') States (Surah Level) ---
+  const [isTasmeePanelOpen, setIsTasmeePanelOpen] = useState(false);
+  const [isRecording, setIsRecording] = useState(false);
+  
+  // Key = Surah ID
+  const [surahRecordings, setSurahRecordings] = useState<Record<number, { id: string, name: string, url: string, date: string }[]>>({});
   const [playingRecord, setPlayingRecord] = useState<string | null>(null);
   
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -55,7 +58,10 @@ export default function HifzTracker() {
   // ২. Fetch Ayahs for Selected Surah
   useEffect(() => {
     const fetchSpecificAyahs = async () => {
-      if (!selectedSurah) return;
+      if (!selectedSurah) {
+        setIsTasmeePanelOpen(false);
+        return;
+      }
       setLoading(true);
       const ayahNumbers = hifzRecords.filter(t => t.surah_id === selectedSurah.id).map(t => parseInt(t.ayah_range));
       const { data: ayahsData } = await supabase.from('quran_ayahs').select('*').eq('surah_id', selectedSurah.id).in('ayah_number', ayahNumbers).order('ayah_number', { ascending: true });
@@ -92,10 +98,10 @@ export default function HifzTracker() {
     }));
   };
 
-  // ================= TASMEE' (VOICE RECORDING) CRUD LOGIC =================
+  // ================= TASMEE' (VOICE RECORDING) SURAH LEVEL =================
 
-  // CREATE: Start Recording
-  const startRecording = async (ayahKey: string) => {
+  const startRecording = async () => {
+    if (!selectedSurah) return;
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       const mediaRecorder = new MediaRecorder(stream);
@@ -112,35 +118,33 @@ export default function HifzTracker() {
         
         const newRecord = {
           id: Date.now().toString(),
-          name: `Tasmee' - ${new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}`,
+          name: `${selectedSurah.name_english} Revision`,
           url: audioUrl,
-          date: new Date().toLocaleDateString()
+          date: new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit', month: 'short', day: 'numeric'})
         };
 
-        setRecordings(prev => ({
+        setSurahRecordings(prev => ({
           ...prev,
-          [ayahKey]: [...(prev[ayahKey] || []), newRecord]
+          [selectedSurah.id]: [newRecord, ...(prev[selectedSurah.id] || [])]
         }));
         
         stream.getTracks().forEach(track => track.stop());
       };
 
       mediaRecorder.start();
-      setRecordingAyah(ayahKey);
+      setIsRecording(true);
     } catch (err) {
       alert("Microphone access denied. Please allow microphone permissions.");
     }
   };
 
-  // CREATE: Stop Recording
   const stopRecording = () => {
     if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
       mediaRecorderRef.current.stop();
     }
-    setRecordingAyah(null);
+    setIsRecording(false);
   };
 
-  // READ: Play Audio
   const playRecord = (url: string, recordId: string) => {
     if (audioPlaybackRef.current) {
       audioPlaybackRef.current.pause();
@@ -156,23 +160,21 @@ export default function HifzTracker() {
     audio.onended = () => setPlayingRecord(null);
   };
 
-  // UPDATE: Rename Record
-  const updateRecordName = (ayahKey: string, recordId: string) => {
+  const updateRecordName = (surahId: number, recordId: string) => {
     const newName = prompt("Enter new name for this recording:");
     if (newName && newName.trim() !== "") {
-      setRecordings(prev => ({
+      setSurahRecordings(prev => ({
         ...prev,
-        [ayahKey]: prev[ayahKey].map(rec => rec.id === recordId ? { ...rec, name: newName } : rec)
+        [surahId]: prev[surahId].map(rec => rec.id === recordId ? { ...rec, name: newName } : rec)
       }));
     }
   };
 
-  // DELETE: Remove Record
-  const deleteRecord = (ayahKey: string, recordId: string) => {
+  const deleteRecord = (surahId: number, recordId: string) => {
     if (window.confirm("Are you sure you want to delete this recording?")) {
-      setRecordings(prev => ({
+      setSurahRecordings(prev => ({
         ...prev,
-        [ayahKey]: prev[ayahKey].filter(rec => rec.id !== recordId)
+        [surahId]: prev[surahId].filter(rec => rec.id !== recordId)
       }));
       if (playingRecord === recordId) {
         audioPlaybackRef.current?.pause();
@@ -271,22 +273,86 @@ export default function HifzTracker() {
           ) : (
 
             /* ================= SPECIFIC SURAH REVISION MODE ================= */
-            <div className="max-w-4xl mx-auto space-y-5">
-              <div className="bg-emerald-50 border border-emerald-200 p-4 rounded-2xl mb-6 flex justify-between items-center shadow-sm">
+            <div className="max-w-4xl mx-auto space-y-4">
+              
+              {/* SURAH HEADER & TASMEE' TOGGLE */}
+              <div className="bg-emerald-50 border border-emerald-200 p-4 rounded-2xl mb-2 flex flex-col sm:flex-row justify-between items-start sm:items-center shadow-sm gap-4">
                 <h3 className="text-emerald-900 font-bold flex items-center gap-2">
                   <BrainCircuit size={18}/> Revision Mode: {selectedSurah.name_english}
                 </h3>
-                <span className="text-xs font-black bg-emerald-600 text-white px-3 py-1 rounded-full">{displayAyahs.length} Ayahs</span>
+                <div className="flex items-center gap-2 w-full sm:w-auto">
+                  <span className="text-xs font-black bg-emerald-600 text-white px-3 py-1.5 rounded-full shrink-0">{displayAyahs.length} Ayahs</span>
+                  <button 
+                    onClick={() => setIsTasmeePanelOpen(!isTasmeePanelOpen)}
+                    className={`flex-1 sm:flex-none flex items-center justify-center gap-1.5 px-4 py-1.5 rounded-full text-xs font-bold shadow-sm transition-colors border ${isTasmeePanelOpen ? 'bg-indigo-100 text-indigo-700 border-indigo-200' : 'bg-indigo-600 text-white border-indigo-600 hover:bg-indigo-700'}`}
+                  >
+                    {isTasmeePanelOpen ? <History size={14} /> : <Mic size={14} />} 
+                    {isTasmeePanelOpen ? 'Close Tasmee\'' : 'Self-Tasmee\' (Record)'}
+                  </button>
+                </div>
               </div>
 
+              {/* TASMEE' RECORDING PANEL (SURAH LEVEL) */}
+              {isTasmeePanelOpen && (
+                <div className="bg-white border border-indigo-100 p-4 lg:p-5 rounded-2xl mb-6 shadow-sm animate-in slide-in-from-top-2">
+                  <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-4 pb-4 border-b border-slate-100">
+                    <div>
+                      <h4 className="text-sm font-black text-indigo-950 flex items-center gap-1.5">
+                        <Mic size={16} className="text-indigo-500"/> Record Your Revision
+                      </h4>
+                      <p className="text-[10px] text-slate-500 mt-1">Record yourself reciting this surah to check mistakes later.</p>
+                    </div>
+                    
+                    {/* Record Action Button */}
+                    {!isRecording ? (
+                      <button onClick={startRecording} className="flex items-center gap-2 px-4 py-2 bg-rose-50 text-rose-600 hover:bg-rose-100 border border-rose-100 rounded-xl text-xs font-black transition-colors w-full sm:w-auto justify-center">
+                        <span className="w-2 h-2 rounded-full bg-rose-500 animate-pulse"></span> Start Recording
+                      </button>
+                    ) : (
+                      <button onClick={stopRecording} className="flex items-center gap-2 px-4 py-2 bg-rose-600 text-white rounded-xl text-xs font-black animate-pulse shadow-md w-full sm:w-auto justify-center">
+                        <Square size={14} className="fill-white"/> Stop Recording
+                      </button>
+                    )}
+                  </div>
+
+                  {/* List of Recordings for this Surah */}
+                  <div className="space-y-2">
+                    {surahRecordings[selectedSurah.id]?.length > 0 ? (
+                      surahRecordings[selectedSurah.id].map(rec => {
+                        const isPlaying = playingRecord === rec.id;
+                        return (
+                          <div key={rec.id} className="flex items-center justify-between bg-slate-50 border border-slate-100 p-2.5 rounded-xl hover:border-indigo-100 transition-colors">
+                            <div className="flex items-center gap-3 overflow-hidden">
+                              <button onClick={() => playRecord(rec.url, rec.id)} className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 transition-colors shadow-sm ${isPlaying ? 'bg-indigo-600 text-white' : 'bg-white text-indigo-600 border border-indigo-100 hover:bg-indigo-50'}`}>
+                                {isPlaying ? <Pause size={14} className="fill-current"/> : <Play size={14} className="fill-current ml-0.5"/>}
+                              </button>
+                              <div className="flex flex-col min-w-0">
+                                <span className="text-xs font-bold text-slate-700 truncate">{rec.name}</span>
+                                <span className="text-[9px] font-bold text-slate-400">{rec.date}</span>
+                              </div>
+                            </div>
+                            
+                            <div className="flex items-center gap-1 shrink-0 ml-2">
+                              <button onClick={() => updateRecordName(selectedSurah.id, rec.id)} className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"><Edit2 size={14}/></button>
+                              <button onClick={() => deleteRecord(selectedSurah.id, rec.id)} className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors"><Trash2 size={14}/></button>
+                            </div>
+                          </div>
+                        );
+                      })
+                    ) : (
+                      <div className="text-center py-4 bg-slate-50 rounded-xl border border-dashed border-slate-200">
+                        <p className="text-xs font-bold text-slate-400">No recordings for this Surah yet.</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* AYAHS LIST FOR REVISION */}
               {displayAyahs.map(ayah => {
-                const ayahKey = `${ayah.surah_id}-${ayah.ayah_number}`;
                 const record = hifzRecords.find(t => t.surah_id === ayah.surah_id && t.ayah_range === String(ayah.ayah_number));
                 const today = new Date().toISOString().split('T')[0];
                 const needsRev = record?.next_review_date && record.next_review_date <= today;
-                
-                const isRecordingHere = recordingAyah === ayahKey;
-                const ayahRecords = recordings[ayahKey] || [];
 
                 let displayArabicText = ayah.text_arabic;
                 if (ayah.surah_id !== 1 && ayah.ayah_number === 1 && displayArabicText.startsWith("بِسْمِ ٱللَّهِ ٱلرَّحْمَٰنِ ٱلرَّحِيمِ ")) {
@@ -296,7 +362,6 @@ export default function HifzTracker() {
                 return (
                   <div key={ayah.id} className={`bg-white p-5 lg:p-7 rounded-2xl border shadow-sm flex flex-col gap-4 transition-all ${needsRev ? 'border-rose-300 ring-4 ring-rose-50' : 'border-emerald-100/50 hover:border-emerald-300'}`}>
                     
-                    {/* Top: Ayah Text */}
                     <div className="flex justify-between items-start gap-4">
                       <div className={`w-8 h-8 shrink-0 rounded-full flex items-center justify-center text-xs font-black text-white shadow-sm ${needsRev ? 'bg-rose-500' : 'bg-emerald-500'}`}>
                         {ayah.ayah_number}
@@ -308,7 +373,6 @@ export default function HifzTracker() {
                     
                     <div className="w-full h-px bg-slate-100 my-2"></div>
                     
-                    {/* Middle: SRS Grading & Next Review */}
                     <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
                       <div className="text-[10px] lg:text-xs font-bold text-slate-400 bg-slate-50 px-3 py-1.5 rounded-lg border border-slate-100">
                         Next Review: <span className={needsRev ? 'text-rose-500 font-black' : 'text-emerald-600'}>{record?.next_review_date || 'N/A'}</span>
@@ -326,70 +390,6 @@ export default function HifzTracker() {
                         </button>
                       </div>
                     </div>
-
-                    {/* ================= BOTTOM: TASMEE' (VOICE RECORDING) SECTION ================= */}
-                    <div className="mt-2 pt-4 border-t border-dashed border-slate-200">
-                      <div className="flex justify-between items-center mb-3">
-                        <h4 className="text-xs font-black text-slate-600 flex items-center gap-1.5">
-                          <Mic size={14} className="text-emerald-500"/> Tasmee' Records
-                        </h4>
-                        
-                        {/* RECORD BUTTON */}
-                        {!isRecordingHere ? (
-                          <button 
-                            onClick={() => startRecording(ayahKey)}
-                            disabled={recordingAyah !== null && recordingAyah !== ayahKey} // Disable if recording elsewhere
-                            className="flex items-center gap-1.5 px-3 py-1.5 bg-rose-50 text-rose-600 hover:bg-rose-100 border border-rose-100 rounded-lg text-[10px] font-black transition-colors disabled:opacity-50"
-                          >
-                            <Mic size={12}/> Record Tasmee'
-                          </button>
-                        ) : (
-                          <button 
-                            onClick={stopRecording}
-                            className="flex items-center gap-1.5 px-3 py-1.5 bg-rose-600 text-white rounded-lg text-[10px] font-black animate-pulse shadow-md"
-                          >
-                            <Square size={12} className="fill-white"/> Stop Recording
-                          </button>
-                        )}
-                      </div>
-
-                      {/* RECORDINGS LIST (READ, UPDATE, DELETE) */}
-                      {ayahRecords.length > 0 ? (
-                        <div className="space-y-2">
-                          {ayahRecords.map(rec => {
-                            const isPlaying = playingRecord === rec.id;
-                            return (
-                              <div key={rec.id} className="flex items-center justify-between bg-slate-50 border border-slate-100 p-2 rounded-lg">
-                                <div className="flex items-center gap-2 overflow-hidden">
-                                  <button onClick={() => playRecord(rec.url, rec.id)} className={`w-6 h-6 rounded-full flex items-center justify-center shrink-0 transition-colors ${isPlaying ? 'bg-indigo-600 text-white shadow-sm' : 'bg-indigo-100 text-indigo-600 hover:bg-indigo-200'}`}>
-                                    {isPlaying ? <Pause size={10} className="fill-current"/> : <Play size={10} className="fill-current ml-0.5"/>}
-                                  </button>
-                                  <div className="flex flex-col min-w-0">
-                                    <span className="text-[10px] font-bold text-slate-700 truncate">{rec.name}</span>
-                                    <span className="text-[8px] font-semibold text-slate-400">{rec.date}</span>
-                                  </div>
-                                </div>
-                                
-                                <div className="flex items-center gap-1 shrink-0 ml-2">
-                                  {/* UPDATE (Rename) */}
-                                  <button onClick={() => updateRecordName(ayahKey, rec.id)} className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-md transition-colors" title="Rename Record">
-                                    <Edit2 size={12}/>
-                                  </button>
-                                  {/* DELETE */}
-                                  <button onClick={() => deleteRecord(ayahKey, rec.id)} className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-md transition-colors" title="Delete Record">
-                                    <Trash2 size={12}/>
-                                  </button>
-                                </div>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      ) : (
-                        <p className="text-[10px] text-slate-400 italic text-center py-2">No recordings yet. Read and check your Hifz!</p>
-                      )}
-                    </div>
-                    {/* ================= END TASMEE' SECTION ================= */}
-
                   </div>
                 );
               })}
