@@ -5,7 +5,6 @@ import {
   BarChart2, ArrowLeft, Moon
 } from 'lucide-react';
 
-// আলাদা করা কম্পোনেন্টগুলো ইম্পোর্ট করা হচ্ছে
 import QuranWorkspace from './tabs/QuranWorkspace';
 import HifzTracker from './tabs/HifzTracker';
 
@@ -21,9 +20,10 @@ export default function AlHikmahWorkspace() {
   ];
 
   return (
-    <div className="min-h-[100dvh] bg-[#FDFCF7] flex flex-col font-sans overflow-hidden">
+    // h-[100dvh] এবং overflow-hidden নিশ্চিত করবে যে মূল পেজ স্ক্রল হবে না
+    <div className="h-[100dvh] w-full bg-[#FDFCF7] flex flex-col font-sans overflow-hidden">
       
-      {/* ================= MOBILE & TABLET TOP HEADER ================= */}
+      {/* ================= MOBILE TOP HEADER ================= */}
       <div className="lg:hidden flex flex-col bg-white border-b border-emerald-100/50 z-30 shadow-sm shrink-0">
         <div className="flex items-center justify-between px-4 py-3">
           <div className="flex items-center gap-2">
@@ -45,7 +45,7 @@ export default function AlHikmahWorkspace() {
       </div>
 
       {/* ================= DESKTOP TOP NAVBAR ================= */}
-      <div className="hidden lg:flex bg-white border-b border-emerald-100/50 px-6 py-4 justify-between items-center sticky top-0 z-30 shadow-sm shrink-0">
+      <div className="hidden lg:flex bg-white border-b border-emerald-100/50 px-6 py-4 justify-between items-center z-30 shadow-sm shrink-0">
         <div className="flex items-center gap-4">
           <Link to="/" className="w-10 h-10 rounded-full bg-emerald-50 text-emerald-600 flex items-center justify-center hover:bg-emerald-100 transition-colors">
             <ArrowLeft size={18} />
@@ -66,12 +66,12 @@ export default function AlHikmahWorkspace() {
         </div>
       </div>
 
-      {/* ================= DYNAMIC TAB ROUTING ================= */}
-      <div className="flex-1 flex overflow-hidden relative">
+      {/* ================= TAB ROUTING AREA ================= */}
+      {/* flex-1 এবং overflow-hidden চাইল্ড কম্পোনেন্টগুলোকে নিজের মতো স্ক্রল করার জায়গা দেবে */}
+      <div className="flex-1 flex overflow-hidden w-full relative">
         {activeTab === 'quran' && <QuranWorkspace />}
         {activeTab === 'hifz' && <HifzTracker />}
         
-        {/* Placeholder for others */}
         {['hadith', 'library', 'journal'].includes(activeTab) && (
           <div className="flex-1 flex flex-col items-center justify-center text-emerald-300 bg-[#FDFCF7]">
             <Moon size={64} className="mb-4 opacity-20" />

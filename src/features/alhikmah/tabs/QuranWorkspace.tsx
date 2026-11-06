@@ -5,7 +5,6 @@ import {
   Loader2, Menu, X, ListMusic, PlusCircle, Repeat, Trash2, CheckCircle2
 } from 'lucide-react';
 
-// কুরআনের ১৫টি সিজদার আয়াতের লিস্ট
 const SAJDAH_AYAHS = [
   { surah: 7, ayah: 206 }, { surah: 13, ayah: 15 }, { surah: 16, ayah: 50 },
   { surah: 17, ayah: 109 }, { surah: 19, ayah: 58 }, { surah: 22, ayah: 18 },
@@ -17,7 +16,6 @@ const SAJDAH_AYAHS = [
 export default function QuranWorkspace() {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   
-  // Data States
   const [surahs, setSurahs] = useState<any[]>([]);
   const [selectedSurah, setSelectedSurah] = useState<any>(null);
   const [ayahs, setAyahs] = useState<any[]>([]);
@@ -25,7 +23,6 @@ export default function QuranWorkspace() {
   const [loadingAyahs, setLoadingAyahs] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
 
-  // Audio & Takrar States
   const [playingAyah, setPlayingAyah] = useState<string | null>(null);
   const [isContinuousPlay, setIsContinuousPlay] = useState(false);
   const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -36,7 +33,6 @@ export default function QuranWorkspace() {
   const [currentLoop, setCurrentLoop] = useState<number>(1);
   const [currentQueueIndex, setCurrentQueueIndex] = useState<number>(0);
 
-  // DB Memorized State
   const [memorizedAyahs, setMemorizedAyahs] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
@@ -57,12 +53,7 @@ export default function QuranWorkspace() {
       if (!selectedSurah) return;
       setLoadingAyahs(true);
       
-      const { data: ayahData } = await supabase
-        .from('quran_ayahs')
-        .select('*')
-        .eq('surah_id', selectedSurah.id)
-        .order('ayah_number', { ascending: true });
-        
+      const { data: ayahData } = await supabase.from('quran_ayahs').select('*').eq('surah_id', selectedSurah.id).order('ayah_number', { ascending: true });
       if (ayahData) {
         const uniqueAyahs = Array.from(new Map(ayahData.map(item => [item.ayah_number, item])).values());
         setAyahs(uniqueAyahs);
@@ -82,7 +73,6 @@ export default function QuranWorkspace() {
     fetchAyahsAndHifz();
   }, [selectedSurah]);
 
-  // Audio Logic
   const stopAudio = () => {
     if (audioRef.current) { audioRef.current.pause(); audioRef.current.currentTime = 0; }
     setPlayingAyah(null); setIsContinuousPlay(false); setIsQueuePlaying(false);
@@ -139,6 +129,7 @@ export default function QuranWorkspace() {
     const isCurrentlyMemorized = memorizedAyahs[ayahKey];
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) { alert("Please log in to track your Hifz."); return; }
+    
     if (isCurrentlyMemorized) {
       await supabase.from('hifz_tracking').delete().match({ user_id: user.id, surah_id: ayah.surah_id, ayah_range: String(ayah.ayah_number) });
       setMemorizedAyahs(prev => ({ ...prev, [ayahKey]: false }));
@@ -153,16 +144,15 @@ export default function QuranWorkspace() {
   const filteredSurahs = surahs.filter(s => s.name_english.toLowerCase().includes(searchQuery.toLowerCase()) || s.name_arabic.includes(searchQuery));
 
   return (
-    // এই h-full w-full overflow-hidden টাই গ্যারান্টি দেবে যে স্ক্রল আলাদা কাজ করবে
-    <div className="h-full w-full flex overflow-hidden bg-[#FDFCF7]">
+    // মূল কন্টেইনার: flex-1, h-full, overflow-hidden (বাইরের স্ক্রল বন্ধ)
+    <div className="flex-1 flex h-full w-full overflow-hidden bg-[#FDFCF7]">
       
-      {/* Mobile Overlay */}
       {isSidebarOpen && <div className="fixed inset-0 bg-emerald-950/40 backdrop-blur-sm z-40 lg:hidden" onClick={() => setIsSidebarOpen(false)} />}
       
-      {/* ================= 1. SURAH SIDEBAR (Flex-Col with own Scroll) ================= */}
-      <div className={`absolute lg:relative inset-y-0 left-0 z-50 w-72 md:w-80 bg-white border-r border-emerald-100/50 flex flex-col h-full transform transition-transform duration-300 ease-in-out shrink-0 ${isSidebarOpen ? 'translate-x-0 shadow-2xl' : '-translate-x-full lg:translate-x-0'}`}>
+      {/* ================= ১. সূরা লিস্ট (Independent Scroll) ================= */}
+      <div className={`absolute lg:relative inset-y-0 left-0 z-50 w-72 md:w-80 bg-white border-r border-emerald-100/50 flex flex-col h-full shrink-0 transform transition-transform duration-300 ease-in-out ${isSidebarOpen ? 'translate-x-0 shadow-2xl' : '-translate-x-full lg:translate-x-0'}`}>
         
-        {/* Sidebar Header (Fixed/Shrink-0) */}
+        {/* ফিক্সড সার্চ হেডার */}
         <div className="shrink-0 p-4 border-b border-emerald-100/50 flex justify-between items-center bg-white">
           <div className="bg-[#FDFCF7] border border-emerald-100 rounded-xl px-3 py-2 flex items-center gap-2 flex-1">
             <Search size={16} className="text-emerald-300" />
@@ -171,7 +161,7 @@ export default function QuranWorkspace() {
           <button onClick={() => setIsSidebarOpen(false)} className="lg:hidden ml-2 p-2 text-emerald-400 hover:bg-emerald-50 rounded-lg"><X size={20}/></button>
         </div>
         
-        {/* Sidebar Scrollable Area */}
+        {/* নিজস্ব স্ক্রল এরিয়া */}
         <div className="flex-1 overflow-y-auto custom-scrollbar p-2">
           {loadingSurahs ? (
             <div className="flex justify-center p-10"><Loader2 className="animate-spin text-emerald-400" /></div>
@@ -192,12 +182,12 @@ export default function QuranWorkspace() {
         </div>
       </div>
 
-      {/* ================= 2. MAIN AYAH AREA (Flex-Col with own Scroll) ================= */}
+      {/* ================= ২. আয়াতের মেইন এরিয়া (Independent Scroll) ================= */}
       <div className="flex-1 flex flex-col h-full min-w-0 bg-[#FDFCF7]">
         {selectedSurah && (
           <>
-            {/* Main Header (Fixed/Shrink-0) - Contains Both Play & Takrar */}
-            <div className="shrink-0 px-4 lg:px-6 py-3 lg:py-4 border-b border-emerald-100/50 bg-white flex flex-col md:flex-row justify-between items-start md:items-center gap-4 z-20 shadow-sm">
+            {/* ফিক্সড আয়াতের হেডার (Takrar + Play Surah) */}
+            <div className="shrink-0 px-4 lg:px-6 py-3 lg:py-4 border-b border-emerald-100/50 bg-white flex flex-col xl:flex-row justify-between items-start xl:items-center gap-4 z-20 shadow-sm">
               <div className="flex items-center gap-3">
                 <button onClick={() => setIsSidebarOpen(true)} className="lg:hidden p-1.5 -ml-1.5 text-emerald-700 hover:bg-emerald-50 rounded-lg"><Menu size={20}/></button>
                 <div>
@@ -207,38 +197,38 @@ export default function QuranWorkspace() {
                 </div>
               </div>
               
-              <div className="w-full md:w-auto flex flex-wrap md:flex-nowrap items-center justify-start md:justify-end gap-3">
-                {/* Takrar Controls */}
+              <div className="w-full xl:w-auto flex flex-wrap sm:flex-nowrap items-center justify-start xl:justify-end gap-3">
+                {/* Takrar Player Header UI */}
                 {targetQueue.length > 0 && (
-                  <div className="flex items-center gap-2 bg-indigo-50 border border-indigo-100 px-3 py-1.5 rounded-xl shadow-sm w-full md:w-auto shrink-0">
-                    <div className="flex items-center gap-1.5 mr-1 shrink-0">
+                  <div className="flex items-center gap-2 bg-indigo-50 border border-indigo-100 px-3 py-1.5 rounded-xl shadow-sm w-full sm:w-auto shrink-0">
+                    <div className="flex items-center gap-1.5 mr-2 shrink-0">
                       <Repeat size={14} className="text-indigo-600" />
-                      <span className="text-[10px] md:text-xs font-bold text-indigo-800">{targetQueue.length} Targeted</span>
+                      <span className="text-xs font-bold text-indigo-800">{targetQueue.length} Targeted</span>
                     </div>
-                    <div className="flex items-center gap-1.5 shrink-0">
+                    <div className="flex items-center gap-1.5 shrink-0 ml-auto sm:ml-0">
                       <select value={loopLimit} onChange={(e) => setLoopLimit(Number(e.target.value))} disabled={isQueuePlaying} className="bg-white border border-indigo-200 px-1.5 py-1 rounded-md text-[10px] font-black text-indigo-600 outline-none cursor-pointer">
                         <option value={3}>3x</option><option value={5}>5x</option><option value={10}>10x</option>
                       </select>
-                      <button onClick={() => { if(isQueuePlaying) stopAudio(); else playTargetQueue(0, 1); }} className={`flex items-center gap-1 px-2.5 py-1 rounded-lg text-[10px] font-black transition-all shadow-sm ${isQueuePlaying ? 'bg-rose-500 text-white' : 'bg-indigo-600 text-white'}`}>
-                        {isQueuePlaying ? <PauseCircle size={12} /> : <PlayCircle size={12} />} 
+                      <button onClick={() => { if(isQueuePlaying) stopAudio(); else playTargetQueue(0, 1); }} className={`flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-black transition-all shadow-sm ${isQueuePlaying ? 'bg-rose-500 text-white' : 'bg-indigo-600 text-white'}`}>
+                        {isQueuePlaying ? <PauseCircle size={14} /> : <PlayCircle size={14} />} 
                         {isQueuePlaying ? `Stop (${currentLoop}/${loopLimit})` : 'Takrar'}
                       </button>
-                      <button onClick={() => { stopAudio(); setTargetQueue([]); }} className="text-slate-400 hover:text-rose-500 bg-white p-1 rounded-md border border-slate-200"><Trash2 size={12} /></button>
+                      <button onClick={() => { stopAudio(); setTargetQueue([]); }} className="text-slate-400 hover:text-rose-500 bg-white p-1 rounded-md border border-slate-200 transition-colors"><Trash2 size={14} /></button>
                     </div>
                   </div>
                 )}
+                
                 {/* Play Full Surah Button */}
-                <button onClick={toggleFullSurah} className={`flex items-center justify-center gap-2 w-full md:w-auto px-4 py-2 rounded-xl text-xs font-bold transition-all shadow-sm shrink-0 ${isContinuousPlay ? 'bg-rose-50 text-rose-600 border border-rose-200 hover:bg-rose-100' : 'bg-emerald-600 text-white hover:bg-emerald-700'}`}>
+                <button onClick={toggleFullSurah} className={`flex items-center justify-center gap-2 w-full sm:w-auto px-4 py-2 rounded-xl text-xs font-bold transition-all shadow-sm shrink-0 ${isContinuousPlay ? 'bg-rose-50 text-rose-600 border border-rose-200 hover:bg-rose-100' : 'bg-emerald-600 text-white hover:bg-emerald-700'}`}>
                   {isContinuousPlay ? <PauseCircle size={16} /> : <ListMusic size={16} />} 
                   <span>{isContinuousPlay ? 'Stop Playing Surah' : 'Play Full Surah'}</span>
                 </button>
               </div>
             </div>
 
-            {/* Main Ayah Scrollable Area (flex-1 with pb-[150px]) */}
-            <div className="flex-1 overflow-y-auto p-3 lg:p-6 custom-scrollbar pb-[150px]">
+            {/* নিজস্ব স্ক্রল এরিয়া (pb-40 মানে নিচে বিশাল ফাঁকা জায়গা, ন্যাভবার ঢাকবে না) */}
+            <div className="flex-1 overflow-y-auto p-3 lg:p-6 custom-scrollbar pb-40">
               
-              {/* Bismillah Logic - Visible on all EXCEPT Surah 9 */}
               {selectedSurah.id !== 9 && (
                 <div className="flex justify-center mb-6 lg:mb-8 mt-2">
                   <h2 className="text-2xl lg:text-4xl font-arabic text-emerald-800 opacity-90 py-2" style={{ fontFamily: 'KFGQPC Uthman Taha Naskh, Traditional Arabic, serif' }}>
@@ -256,12 +246,9 @@ export default function QuranWorkspace() {
                     const isPlaying = playingAyah === ayahKey;
                     const inTargetQueue = targetQueue.some(a => a.id === ayah.id);
                     const isMemorized = memorizedAyahs[ayahKey];
-                    
-                    // Sajdah check
                     const isSajdahAyah = checkIsSajdah(ayah.surah_id, ayah.ayah_number);
                     
                     let displayArabicText = ayah.text_arabic;
-                    // Bismillah filter for 1st Ayah (Except Fatiha)
                     if (ayah.surah_id !== 1 && ayah.ayah_number === 1 && displayArabicText.startsWith("بِسْمِ ٱللَّهِ ٱلرَّحْمَٰنِ ٱلرَّحِيمِ ")) {
                       displayArabicText = displayArabicText.replace("بِسْمِ ٱللَّهِ ٱلرَّحْمَٰنِ ٱلرَّحِيمِ ", "");
                     }
@@ -276,7 +263,6 @@ export default function QuranWorkspace() {
                             <p className="text-2xl lg:text-[28px] text-right font-arabic leading-[2] text-emerald-950" style={{ fontFamily: 'KFGQPC Uthman Taha Naskh, Traditional Arabic, serif' }}>
                               {displayArabicText}
                             </p>
-                            {/* Sajdah Badge */}
                             {isSajdahAyah && (
                               <div className="flex items-center gap-1.5 bg-amber-100 text-amber-800 px-3 py-1.5 rounded-full text-xs font-black border border-amber-300 shadow-sm animate-pulse">
                                 <span className="text-base leading-none">۩</span> Ayah of Sajdah
