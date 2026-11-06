@@ -25,6 +25,8 @@ export default function QuranWorkspace() {
 
   const [playingAyah, setPlayingAyah] = useState<string | null>(null);
   const [isContinuousPlay, setIsContinuousPlay] = useState(false);
+  
+  // ================= 1. Single Persistent Audio Instance =================
   const audioRef = useRef<HTMLAudioElement | null>(null);
   
   const [targetQueue, setTargetQueue] = useState<any[]>([]);
@@ -34,6 +36,38 @@ export default function QuranWorkspace() {
   const [currentQueueIndex, setCurrentQueueIndex] = useState<number>(0);
 
   const [memorizedAyahs, setMemorizedAyahs] = useState<Record<string, boolean>>({});
+
+  // ================= Ref for Stale Closures (Background Play Safety) =================
+  const targetQueueRef = useRef(targetQueue);
+  const loopLimitRef = useRef(loopLimit);
+  const selectedSurahRef = useRef(selectedSurah);
+
+  useEffect(() => { targetQueueRef.current = targetQueue; }, [targetQueue]);
+  useEffect(() => { loopLimitRef.current = loopLimit; }, [loopLimit]);
+  useEffect(() => { selectedSurahRef.current = selectedSurah; }, [selectedSurah]);
+
+  // Initialize Audio & Media Session ONCE
+  useEffect(() => {
+    if (!audioRef.current) {
+      audioRef.current = new Audio();
+    }
+    
+    // MediaSession API - To show in Lock Screen & allow background play
+    if ('mediaSession' in navigator) {
+      navigator.mediaSession.setActionHandler('play', () => {
+        audioRef.current?.play();
+      });
+      navigator.mediaSession.setActionHandler('pause', () => {
+        audioRef.current?.pause();
+      });
+    }
+
+    return () => {
+      if (audioRef.current) {
+        audioRef.current.pause();
+      }
+    };
+  }, []);
 
   useEffect(() => {
     const fetchSurahs = async () => {
@@ -74,24 +108,45 @@ export default function QuranWorkspace() {
   }, [selectedSurah]);
 
   const stopAudio = () => {
-    if (audioRef.current) { audioRef.current.pause(); audioRef.current.currentTime = 0; }
+    if (audioRef.current) { 
+      audioRef.current.pause(); 
+      audioRef.current.currentTime = 0; 
+    }
     setPlayingAyah(null); setIsContinuousPlay(false); setIsQueuePlaying(false);
   };
 
   const getAudioUrl = (surahId: number, ayahNum: number) => `https://everyayah.com/data/Alafasy_128kbps/${String(surahId).padStart(3, '0')}${String(ayahNum).padStart(3, '0')}.mp3`;
 
+  // ================= 2. Updated Play Logic (Background Safe) =================
   const playSingleAudio = (surahId: number, ayahNum: number, continuous: boolean) => {
-    stopAudio();
-    const audio = new Audio(getAudioUrl(surahId, ayahNum));
-    audioRef.current = audio;
+    if (!audioRef.current) return;
+    
+    audioRef.current.pause();
+    audioRef.current.src = getAudioUrl(surahId, ayahNum);
+    
     setPlayingAyah(`${surahId}-${ayahNum}`);
     setIsContinuousPlay(continuous);
-    audio.play();
-    audio.onended = () => {
-      if (continuous && selectedSurah && ayahNum < selectedSurah.total_ayahs) {
+    
+    // Set Lock Screen Metadata
+    if ('mediaSession' in navigator && selectedSurahRef.current) {
+      navigator.mediaSession.metadata = new MediaMetadata({
+        title: `Ayah ${ayahNum}`,
+        artist: selectedSurahRef.current.name_english,
+        album: 'Al-Hikmah Quran Playback',
+        artwork: [{ src: 'https://cdn-icons-png.flaticon.com/512/3358/3358823.png', sizes: '512x512', type: 'image/png' }]
+      });
+    }
+
+    audioRef.current.play().catch(e => console.error("Playback failed:", e));
+    
+    audioRef.current.onended = () => {
+      const currentSurah = selectedSurahRef.current;
+      if (continuous && currentSurah && ayahNum < currentSurah.total_ayahs) {
         playSingleAudio(surahId, ayahNum + 1, true);
         document.getElementById(`ayah-${surahId}-${ayahNum + 1}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      } else { stopAudio(); }
+      } else { 
+        stopAudio(); 
+      }
     };
   };
 
@@ -109,18 +164,41 @@ export default function QuranWorkspace() {
   };
 
   const playTargetQueue = (index: number, currentLoopParam: number) => {
-    if (targetQueue.length === 0) return;
-    stopAudio();
-    const ayah = targetQueue[index];
-    const audio = new Audio(getAudioUrl(ayah.surah_id, ayah.ayah_number));
-    audioRef.current = audio;
+    if (targetQueueRef.current.length === 0 || !audioRef.current) return;
+    
+    audioRef.current.pause();
+    
+    const ayah = targetQueueRef.current[index];
+    audioRef.current.src = getAudioUrl(ayah.surah_id, ayah.ayah_number);
+    
     setPlayingAyah(`${ayah.surah_id}-${ayah.ayah_number}`);
-    setIsQueuePlaying(true); setCurrentQueueIndex(index); setCurrentLoop(currentLoopParam);
-    audio.play();
-    audio.onended = () => {
-      if (index + 1 < targetQueue.length) playTargetQueue(index + 1, currentLoopParam);
-      else if (currentLoopParam < loopLimit) playTargetQueue(0, currentLoopParam + 1);
-      else stopAudio();
+    setIsQueuePlaying(true); 
+    setCurrentQueueIndex(index); 
+    setCurrentLoop(currentLoopParam);
+    
+    // Set Lock Screen Metadata for Takrar
+    if ('mediaSession' in navigator && selectedSurahRef.current) {
+      navigator.mediaSession.metadata = new MediaMetadata({
+        title: `Takrar: Ayah ${ayah.ayah_number}`,
+        artist: `Loop ${currentLoopParam} of ${loopLimitRef.current} | ${selectedSurahRef.current.name_english}`,
+        album: 'Al-Hikmah Hifz Tracker',
+        artwork: [{ src: 'https://cdn-icons-png.flaticon.com/512/3358/3358823.png', sizes: '512x512', type: 'image/png' }]
+      });
+    }
+
+    audioRef.current.play().catch(e => console.error("Playback failed:", e));
+    
+    audioRef.current.onended = () => {
+      const latestQueue = targetQueueRef.current;
+      const latestLimit = loopLimitRef.current;
+      
+      if (index + 1 < latestQueue.length) {
+        playTargetQueue(index + 1, currentLoopParam);
+      } else if (currentLoopParam < latestLimit) {
+        playTargetQueue(0, currentLoopParam + 1);
+      } else { 
+        stopAudio(); 
+      }
     };
   };
 
@@ -196,33 +274,31 @@ export default function QuranWorkspace() {
               <div className="w-full md:w-auto flex flex-wrap md:flex-nowrap items-center justify-start md:justify-end gap-3">
                 {targetQueue.length > 0 && (
                   <div className="flex items-center gap-2 bg-indigo-50 border border-indigo-100 px-3 py-1.5 rounded-xl shadow-sm w-full md:w-auto shrink-0">
-                    <div className="flex items-center gap-1.5 mr-1 shrink-0">
+                    <div className="flex items-center gap-1.5 mr-2 shrink-0">
                       <Repeat size={14} className="text-indigo-600" />
-                      <span className="text-[10px] md:text-xs font-bold text-indigo-800">{targetQueue.length} Targeted</span>
+                      <span className="text-xs font-bold text-indigo-800">{targetQueue.length} Targeted</span>
                     </div>
-                    <div className="flex items-center gap-1.5 shrink-0">
+                    <div className="flex items-center gap-1.5 shrink-0 ml-auto sm:ml-0">
                       <select value={loopLimit} onChange={(e) => setLoopLimit(Number(e.target.value))} disabled={isQueuePlaying} className="bg-white border border-indigo-200 px-1.5 py-1 rounded-md text-[10px] font-black text-indigo-600 outline-none cursor-pointer">
                         <option value={3}>3x</option><option value={5}>5x</option><option value={10}>10x</option>
                       </select>
-                      <button onClick={() => { if(isQueuePlaying) stopAudio(); else playTargetQueue(0, 1); }} className={`flex items-center gap-1 px-2.5 py-1 rounded-lg text-[10px] font-black transition-all shadow-sm ${isQueuePlaying ? 'bg-rose-500 text-white' : 'bg-indigo-600 text-white'}`}>
-                        {isQueuePlaying ? <PauseCircle size={12} /> : <PlayCircle size={12} />} 
+                      <button onClick={() => { if(isQueuePlaying) stopAudio(); else playTargetQueue(0, 1); }} className={`flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-black transition-all shadow-sm ${isQueuePlaying ? 'bg-rose-500 text-white' : 'bg-indigo-600 text-white'}`}>
+                        {isQueuePlaying ? <PauseCircle size={14} /> : <PlayCircle size={14} />} 
                         {isQueuePlaying ? `Stop (${currentLoop}/${loopLimit})` : 'Takrar'}
                       </button>
-                      <button onClick={() => { stopAudio(); setTargetQueue([]); }} className="text-slate-400 hover:text-rose-500 bg-white p-1 rounded-md border border-slate-200 transition-colors"><Trash2 size={12} /></button>
+                      <button onClick={() => { stopAudio(); setTargetQueue([]); }} className="text-slate-400 hover:text-rose-500 bg-white p-1 rounded-md border border-slate-200 transition-colors"><Trash2 size={14} /></button>
                     </div>
                   </div>
                 )}
-                <button onClick={toggleFullSurah} className={`flex items-center justify-center gap-2 w-full md:w-auto px-4 py-2 rounded-xl text-xs font-bold transition-all shadow-sm shrink-0 ${isContinuousPlay ? 'bg-rose-50 text-rose-600 border border-rose-200 hover:bg-rose-100' : 'bg-emerald-600 text-white hover:bg-emerald-700'}`}>
+                <button onClick={toggleFullSurah} className={`flex items-center justify-center gap-2 w-full sm:w-auto px-4 py-2 rounded-xl text-xs font-bold transition-all shadow-sm shrink-0 ${isContinuousPlay ? 'bg-rose-50 text-rose-600 border border-rose-200 hover:bg-rose-100' : 'bg-emerald-600 text-white hover:bg-emerald-700'}`}>
                   {isContinuousPlay ? <PauseCircle size={16} /> : <ListMusic size={16} />} 
                   <span>{isContinuousPlay ? 'Stop Playing Surah' : 'Play Full Surah'}</span>
                 </button>
               </div>
             </div>
 
-            {/* Scrollable Ayah Area */}
             <div className="flex-1 overflow-y-auto p-3 lg:p-6 custom-scrollbar relative">
               
-              {/* Bismillah Header (Except Surah 9 AND Surah 1) */}
               {selectedSurah.id !== 9 && selectedSurah.id !== 1 && (
                 <div className="flex justify-center mb-6 lg:mb-8 mt-2">
                   <h2 className="text-2xl lg:text-4xl font-arabic text-emerald-800 opacity-90 py-2" style={{ fontFamily: 'KFGQPC Uthman Taha Naskh, Traditional Arabic, serif' }}>
@@ -243,7 +319,6 @@ export default function QuranWorkspace() {
                     const isSajdahAyah = checkIsSajdah(ayah.surah_id, ayah.ayah_number);
                     
                     let displayArabicText = ayah.text_arabic;
-                    // Bismillah filter for 1st Ayah (Except Surah 1)
                     if (ayah.surah_id !== 1 && ayah.ayah_number === 1 && displayArabicText.startsWith("بِسْمِ ٱللَّهِ ٱلرَّحْمَٰنِ ٱلرَّحِيمِ ")) {
                       displayArabicText = displayArabicText.replace("بِسْمِ ٱللَّهِ ٱلرَّحْمَٰنِ ٱلرَّحِيمِ ", "");
                     }
@@ -286,8 +361,6 @@ export default function QuranWorkspace() {
                     );
                   })}
 
-                  {/* ================= GUARANTEED BOTTOM SPACER ================= */}
-                  {/* এই ফিজিক্যাল স্পেসারটা নিশ্চিত করবে যে শেষের আয়াতের নিচে বিশাল ফাঁকা জায়গা থাকবে */}
                   <div className="h-32 md:h-48 w-full shrink-0 pointer-events-none opacity-0"></div>
 
                 </div>
